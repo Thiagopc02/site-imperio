@@ -1,0 +1,17 @@
+{
+  "editor.formatOnSave": true,
+  "editor.codeActionsOnSave": {
+    "source.fixAll.eslint": true
+  },
+  "tailwindCSS.experimental.classRegex": [
+    ["className\\s*=\\s*\"([^\"]*)\"", 1],
+    ["className=\\{`([^`]*)`\\}", 1],
+    ["clsx\\(([^)]*)\\)", 1],
+    ["cn\\(([^)]*)\\)", 1]
+  ],
+  "eslint.validate": ["javascript", "javascriptreact", "typescript", "typescriptreact"],
+  "files.associations": {
+    "*.css": "tailwindcss"
+  },
+  "typescript.tsdk": "node_modules/typescript/lib"
+}
