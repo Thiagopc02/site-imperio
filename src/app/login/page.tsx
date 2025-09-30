@@ -25,6 +25,7 @@ export default function LoginPage() {
   const recaptchaRef = useRef<RecaptchaV2Handle>(null);
   const pendingCreds = useRef<PendingCreds>(null);
 
+  /** Normaliza e “higieniza” o e-mail antes de usar */
   const normalizeEmail = (raw: string) =>
     raw
       .normalize('NFKC')
@@ -34,10 +35,10 @@ export default function LoginPage() {
       .replace(/[^a-z0-9._%+\-@]/g, '')
       .trim();
 
-  // Chamado pelo reCAPTCHA invisível quando gerar o token
+  /** Callback chamado pelo widget invisível quando gera um token */
   const onVerify = async (token: string) => {
     try {
-      // Ignora callbacks atrasados
+      // Se não há credenciais pendentes, ignora callback atrasado
       if (!pendingCreds.current) {
         if (process.env.NODE_ENV !== 'production') {
           console.debug('[login] onVerify ignorado: sem pendingCreds');
@@ -45,16 +46,24 @@ export default function LoginPage() {
         return;
       }
 
-      // 1) valida o token no backend
-      const resp = await fetch('/api/verify-recaptcha', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ token }),
-      });
-      const data = await resp.json();
-      if (!data?.success) {
-        setErro('Falha na verificação do reCAPTCHA.');
-        return;
+      // 1) valida token no backend (se houver)
+      if (token) {
+        try {
+          const resp = await fetch('/api/verify-recaptcha', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ token, action: 'login' }),
+          });
+          const data = await resp.json().catch(() => ({}));
+          if (!data?.success) {
+            setErro('Falha na verificação do reCAPTCHA.');
+            return;
+          }
+        } catch (e) {
+          // Falha de rede no verificador – não quebra a UX,
+          // mas registre para inspeção.
+          console.warn('[recaptcha verify] erro de rede:', e);
+        }
       }
 
       // 2) usa as credenciais capturadas no submit
@@ -95,6 +104,7 @@ export default function LoginPage() {
     } catch (e: any) {
       console.error('[login] error:', e);
       const code = String(e?.code || e?.message || e);
+
       if (code.includes('invalid-email')) setErro('E-mail inválido.');
       else if (code.includes('wrong-password') || code.includes('invalid-credential'))
         setErro('Senha incorreta.');
@@ -102,14 +112,16 @@ export default function LoginPage() {
       else setErro('Não foi possível entrar. Tente novamente.');
     } finally {
       setLoading(false);
-      pendingCreds.current = null; // limpa tentativa
-      recaptchaRef.current?.reset();
+      pendingCreds.current = null;        // limpa tentativa
+      recaptchaRef.current?.reset();      // reseta widget invisível
     }
   };
 
-  // Submit → captura credenciais e dispara o reCAPTCHA
+  /** Submit → captura credenciais e dispara execução do reCAPTCHA */
   const handleSubmit = async (ev: React.FormEvent) => {
     ev.preventDefault();
+    if (loading) return;
+
     setErro('');
     setLoading(true);
 
@@ -122,15 +134,25 @@ export default function LoginPage() {
       return;
     }
 
-    // guarda as credenciais desta tentativa
+    // guarda as credenciais desta tentativa (lidas no onVerify)
     pendingCreds.current = { email: mail, senha };
 
-    recaptchaRef.current?.execute();
+    // executa reCAPTCHA invisível
+    try {
+      recaptchaRef.current?.execute();
+    } catch (e) {
+      // Se por algum motivo não executou, ainda assim libera um erro claro
+      console.warn('[recaptcha] execute falhou:', e);
+      setLoading(false);
+      setErro('Não foi possível validar o reCAPTCHA. Atualize a página e tente novamente.');
+      pendingCreds.current = null;
+    }
   };
 
-  // Google
+  /** Login com Google */
   const handleGoogleSignIn = async () => {
     setErro('');
+    setLoading(true);
     try {
       const provider = new GoogleAuthProvider();
       provider.setCustomParameters({ prompt: 'select_account' });
@@ -167,11 +189,14 @@ export default function LoginPage() {
     } catch (e: any) {
       console.error('[google] error:', e);
       const code = String(e?.code || e?.message || e);
+
       if (code.includes('popup-blocked')) setErro('Pop-up bloqueado. Desative o bloqueador e tente novamente.');
       else if (code.includes('popup-closed-by-user')) setErro('Pop-up fechado antes de concluir.');
       else if (code.includes('account-exists-with-different-credential'))
         setErro('Este e-mail já existe com outro método. Faça login pelo método original.');
       else setErro('Erro ao entrar com Google.');
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -190,6 +215,7 @@ export default function LoginPage() {
           required
           className="w-full p-3 mb-4 text-black placeholder-gray-500 bg-white rounded focus:outline-none focus:ring-2 focus:ring-yellow-400"
           autoComplete="email"
+          inputMode="email"
         />
 
         <div className="relative mb-4">
@@ -231,7 +257,8 @@ export default function LoginPage() {
         <button
           type="button"
           onClick={handleGoogleSignIn}
-          className="flex items-center justify-center w-full gap-2 py-2 mt-3 font-semibold text-white transition bg-blue-600 rounded hover:bg-blue-700"
+          disabled={loading}
+          className="flex items-center justify-center w-full gap-2 py-2 mt-3 font-semibold text-white transition bg-blue-600 rounded hover:bg-blue-700 disabled:opacity-60"
         >
           <img
             src="https://www.gstatic.com/firebasejs/ui/2.0.0/images/auth/google.svg"
@@ -249,7 +276,7 @@ export default function LoginPage() {
         </p>
       </form>
 
-      {/* Widget invisível (não ocupa layout) */}
+      {/* Widget invisível (não ocupa layout). Ele chama onVerify() */}
       <RecaptchaV2Invisible ref={recaptchaRef} onVerify={onVerify} />
     </main>
   );
