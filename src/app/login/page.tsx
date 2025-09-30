@@ -1,6 +1,6 @@
 'use client';
 
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import {
   signInWithEmailAndPassword,
@@ -9,7 +9,9 @@ import {
 } from 'firebase/auth';
 import { auth, db } from '@/firebase/config';
 import { doc, getDoc, setDoc, serverTimestamp } from 'firebase/firestore';
-import RecaptchaV2Invisible, { RecaptchaV2Handle } from '@/components/RecaptchaV2Invisible';
+import RecaptchaV2Invisible, {
+  RecaptchaV2Handle,
+} from '@/components/RecaptchaV2Invisible';
 
 type PendingCreds = { email: string; senha: string } | null;
 
@@ -24,6 +26,17 @@ export default function LoginPage() {
 
   const recaptchaRef = useRef<RecaptchaV2Handle>(null);
   const pendingCreds = useRef<PendingCreds>(null);
+
+  // Apenas log útil em dev para confirmar que a SITE KEY pública está presente
+  useEffect(() => {
+    if (process.env.NODE_ENV !== 'production') {
+      // @ts-ignore
+      console.log(
+        '[login] recaptcha site key ok?',
+        !!process.env.NEXT_PUBLIC_RECAPTCHA_V2_SITE_KEY
+      );
+    }
+  }, []);
 
   /** Normaliza e “higieniza” o e-mail antes de usar */
   const normalizeEmail = (raw: string) =>
@@ -46,36 +59,38 @@ export default function LoginPage() {
         return;
       }
 
-      // 1) Valida token no backend (se existir endpoint/config)
-      if (token) {
+      // 1) Valida token no backend
+      if (!token) {
+        setErro('Falha ao obter o token do reCAPTCHA.');
+        return;
+      }
+
+      try {
+        const resp = await fetch('/api/verify-recaptcha', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ token, action: 'login' }),
+        });
+
+        let data: any = {};
         try {
-          const resp = await fetch('/api/verify-recaptcha', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ token, action: 'login' }),
-          });
+          data = await resp.json();
+        } catch {
+          /* corpo vazio — segue com erro genérico se !resp.ok */
+        }
 
-          let data: any = {};
-          try {
-            data = await resp.json();
-          } catch {
-            // corpo vazio ou inválido
-          }
+        if (process.env.NODE_ENV !== 'production') {
+          console.debug('[verify-recaptcha] status:', resp.status, data);
+        }
 
-          if (process.env.NODE_ENV !== 'production') {
-            console.debug('[verify-recaptcha] status:', resp.status, 'body:', data);
-          }
-
-          if (!resp.ok || !data?.success) {
-            setErro('Falha na verificação do reCAPTCHA.');
-            return;
-          }
-        } catch (e) {
-          // Falha de rede (não autentica)
-          console.warn('[recaptcha verify] erro de rede:', e);
-          setErro('Falha ao validar o reCAPTCHA. Tente novamente.');
+        if (!resp.ok || !data?.success) {
+          setErro('Falha na verificação do reCAPTCHA.');
           return;
         }
+      } catch (e) {
+        console.warn('[recaptcha verify] erro de rede:', e);
+        setErro('Falha ao validar o reCAPTCHA. Tente novamente.');
+        return;
       }
 
       // 2) Usa as credenciais capturadas no submit
@@ -124,9 +139,35 @@ export default function LoginPage() {
       else setErro('Não foi possível entrar. Tente novamente.');
     } finally {
       setLoading(false);
-      pendingCreds.current = null;   // limpa tentativa
+      pendingCreds.current = null; // limpa tentativa
       recaptchaRef.current?.reset(); // reseta widget invisível
     }
+  };
+
+  /** Executa o reCAPTCHA com uma pequena espera até ficar pronto */
+  const executeRecaptchaOrFail = async () => {
+    // Tenta até 6s o widget ficar pronto
+    const start = Date.now();
+    return new Promise<void>((resolve, reject) => {
+      const tick = () => {
+        const ready = recaptchaRef.current?.isReady?.();
+        if (ready) {
+          try {
+            recaptchaRef.current?.execute();
+            resolve();
+          } catch (e) {
+            reject(e);
+          }
+          return;
+        }
+        if (Date.now() - start > 6000) {
+          reject(new Error('reCAPTCHA não ficou pronto a tempo'));
+          return;
+        }
+        setTimeout(tick, 150);
+      };
+      tick();
+    });
   };
 
   /** Submit → captura credenciais e dispara execução do reCAPTCHA */
@@ -149,9 +190,8 @@ export default function LoginPage() {
     // Guarda as credenciais desta tentativa (lidas no onVerify)
     pendingCreds.current = { email: mail, senha };
 
-    // Executa reCAPTCHA invisível
     try {
-      recaptchaRef.current?.execute();
+      await executeRecaptchaOrFail();
     } catch (e) {
       console.warn('[recaptcha] execute falhou:', e);
       setLoading(false);
@@ -201,8 +241,10 @@ export default function LoginPage() {
       console.error('[google] error:', e);
       const code = String(e?.code || e?.message || e);
 
-      if (code.includes('popup-blocked')) setErro('Pop-up bloqueado. Desative o bloqueador e tente novamente.');
-      else if (code.includes('popup-closed-by-user')) setErro('Pop-up fechado antes de concluir.');
+      if (code.includes('popup-blocked'))
+        setErro('Pop-up bloqueado. Desative o bloqueador e tente novamente.');
+      else if (code.includes('popup-closed-by-user'))
+        setErro('Pop-up fechado antes de concluir.');
       else if (code.includes('account-exists-with-different-credential'))
         setErro('Este e-mail já existe com outro método. Faça login pelo método original.');
       else setErro('Erro ao entrar com Google.');
@@ -287,7 +329,7 @@ export default function LoginPage() {
         </p>
       </form>
 
-      {/* Widget invisível (não ocupa layout). Ele chama onVerify() */}
+      {/* Widget invisível — chama onVerify(token) quando executa */}
       <RecaptchaV2Invisible ref={recaptchaRef} onVerify={onVerify} />
     </main>
   );
