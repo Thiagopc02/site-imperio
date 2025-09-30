@@ -1,21 +1,20 @@
-import { NextRequest, NextResponse } from 'next/server';
+// src/app/api/verify-recaptcha/route.ts
+import { NextResponse } from 'next/server';
 
-/**
- * Verifica o token do reCAPTCHA v2 invisível no servidor.
- * Lê a chave secreta do .env.local: RECAPTCHA_V2_SECRET_KEY
- */
-export async function POST(req: NextRequest) {
-  // CORS básico p/ chamadas do próprio app (útil em LAN)
-  const corsHeaders = {
-    'Access-Control-Allow-Origin': '*',
-    'Access-Control-Allow-Methods': 'POST, OPTIONS',
-    'Access-Control-Allow-Headers': 'Content-Type',
-  } as const;
+export const runtime = 'nodejs'; // garante execução em Node.js
 
-  if (req.method === 'OPTIONS') {
-    return new NextResponse(null, { status: 204, headers: corsHeaders });
-  }
+const corsHeaders: Record<string, string> = {
+  'Access-Control-Allow-Origin': process.env.NEXT_PUBLIC_SITE_ORIGIN ?? '*',
+  'Access-Control-Allow-Methods': 'POST, OPTIONS',
+  'Access-Control-Allow-Headers': 'Content-Type',
+};
 
+// Handler de preflight (obrigatório no App Router)
+export async function OPTIONS() {
+  return new NextResponse(null, { status: 204, headers: corsHeaders });
+}
+
+export async function POST(req: Request) {
   try {
     const { token } = await req.json().catch(() => ({} as { token?: string }));
     if (!token) {
@@ -33,62 +32,27 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // envia ao endpoint oficial do Google
-    const params = new URLSearchParams({ secret, response: token });
+    // Verificação no Google
+    const body = new URLSearchParams({ secret, response: token }).toString();
     const resp = await fetch('https://www.google.com/recaptcha/api/siteverify', {
       method: 'POST',
       headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-      body: params.toString(),
-      // timeout simples com AbortController (evita ficar pendurado)
-      signal: AbortSignal.timeout ? AbortSignal.timeout(7000) : undefined,
+      body,
+      cache: 'no-store',
     });
 
-    const data = await resp.json(); // { success: boolean, 'error-codes'?: string[] ... }
+    const data = await resp.json(); // { success, 'error-codes'?, ... }
 
-    // se falhou, converte os códigos em texto amigável
     if (!data?.success) {
-      const codes: string[] = Array.isArray(data?.['error-codes']) ? data['error-codes'] : [];
-      const reason =
-        codes
-          .map((c) => {
-            switch (c) {
-              case 'invalid-input-secret':
-                return 'Server secret inválido';
-              case 'missing-input-secret':
-                return 'Server secret ausente';
-              case 'missing-input-response':
-                return 'Token ausente';
-              case 'invalid-input-response':
-                return 'Token inválido ou expirado';
-              case 'bad-request':
-                return 'Requisição inválida';
-              case 'timeout-or-duplicate':
-                return 'Token expirado ou reutilizado';
-              default:
-                return c;
-            }
-          })
-          .join(', ') || 'unknown';
-
+      const codes = Array.isArray(data?.['error-codes']) ? data['error-codes'] : [];
       return NextResponse.json(
-        { success: false, reason, data },
+        { success: false, reason: codes.join(', '), data },
         { status: 400, headers: corsHeaders },
       );
     }
 
-    // OK
-    return NextResponse.json(
-      { success: true, data },
-      { status: 200, headers: corsHeaders },
-    );
+    return NextResponse.json({ success: true }, { headers: corsHeaders });
   } catch (e: any) {
-    // abort/timeout
-    if (e?.name === 'AbortError') {
-      return NextResponse.json(
-        { success: false, error: 'recaptcha verify timeout' },
-        { status: 504, headers: corsHeaders },
-      );
-    }
     return NextResponse.json(
       { success: false, error: String(e?.message ?? e) },
       { status: 500, headers: corsHeaders },
