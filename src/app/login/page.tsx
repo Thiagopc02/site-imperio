@@ -35,7 +35,7 @@ export default function LoginPage() {
       .replace(/[^a-z0-9._%+\-@]/g, '')
       .trim();
 
-  /** Callback chamado pelo widget invisível quando gera um token */
+  /** Chamado pelo widget invisível quando gera o token */
   const onVerify = async (token: string) => {
     try {
       // Se não há credenciais pendentes, ignora callback atrasado
@@ -46,7 +46,7 @@ export default function LoginPage() {
         return;
       }
 
-      // 1) valida token no backend (se houver)
+      // 1) Valida token no backend (se existir endpoint/config)
       if (token) {
         try {
           const resp = await fetch('/api/verify-recaptcha', {
@@ -54,19 +54,31 @@ export default function LoginPage() {
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ token, action: 'login' }),
           });
-          const data = await resp.json().catch(() => ({}));
-          if (!data?.success) {
+
+          let data: any = {};
+          try {
+            data = await resp.json();
+          } catch {
+            // corpo vazio ou inválido
+          }
+
+          if (process.env.NODE_ENV !== 'production') {
+            console.debug('[verify-recaptcha] status:', resp.status, 'body:', data);
+          }
+
+          if (!resp.ok || !data?.success) {
             setErro('Falha na verificação do reCAPTCHA.');
             return;
           }
         } catch (e) {
-          // Falha de rede no verificador – não quebra a UX,
-          // mas registre para inspeção.
+          // Falha de rede (não autentica)
           console.warn('[recaptcha verify] erro de rede:', e);
+          setErro('Falha ao validar o reCAPTCHA. Tente novamente.');
+          return;
         }
       }
 
-      // 2) usa as credenciais capturadas no submit
+      // 2) Usa as credenciais capturadas no submit
       const { email: mail, senha: pass } = pendingCreds.current;
 
       if (process.env.NODE_ENV !== 'production') {
@@ -77,7 +89,7 @@ export default function LoginPage() {
 
       const cred = await signInWithEmailAndPassword(auth, mail, pass);
 
-      // 3) garante doc mínimo no Firestore
+      // 3) Garante doc mínimo no Firestore
       const ref = doc(db, 'usuarios', cred.user.uid);
       const snap = await getDoc(ref);
       if (!snap.exists()) {
@@ -112,8 +124,8 @@ export default function LoginPage() {
       else setErro('Não foi possível entrar. Tente novamente.');
     } finally {
       setLoading(false);
-      pendingCreds.current = null;        // limpa tentativa
-      recaptchaRef.current?.reset();      // reseta widget invisível
+      pendingCreds.current = null;   // limpa tentativa
+      recaptchaRef.current?.reset(); // reseta widget invisível
     }
   };
 
@@ -127,21 +139,20 @@ export default function LoginPage() {
 
     const mail = normalizeEmail(email);
 
-    // valida formato antes do captcha
+    // Validação simples antes do captcha
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(mail)) {
       setLoading(false);
       setErro('E-mail inválido.');
       return;
     }
 
-    // guarda as credenciais desta tentativa (lidas no onVerify)
+    // Guarda as credenciais desta tentativa (lidas no onVerify)
     pendingCreds.current = { email: mail, senha };
 
-    // executa reCAPTCHA invisível
+    // Executa reCAPTCHA invisível
     try {
       recaptchaRef.current?.execute();
     } catch (e) {
-      // Se por algum motivo não executou, ainda assim libera um erro claro
       console.warn('[recaptcha] execute falhou:', e);
       setLoading(false);
       setErro('Não foi possível validar o reCAPTCHA. Atualize a página e tente novamente.');
