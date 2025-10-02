@@ -1,8 +1,11 @@
-/** @type {import('next').NextConfig} */
-const nextConfig = {
+// next.config.ts
+import type { NextConfig } from 'next';
+
+const nextConfig: NextConfig = {
   reactStrictMode: true,
   experimental: {
-    serverActions: true,
+    // antes era `true`; hoje deve ser um objeto (vazio já serve)
+    serverActions: {},
   },
 };
 
