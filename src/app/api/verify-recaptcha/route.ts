@@ -1,7 +1,9 @@
 // src/app/api/verify-recaptcha/route.ts
 import { NextResponse } from 'next/server';
 
-export const runtime = 'nodejs'; // garante execução em Node.js
+export const runtime   = 'nodejs';        // força Node.js (nada de Edge)
+export const dynamic   = 'force-dynamic'; // impede cache/pré-render
+export const revalidate = 0;              // sem revalidação
 
 const corsHeaders: Record<string, string> = {
   'Access-Control-Allow-Origin': process.env.NEXT_PUBLIC_SITE_ORIGIN ?? '*',
@@ -9,7 +11,6 @@ const corsHeaders: Record<string, string> = {
   'Access-Control-Allow-Headers': 'Content-Type',
 };
 
-// Handler de preflight (obrigatório no App Router)
 export async function OPTIONS() {
   return new NextResponse(null, { status: 204, headers: corsHeaders });
 }
@@ -32,7 +33,7 @@ export async function POST(req: Request) {
       );
     }
 
-    // Verificação no Google
+    // Verifica no Google
     const body = new URLSearchParams({ secret, response: token }).toString();
     const resp = await fetch('https://www.google.com/recaptcha/api/siteverify', {
       method: 'POST',
