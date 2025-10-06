@@ -16,6 +16,8 @@ declare global {
       execute: (id?: number) => void;
       reset: (id?: number) => void;
       ready?: (cb: () => void) => void;
+      /** existe no v2 e retorna o token (ou string vazia) */
+      getResponse?: (id?: number) => string;
     };
     __recaptchaV2ScriptLoaded__?: boolean;
   }
@@ -29,16 +31,15 @@ export type RecaptchaV2Handle = {
 
 type Props = {
   onVerify: (token: string) => void;
-  siteKey?: string;              // se não vier, usa NEXT_PUBLIC_RECAPTCHA_V2_SITE_KEY
-  hl?: string;                   // idioma (ex.: 'pt-BR')
+  siteKey?: string;
+  hl?: string;
   badge?: 'bottomright' | 'bottomleft' | 'inline';
 };
 
 const SCRIPT_ID = 'recaptcha-v2-invisible-script';
 const WIDGET_RENDERED_FLAG = '__recaptchaV2WidgetRendered__';
 
-/** Guard que devolve o grecaptcha tipado (ou undefined no SSR/sem script) */
-function getGrecaptcha() {
+function getG() {
   if (typeof window === 'undefined') return undefined;
   return window.grecaptcha;
 }
@@ -48,6 +49,7 @@ const RecaptchaV2Invisible = forwardRef<RecaptchaV2Handle, Props>(
     const containerRef = useRef<HTMLDivElement | null>(null);
     const widgetIdRef = useRef<number | null>(null);
     const executingRef = useRef(false);
+    const tokenWatcherRef = useRef<number | null>(null); // interval id
     const [ready, setReady] = useState(false);
 
     const SITE_KEY =
@@ -55,43 +57,59 @@ const RecaptchaV2Invisible = forwardRef<RecaptchaV2Handle, Props>(
         process.env.NEXT_PUBLIC_RECAPTCHA_V2_SITE_KEY ||
         '') as string;
 
-    // Renderiza o widget quando o script estiver pronto
+    const finishWithToken = (token: string) => {
+      // evita chamada dupla (callback + watcher)
+      if (!executingRef.current) return;
+      executingRef.current = false;
+
+      if (tokenWatcherRef.current !== null) {
+        window.clearInterval(tokenWatcherRef.current);
+        tokenWatcherRef.current = null;
+      }
+
+      if (process.env.NODE_ENV !== 'production') {
+        console.info('[recaptcha] token obtido (len=', token.length, ')');
+      }
+      onVerify(token);
+    };
+
     const renderWidget = useCallback(() => {
-      const g = getGrecaptcha();
+      const g = getG();
       if (!SITE_KEY || !g || !containerRef.current) return;
-      if (widgetIdRef.current !== null) return; // já renderizado
-      if ((containerRef.current as any)[WIDGET_RENDERED_FLAG]) return; // evita re-render
+      if (widgetIdRef.current !== null) return;
+      if ((containerRef.current as any)[WIDGET_RENDERED_FLAG]) return;
 
       widgetIdRef.current = g.render(containerRef.current, {
         sitekey: SITE_KEY,
         size: 'invisible',
         badge,
-        callback: (token: string) => {
-          executingRef.current = false;
-          if (process.env.NODE_ENV !== 'production') {
-            console.log('[recaptcha] token obtido');
-          }
-          onVerify(token);
-        },
+        callback: (token: string) => finishWithToken(token),
         'error-callback': () => {
-          executingRef.current = false;
           if (process.env.NODE_ENV !== 'production') {
             console.warn('[recaptcha] error-callback');
           }
+          executingRef.current = false;
+          if (tokenWatcherRef.current !== null) {
+            window.clearInterval(tokenWatcherRef.current);
+            tokenWatcherRef.current = null;
+          }
         },
         'expired-callback': () => {
-          executingRef.current = false;
           if (process.env.NODE_ENV !== 'production') {
             console.warn('[recaptcha] expired-callback');
+          }
+          executingRef.current = false;
+          if (tokenWatcherRef.current !== null) {
+            window.clearInterval(tokenWatcherRef.current);
+            tokenWatcherRef.current = null;
           }
         },
       });
 
       (containerRef.current as any)[WIDGET_RENDERED_FLAG] = true;
       setReady(true);
-    }, [SITE_KEY, onVerify, badge]);
+    }, [SITE_KEY, badge]);
 
-    // Carrega o script uma única vez e renderiza quando carregar
     useEffect(() => {
       if (!SITE_KEY) {
         console.error('[reCAPTCHA v2] NEXT_PUBLIC_RECAPTCHA_V2_SITE_KEY ausente.');
@@ -100,12 +118,11 @@ const RecaptchaV2Invisible = forwardRef<RecaptchaV2Handle, Props>(
 
       const ensureRender = () => {
         window.__recaptchaV2ScriptLoaded__ = true;
-        const g = getGrecaptcha();
+        const g = getG();
         if (g?.ready) g.ready(renderWidget);
         else renderWidget();
       };
 
-      // já carregado anteriormente
       if (window.__recaptchaV2ScriptLoaded__) {
         ensureRender();
         return;
@@ -116,11 +133,9 @@ const RecaptchaV2Invisible = forwardRef<RecaptchaV2Handle, Props>(
         const onLoad = () => ensureRender();
         existing.addEventListener('load', onLoad, { once: true });
         if ((existing as any).dataset.loaded === 'true') ensureRender();
-
         return () => existing.removeEventListener('load', onLoad);
       }
 
-      // injeta o script
       const srcBase = 'https://www.google.com/recaptcha/api.js';
       const params = new URLSearchParams({ render: 'explicit' });
       if (hl) params.set('hl', hl);
@@ -141,46 +156,90 @@ const RecaptchaV2Invisible = forwardRef<RecaptchaV2Handle, Props>(
 
       return () => {
         s.removeEventListener('load', onLoad);
-        // não removemos o script para permitir reuso global
       };
     }, [SITE_KEY, hl, renderWidget]);
 
-    // Métodos expostos
     useImperativeHandle(
       ref,
       (): RecaptchaV2Handle => ({
         isReady: () => ready && widgetIdRef.current !== null,
 
         execute: () => {
-          if (executingRef.current) return; // evita spam
+          if (executingRef.current) return;
           executingRef.current = true;
 
-          const g = getGrecaptcha();
+          const g = getG();
+          const id = widgetIdRef.current;
 
-          if (widgetIdRef.current !== null && g) {
+          if (id !== null && g) {
             try {
-              g.execute(widgetIdRef.current);
+              g.execute(id);
             } catch {
               executingRef.current = false;
+              return;
+            }
+
+            // *** FALLBACK: vigia o token pelo getResponse por até 10s ***
+            if (g.getResponse && tokenWatcherRef.current === null) {
+              const start = Date.now();
+              tokenWatcherRef.current = window.setInterval(() => {
+                try {
+                  const token = g.getResponse!(id);
+                  if (token) {
+                    finishWithToken(token);
+                  } else if (Date.now() - start > 10000) {
+                    // tempo esgotado
+                    executingRef.current = false;
+                    window.clearInterval(tokenWatcherRef.current!);
+                    tokenWatcherRef.current = null;
+                  }
+                } catch {
+                  // se der erro, encerra o watcher
+                  executingRef.current = false;
+                  window.clearInterval(tokenWatcherRef.current!);
+                  tokenWatcherRef.current = null;
+                }
+              }, 150);
             }
             return;
           }
 
-          // ainda não renderizou — tenta por alguns segundos
+          // se ainda não renderizou, aguarda alguns segundos
           const start = Date.now();
           const timer = window.setInterval(() => {
-            const g2 = getGrecaptcha();
-            const widgetOk = widgetIdRef.current !== null && !!g2;
-            const withinTime = Date.now() - start < 8000;
+            const g2 = getG();
+            const ok = widgetIdRef.current !== null && !!g2;
+            const within = Date.now() - start < 8000;
 
-            if (widgetOk && g2) {
+            if (ok && g2) {
               window.clearInterval(timer);
               try {
                 g2.execute(widgetIdRef.current!);
               } catch {
                 executingRef.current = false;
+                return;
               }
-            } else if (!withinTime) {
+              // inicia watcher também nesse caminho
+              if (g2.getResponse && tokenWatcherRef.current === null) {
+                const t0 = Date.now();
+                tokenWatcherRef.current = window.setInterval(() => {
+                  try {
+                    const token = g2.getResponse!(widgetIdRef.current!);
+                    if (token) {
+                      finishWithToken(token);
+                    } else if (Date.now() - t0 > 10000) {
+                      executingRef.current = false;
+                      window.clearInterval(tokenWatcherRef.current!);
+                      tokenWatcherRef.current = null;
+                    }
+                  } catch {
+                    executingRef.current = false;
+                    window.clearInterval(tokenWatcherRef.current!);
+                    tokenWatcherRef.current = null;
+                  }
+                }, 150);
+              }
+            } else if (!within) {
               window.clearInterval(timer);
               executingRef.current = false;
             }
@@ -189,20 +248,21 @@ const RecaptchaV2Invisible = forwardRef<RecaptchaV2Handle, Props>(
 
         reset: () => {
           executingRef.current = false;
-          const g = getGrecaptcha();
+          if (tokenWatcherRef.current !== null) {
+            window.clearInterval(tokenWatcherRef.current);
+            tokenWatcherRef.current = null;
+          }
+          const g = getG();
           if (g && widgetIdRef.current !== null) {
             try {
               g.reset(widgetIdRef.current);
-            } catch {
-              /* ignore */
-            }
+            } catch { /* ignore */ }
           }
         },
       }),
       [ready]
     );
 
-    // Container do widget — **sem display:none** para o v2 Invisible funcionar
     return <div ref={containerRef} className="g-recaptcha" aria-hidden />;
   }
 );
