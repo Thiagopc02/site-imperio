@@ -36,32 +36,47 @@ export default function LoginPage() {
   const [loading, setLoading] = useState(false);
 
   const recaptchaRef = useRef<RecaptchaV2Handle>(null);
-  const pending = useRef<{ email: string; senha: string } | null>(null);
 
   useEffect(() => {
-    console.info('BUILD_TAG', 'login-public-v2');
+    console.info('BUILD_TAG', 'login-public-getToken');
   }, []);
 
-  const onVerify = async (token: string) => {
+  const handleSubmit = async (ev: React.FormEvent) => {
+    ev.preventDefault();
+    if (loading) return;
+
+    setErro('');
+    setLoading(true);
+
+    const mail = normalizeEmail(email);
+
     try {
-      if (!pending.current) return;
-      // 1) valida token no backend
-      const r = await fetch('/api/verify-recaptcha', {
+      // BYPASS opcional (diagnóstico) — defina essa ENV na Vercel se quiser testar só Firebase
+      if (process.env.NEXT_PUBLIC_LOGIN_BYPASS_RECAPTCHA === 'true') {
+        await signInWithEmailAndPassword(auth, mail, senha);
+        router.replace('/produtos');
+        return;
+      }
+
+      // 1) obter token do reCAPTCHA (forma robusta)
+      const token = await recaptchaRef.current!.getToken();
+
+      // 2) validar token no backend
+      const vr = await fetch('/api/verify-recaptcha', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ token, action: 'login' }),
       });
-      const data = await r.json().catch(() => ({}));
-      if (!(r.ok && data?.success)) {
+      const vj = await vr.json().catch(() => ({}));
+      if (!(vr.ok && vj?.success)) {
         setErro('Falha na verificação do reCAPTCHA.');
         return;
       }
 
-      // 2) login Firebase
-      const { email: em, senha: pw } = pending.current;
-      const cred = await signInWithEmailAndPassword(auth, em, pw);
+      // 3) login Firebase
+      const cred = await signInWithEmailAndPassword(auth, mail, senha);
 
-      // 3) cria doc básico se não existir
+      // 4) cria/atualiza doc básico do usuário
       const ref = doc(db, 'usuarios', cred.user.uid);
       const snap = await getDoc(ref);
       if (!snap.exists()) {
@@ -69,7 +84,7 @@ export default function LoginPage() {
           ref,
           {
             uid: cred.user.uid,
-            email: cred.user.email || em,
+            email: cred.user.email || mail,
             nome: cred.user.displayName || '',
             celular: cred.user.phoneNumber || '',
             telefoneVerificado: !!cred.user.phoneNumber,
@@ -83,69 +98,11 @@ export default function LoginPage() {
 
       router.replace('/produtos');
     } catch (e: any) {
-      console.error('LOGIN ERROR:', e?.code, e?.message ?? e);
+      console.error('LOGIN ERROR', e?.code, e?.message ?? e);
       setErro(mapAuthError(e?.code, e?.message));
     } finally {
       setLoading(false);
-      pending.current = null;
       recaptchaRef.current?.reset();
-    }
-  };
-
-  const executeRecaptchaOrFail = async () => {
-    const start = Date.now();
-    return new Promise<void>((resolve, reject) => {
-      const tick = () => {
-        if (recaptchaRef.current?.isReady?.()) {
-          try {
-            recaptchaRef.current.execute();
-            resolve();
-          } catch (e) {
-            reject(e);
-          }
-          return;
-        }
-        if (Date.now() - start > 6000) {
-          reject(new Error('reCAPTCHA não ficou pronto a tempo'));
-          return;
-        }
-        setTimeout(tick, 150);
-      };
-      tick();
-    });
-  };
-
-  const handleSubmit = async (ev: React.FormEvent) => {
-    ev.preventDefault();
-    if (loading) return;
-
-    setErro('');
-    setLoading(true);
-
-    const mail = normalizeEmail(email);
-
-    // BYPASS opcional (diagnóstico): defina a var na Vercel se quiser testar só Firebase
-    if (process.env.NEXT_PUBLIC_LOGIN_BYPASS_RECAPTCHA === 'true') {
-      try {
-        await signInWithEmailAndPassword(auth, mail, senha);
-        router.replace('/produtos');
-      } catch (e: any) {
-        console.error('LOGIN (bypass) ERROR', e?.code, e?.message);
-        setErro(mapAuthError(e?.code, e?.message));
-      } finally {
-        setLoading(false);
-      }
-      return;
-    }
-
-    try {
-      pending.current = { email: mail, senha };
-      await executeRecaptchaOrFail(); // onVerify continua o fluxo
-    } catch (e) {
-      console.warn('[recaptcha] execute falhou:', e);
-      setErro('Não foi possível validar o reCAPTCHA. Atualize a página e tente novamente.');
-      setLoading(false);
-      pending.current = null;
     }
   };
 
@@ -264,7 +221,8 @@ export default function LoginPage() {
         </p>
       </form>
 
-      <RecaptchaV2Invisible ref={recaptchaRef} onVerify={onVerify} />
+      {/* reCAPTCHA invisível — agora usamos getToken() */}
+      <RecaptchaV2Invisible ref={recaptchaRef} />
     </main>
   );
 }
