@@ -12,7 +12,7 @@ import { auth, db } from '@/firebase/config';
 import { doc, getDoc } from 'firebase/firestore';
 import RecaptchaV2Invisible, { RecaptchaV2Handle } from '@/components/RecaptchaV2Invisible';
 
-// ===== Allowlist fixa (normalizada) =====
+/** ====== CONFIG ====== */
 const ADMIN_EMAILS = new Set<string>(
   [
     'thiagotorres5517@gmail.com',
@@ -22,10 +22,15 @@ const ADMIN_EMAILS = new Set<string>(
   )
 );
 
+/** Normaliza e higieniza e-mail */
 const normalizeEmail = (raw: string) =>
-  raw.normalize('NFKC').replace(/[\u200B-\u200D\uFEFF]/g, '').trim().toLowerCase();
+  raw
+    .normalize('NFKC')
+    .replace(/[\u200B-\u200D\uFEFF]/g, '')
+    .trim()
+    .toLowerCase();
 
-// ===== Consulta papel no Firestore (somente leitura) =====
+/** ====== Firestore: verificação de papel ====== */
 async function hasAdminRole(uid: string) {
   // Preferência: coleção "administrador"
   try {
@@ -35,7 +40,9 @@ async function hasAdminRole(uid: string) {
       const d: any = snap.data();
       if (d?.papel === 'administrador' || d?.role === 'admin' || d?.ativo === true) return true;
     }
-  } catch {}
+  } catch {
+    /* noop */
+  }
 
   // Fallback: coleção "usuarios"
   try {
@@ -45,11 +52,34 @@ async function hasAdminRole(uid: string) {
       const d: any = snapU.data();
       if (d?.papel === 'administrador' || d?.role === 'admin') return true;
     }
-  } catch {}
+  } catch {
+    /* noop */
+  }
 
   return false;
 }
 
+/** Mapeia mensagens amigáveis para códigos do Firebase/Identity Platform */
+function mapAuthError(code?: string, message?: string) {
+  const combo = `${code ?? ''} ${message ?? ''}`.toLowerCase();
+
+  if (combo.includes('wrong-password') || combo.includes('invalid-credential') || combo.includes('invalid_password'))
+    return 'Senha incorreta.';
+  if (combo.includes('user-not-found') || combo.includes('email_not_found'))
+    return 'Conta não encontrada para este e-mail.';
+  if (combo.includes('invalid-email') || combo.includes('missing-email'))
+    return 'E-mail inválido.';
+  if (combo.includes('too-many-requests'))
+    return 'Muitas tentativas. Tente novamente em instantes.';
+  if (combo.includes('network-request-failed'))
+    return 'Falha de rede. Verifique sua conexão.';
+  if (combo.includes('password_does_not_meet_requirements'))
+    return 'Sua senha não atende à política definida. Atualize-a para continuar.';
+
+  return 'Não foi possível entrar. Verifique os dados e tente novamente.';
+}
+
+/** ====== PAGE ====== */
 export default function AdminLoginPage() {
   const router = useRouter();
 
@@ -60,32 +90,47 @@ export default function AdminLoginPage() {
   const [loading, setLoading] = useState(false);
 
   const recaptchaRef = useRef<RecaptchaV2Handle>(null);
-  const nextHandler = useRef<((t: string) => Promise<void>) | null>(null);
+  const pending = useRef<{ email: string; senha: string } | null>(null);
 
-  // Observa a sessão (mesma instância usada no site todo)
+  // Marca do build para confirmar que o deploy novo está carregado
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      console.info('ADMIN_BUILD_TAG', 'admin-login-2025-10-06');
+    }
+  }, []);
+
+  // Observa a sessão e redireciona se já for admin
   useEffect(() => {
     const unsub = onAuthStateChanged(auth, async (u) => {
       if (!u) return;
       const mail = normalizeEmail(u.email || '');
-      if (ADMIN_EMAILS.has(mail) || (await hasAdminRole(u.uid))) {
+      const isAdmin = ADMIN_EMAILS.has(mail) || (await hasAdminRole(u.uid));
+      console.info('ADMIN onAuthStateChanged', { user: u.email, isAdmin });
+
+      if (isAdmin) {
         router.replace('/admin/dashboard');
       } else {
-        await signOut(auth); // bloqueia logins que não são admin
+        await signOut(auth);
+        setErro('Este usuário não tem acesso administrativo.');
       }
     });
     return () => unsub();
   }, [router]);
 
+  /** Valida token do reCAPTCHA invisível no backend */
   async function verifyCaptchaOnServer(token: string) {
     const r = await fetch('/api/verify-recaptcha', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ token }),
+      body: JSON.stringify({ token, action: 'admin-login' }),
     });
-    const j = await r.json();
-    if (!j?.success) throw new Error('Falha na verificação do reCAPTCHA.');
+    const j = await r.json().catch(() => ({}));
+    if (!(r.ok && j?.success)) {
+      throw new Error('Falha na verificação do reCAPTCHA.');
+    }
   }
 
+  /** Garante que o usuário logado é admin; caso contrário, encerra a sessão */
   async function ensureAdminOrThrow(user: User) {
     const mail = normalizeEmail(user.email || '');
     if (ADMIN_EMAILS.has(mail)) return;
@@ -94,45 +139,78 @@ export default function AdminLoginPage() {
     throw new Error('Esta conta não tem acesso administrativo.');
   }
 
-  // Fluxo e-mail + senha
+  /** Executa o widget invisível com timeout e feedback */
+  async function executeRecaptchaOrFail() {
+    const start = Date.now();
+    return new Promise<void>((resolve, reject) => {
+      const step = () => {
+        if (recaptchaRef.current?.isReady?.()) {
+          try {
+            recaptchaRef.current.execute();
+            resolve();
+          } catch (e) {
+            reject(e);
+          }
+          return;
+        }
+        if (Date.now() - start > 6000) {
+          reject(new Error('reCAPTCHA não ficou pronto a tempo.'));
+          return;
+        }
+        setTimeout(step, 150);
+      };
+      step();
+    });
+  }
+
+  /** Submit: prepara credenciais, dispara reCAPTCHA e completa o login no callback */
   async function doEmailPassword() {
+    if (loading) return;
     setErro(null);
     setLoading(true);
+
     try {
       const mail = normalizeEmail(email);
+      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(mail)) {
+        throw new Error('E-mail inválido.');
+      }
+      if (senha.length < 6) {
+        throw new Error('A senha deve ter pelo menos 6 caracteres.');
+      }
 
-      nextHandler.current = async (token: string) => {
-        await verifyCaptchaOnServer(token);
-        const cred = await signInWithEmailAndPassword(auth, mail, senha);
-        await ensureAdminOrThrow(cred.user);
-        router.replace('/admin/dashboard');
-      };
-
-      recaptchaRef.current?.execute();
+      pending.current = { email: mail, senha };
+      await executeRecaptchaOrFail(); // onVerify continua o fluxo
     } catch (e: any) {
-      setErro(e?.message || 'Erro ao fazer login.');
+      console.error('ADMIN doEmailPassword error:', e);
+      setErro(mapAuthError(e?.code, e?.message ?? String(e)));
       setLoading(false);
+      pending.current = null;
     }
   }
 
+  /** Callback do reCAPTCHA invisível */
   const onVerify = async (token: string) => {
     try {
-      if (nextHandler.current) await nextHandler.current(token);
-    } catch (e: any) {
-      const code: string = e?.code || '';
-      const msg: string = e?.message || String(e);
+      if (!pending.current) return;
 
-      if (/auth\/wrong-password|INVALID_PASSWORD|invalid-credential/i.test(code + msg))
-        setErro('Senha incorreta.');
-      else if (/auth\/user-not-found|EMAIL_NOT_FOUND/i.test(code + msg))
-        setErro('Conta não encontrada para este e-mail.');
-      else if (/auth\/invalid-email|INVALID_EMAIL|missing-email/i.test(code + msg))
-        setErro('E-mail inválido.');
-      else
-        setErro(msg);
+      // 1) valida reCAPTCHA no backend
+      await verifyCaptchaOnServer(token);
+
+      // 2) login Firebase
+      const { email: em, senha: pw } = pending.current;
+      const cred = await signInWithEmailAndPassword(auth, em, pw);
+
+      // 3) garante permissão admin
+      await ensureAdminOrThrow(cred.user);
+
+      // 4) navega
+      router.replace('/admin/dashboard');
+    } catch (e: any) {
+      console.error('ADMIN onVerify error:', e?.code, e?.message ?? e);
+      setErro(mapAuthError(e?.code, e?.message ?? String(e)));
     } finally {
       setLoading(false);
-      nextHandler.current = null;
+      pending.current = null;
       recaptchaRef.current?.reset();
     }
   };
@@ -151,7 +229,7 @@ export default function AdminLoginPage() {
         <form
           onSubmit={(e) => {
             e.preventDefault();
-            if (!loading) doEmailPassword();
+            void doEmailPassword();
           }}
           className="space-y-4"
         >
@@ -166,6 +244,7 @@ export default function AdminLoginPage() {
               placeholder="admin@exemplo.com"
               required
               autoComplete="email"
+              inputMode="email"
             />
           </div>
 

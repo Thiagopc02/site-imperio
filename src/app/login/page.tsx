@@ -9,11 +9,24 @@ import {
 } from 'firebase/auth';
 import { auth, db } from '@/firebase/config';
 import { doc, getDoc, setDoc, serverTimestamp } from 'firebase/firestore';
-import RecaptchaV2Invisible, {
-  RecaptchaV2Handle,
-} from '@/components/RecaptchaV2Invisible';
+import RecaptchaV2Invisible, { RecaptchaV2Handle } from '@/components/RecaptchaV2Invisible';
 
 type PendingCreds = { email: string; senha: string } | null;
+
+function mapAuthError(code?: string, message?: string) {
+  if (!code && message?.includes('PASSWORD_DOES_NOT_MEET_REQUIREMENTS')) {
+    return 'Sua senha não atende à política (maiúscula, minúscula, número e especial). Atualize a senha.';
+  }
+  const c = String(code || '').toLowerCase();
+  if (c.includes('invalid-email')) return 'E-mail inválido.';
+  if (c.includes('user-disabled')) return 'Usuário desativado.';
+  if (c.includes('user-not-found')) return 'Conta não encontrada. Cadastre-se.';
+  if (c.includes('wrong-password') || c.includes('invalid-credential')) return 'Senha incorreta.';
+  if (c.includes('too-many-requests')) return 'Muitas tentativas. Tente novamente em instantes.';
+  if (c.includes('network-request-failed')) return 'Falha de rede. Verifique sua conexão.';
+  if (c.includes('invalid-api-key')) return 'API key inválida. Verifique as variáveis do deploy.';
+  return 'Não foi possível entrar. Verifique os dados e tente novamente.';
+}
 
 export default function LoginPage() {
   const router = useRouter();
@@ -27,18 +40,13 @@ export default function LoginPage() {
   const recaptchaRef = useRef<RecaptchaV2Handle>(null);
   const pendingCreds = useRef<PendingCreds>(null);
 
-  // Apenas log útil em dev para confirmar que a SITE KEY pública está presente
   useEffect(() => {
-    if (process.env.NODE_ENV !== 'production') {
-      // @ts-ignore
-      console.log(
-        '[login] recaptcha site key ok?',
-        !!process.env.NEXT_PUBLIC_RECAPTCHA_V2_SITE_KEY
-      );
+    // Log útil para confirmar que o build novo está no ar
+    if (typeof window !== 'undefined') {
+      console.info('BUILD_TAG', 'login-v2-2025-10-06');
     }
   }, []);
 
-  /** Normaliza e “higieniza” o e-mail antes de usar */
   const normalizeEmail = (raw: string) =>
     raw
       .normalize('NFKC')
@@ -48,63 +56,43 @@ export default function LoginPage() {
       .replace(/[^a-z0-9._%+\-@]/g, '')
       .trim();
 
-  /** Chamado pelo widget invisível quando gera o token */
+  /** Callback do reCAPTCHA INVISÍVEL após gerar o token */
   const onVerify = async (token: string) => {
     try {
-      // Se não há credenciais pendentes, ignora callback atrasado
       if (!pendingCreds.current) {
-        if (process.env.NODE_ENV !== 'production') {
-          console.debug('[login] onVerify ignorado: sem pendingCreds');
-        }
+        console.debug('[login] onVerify ignorado (sem pendingCreds)');
         return;
       }
-
-      // 1) Valida token no backend
       if (!token) {
         setErro('Falha ao obter o token do reCAPTCHA.');
         return;
       }
 
+      // 1) Valida token no backend
+      let ok = false;
       try {
         const resp = await fetch('/api/verify-recaptcha', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ token, action: 'login' }),
         });
-
-        let data: any = {};
-        try {
-          data = await resp.json();
-        } catch {
-          /* corpo vazio — segue com erro genérico se !resp.ok */
-        }
-
-        if (process.env.NODE_ENV !== 'production') {
-          console.debug('[verify-recaptcha] status:', resp.status, data);
-        }
-
-        if (!resp.ok || !data?.success) {
+        const data = await resp.json().catch(() => ({}));
+        ok = resp.ok && !!data?.success;
+        if (!ok) {
           setErro('Falha na verificação do reCAPTCHA.');
           return;
         }
       } catch (e) {
-        console.warn('[recaptcha verify] erro de rede:', e);
+        console.warn('[verify-recaptcha] erro de rede:', e);
         setErro('Falha ao validar o reCAPTCHA. Tente novamente.');
         return;
       }
 
-      // 2) Usa as credenciais capturadas no submit
+      // 2) Faz login no Firebase
       const { email: mail, senha: pass } = pendingCreds.current;
-
-      if (process.env.NODE_ENV !== 'production') {
-        // @ts-ignore
-        console.debug('[login] projectId:', auth?.app?.options?.projectId);
-        console.debug('[login] email (submit):', JSON.stringify(mail));
-      }
-
       const cred = await signInWithEmailAndPassword(auth, mail, pass);
 
-      // 3) Garante doc mínimo no Firestore
+      // 3) Garante doc mínimo do usuário no Firestore
       const ref = doc(db, 'usuarios', cred.user.uid);
       const snap = await getDoc(ref);
       if (!snap.exists()) {
@@ -116,9 +104,6 @@ export default function LoginPage() {
             nome: cred.user.displayName || '',
             celular: cred.user.phoneNumber || '',
             telefoneVerificado: !!cred.user.phoneNumber,
-            cep: '',
-            cidade: '',
-            uf: '',
             papel: 'cliente',
             ativo: true,
             criadoEm: serverTimestamp(),
@@ -127,33 +112,25 @@ export default function LoginPage() {
         );
       }
 
-      router.push('/produtos');
+      router.replace('/produtos');
     } catch (e: any) {
-      console.error('[login] error:', e);
-      const code = String(e?.code || e?.message || e);
-
-      if (code.includes('invalid-email')) setErro('E-mail inválido.');
-      else if (code.includes('wrong-password') || code.includes('invalid-credential'))
-        setErro('Senha incorreta.');
-      else if (code.includes('user-not-found')) setErro('Conta não encontrada. Cadastre-se.');
-      else setErro('Não foi possível entrar. Tente novamente.');
+      console.error('[login] error:', e?.code, e?.message ?? e);
+      setErro(mapAuthError(e?.code, e?.message));
     } finally {
       setLoading(false);
-      pendingCreds.current = null; // limpa tentativa
-      recaptchaRef.current?.reset(); // reseta widget invisível
+      pendingCreds.current = null;
+      recaptchaRef.current?.reset();
     }
   };
 
-  /** Executa o reCAPTCHA com uma pequena espera até ficar pronto */
+  /** Executa o widget invisível (espera ficar pronto) */
   const executeRecaptchaOrFail = async () => {
-    // Tenta até 6s o widget ficar pronto
     const start = Date.now();
     return new Promise<void>((resolve, reject) => {
       const tick = () => {
-        const ready = recaptchaRef.current?.isReady?.();
-        if (ready) {
+        if (recaptchaRef.current?.isReady?.()) {
           try {
-            recaptchaRef.current?.execute();
+            recaptchaRef.current.execute();
             resolve();
           } catch (e) {
             reject(e);
@@ -170,7 +147,7 @@ export default function LoginPage() {
     });
   };
 
-  /** Submit → captura credenciais e dispara execução do reCAPTCHA */
+  /** Submit → salva credenciais e dispara o reCAPTCHA invisível */
   const handleSubmit = async (ev: React.FormEvent) => {
     ev.preventDefault();
     if (loading) return;
@@ -180,22 +157,20 @@ export default function LoginPage() {
 
     const mail = normalizeEmail(email);
 
-    // Validação simples antes do captcha
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(mail)) {
       setLoading(false);
       setErro('E-mail inválido.');
       return;
     }
 
-    // Guarda as credenciais desta tentativa (lidas no onVerify)
     pendingCreds.current = { email: mail, senha };
 
     try {
       await executeRecaptchaOrFail();
     } catch (e) {
       console.warn('[recaptcha] execute falhou:', e);
-      setLoading(false);
       setErro('Não foi possível validar o reCAPTCHA. Atualize a página e tente novamente.');
+      setLoading(false);
       pendingCreds.current = null;
     }
   };
@@ -224,9 +199,6 @@ export default function LoginPage() {
             nome: user.displayName || '',
             celular: user.phoneNumber || '',
             telefoneVerificado: !!user.phoneNumber,
-            cep: '',
-            cidade: '',
-            uf: '',
             papel: 'cliente',
             ativo: true,
             provedor: 'google',
@@ -235,18 +207,13 @@ export default function LoginPage() {
           { merge: true }
         );
       }
-
-      router.push('/produtos');
+      router.replace('/produtos');
     } catch (e: any) {
-      console.error('[google] error:', e);
-      const code = String(e?.code || e?.message || e);
-
-      if (code.includes('popup-blocked'))
-        setErro('Pop-up bloqueado. Desative o bloqueador e tente novamente.');
-      else if (code.includes('popup-closed-by-user'))
-        setErro('Pop-up fechado antes de concluir.');
-      else if (code.includes('account-exists-with-different-credential'))
-        setErro('Este e-mail já existe com outro método. Faça login pelo método original.');
+      console.error('[google] error:', e?.code, e?.message ?? e);
+      const c = String(e?.code || '').toLowerCase();
+      if (c.includes('popup-blocked')) setErro('Pop-up bloqueado. Desative o bloqueador e tente novamente.');
+      else if (c.includes('popup-closed-by-user')) setErro('Pop-up fechado antes de concluir.');
+      else if (c.includes('account-exists-with-different-credential')) setErro('Este e-mail já existe com outro método. Use o método original.');
       else setErro('Erro ao entrar com Google.');
     } finally {
       setLoading(false);
@@ -278,7 +245,7 @@ export default function LoginPage() {
             value={senha}
             onChange={(e) => setSenha(e.target.value)}
             required
-            className="w-full p-3 pr-10 text-black placeholder-gray-500 bg-white rounded focus:outline-none focus:ring-2 focus:ring-yellow-400"
+            className="w-full p-3 pr-12 text-black placeholder-gray-500 bg-white rounded focus:outline-none focus:ring-2 focus:ring-yellow-400"
             autoComplete="current-password"
             minLength={6}
           />
@@ -323,13 +290,11 @@ export default function LoginPage() {
 
         <p className="mt-6 text-sm text-center">
           Ainda não tem uma conta?{' '}
-          <a href="/cadastro" className="text-yellow-400 hover:underline">
-            Cadastrar
-          </a>
+          <a href="/cadastro" className="text-yellow-400 hover:underline">Cadastrar</a>
         </p>
       </form>
 
-      {/* Widget invisível — chama onVerify(token) quando executa */}
+      {/* Widget invisível — dispara onVerify(token) */}
       <RecaptchaV2Invisible ref={recaptchaRef} onVerify={onVerify} />
     </main>
   );
