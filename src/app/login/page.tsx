@@ -27,6 +27,22 @@ function mapAuthError(code?: string, message?: string) {
 const normalizeEmail = (raw: string) =>
   raw.normalize('NFKC').replace(/[\u200B-\u200D\uFEFF]/g, '').replace(/\s+/g, '').toLowerCase();
 
+// espera condicao virar true com timeout
+async function waitFor(cond: () => boolean, ms = 8000, step = 120) {
+  const start = Date.now();
+  return new Promise<void>((resolve, reject) => {
+    const t = window.setInterval(() => {
+      if (cond()) {
+        window.clearInterval(t);
+        resolve();
+      } else if (Date.now() - start > ms) {
+        window.clearInterval(t);
+        reject(new Error('recaptcha-not-ready'));
+      }
+    }, step);
+  });
+}
+
 export default function LoginPage() {
   const router = useRouter();
   const [email, setEmail] = useState('');
@@ -38,7 +54,7 @@ export default function LoginPage() {
   const recaptchaRef = useRef<RecaptchaV2Handle>(null);
 
   useEffect(() => {
-    console.info('BUILD_TAG', 'login-public-getToken');
+    console.info('BUILD_TAG', 'login-public-getToken-v2');
   }, []);
 
   const handleSubmit = async (ev: React.FormEvent) => {
@@ -51,17 +67,21 @@ export default function LoginPage() {
     const mail = normalizeEmail(email);
 
     try {
-      // BYPASS opcional (diagnóstico) — defina essa ENV na Vercel se quiser testar só Firebase
+      // BYPASS opcional (diagnóstico)
       if (process.env.NEXT_PUBLIC_LOGIN_BYPASS_RECAPTCHA === 'true') {
         await signInWithEmailAndPassword(auth, mail, senha);
         router.replace('/produtos');
         return;
       }
 
-      // 1) obter token do reCAPTCHA (forma robusta)
-      const token = await recaptchaRef.current!.getToken();
+      // 1) garante que o widget está pronto antes de pedir token
+      await waitFor(() => !!recaptchaRef.current && recaptchaRef.current.isReady());
 
-      // 2) validar token no backend
+      // 2) obtém token (e força watcher interno)
+      const token = await recaptchaRef.current!.getToken();
+      if (!token) throw new Error('token-vazio');
+
+      // 3) valida token no backend
       const vr = await fetch('/api/verify-recaptcha', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -69,14 +89,15 @@ export default function LoginPage() {
       });
       const vj = await vr.json().catch(() => ({}));
       if (!(vr.ok && vj?.success)) {
+        console.warn('verify-recaptcha FAIL', { status: vr.status, body: vj });
         setErro('Falha na verificação do reCAPTCHA.');
         return;
       }
 
-      // 3) login Firebase
+      // 4) login Firebase
       const cred = await signInWithEmailAndPassword(auth, mail, senha);
 
-      // 4) cria/atualiza doc básico do usuário
+      // 5) cria/atualiza doc básico do usuário
       const ref = doc(db, 'usuarios', cred.user.uid);
       const snap = await getDoc(ref);
       if (!snap.exists()) {
@@ -98,8 +119,14 @@ export default function LoginPage() {
 
       router.replace('/produtos');
     } catch (e: any) {
-      console.error('LOGIN ERROR', e?.code, e?.message ?? e);
-      setErro(mapAuthError(e?.code, e?.message));
+      console.error('LOGIN ERROR', e?.code ?? e?.name, e?.message ?? e);
+      if (e?.message === 'recaptcha-not-ready') {
+        setErro('reCAPTCHA não ficou pronto. Atualize a página e tente novamente.');
+      } else if (e?.message === 'token-vazio') {
+        setErro('Não foi possível obter o token do reCAPTCHA.');
+      } else {
+        setErro(mapAuthError(e?.code, e?.message));
+      }
     } finally {
       setLoading(false);
       recaptchaRef.current?.reset();
@@ -221,7 +248,7 @@ export default function LoginPage() {
         </p>
       </form>
 
-      {/* reCAPTCHA invisível — agora usamos getToken() */}
+      {/* reCAPTCHA invisível — com getToken + espera de readiness */}
       <RecaptchaV2Invisible ref={recaptchaRef} />
     </main>
   );
