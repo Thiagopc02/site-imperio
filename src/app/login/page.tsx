@@ -11,26 +11,24 @@ import { auth, db } from '@/firebase/config';
 import { doc, getDoc, setDoc, serverTimestamp } from 'firebase/firestore';
 import RecaptchaV2Invisible, { RecaptchaV2Handle } from '@/components/RecaptchaV2Invisible';
 
-type PendingCreds = { email: string; senha: string } | null;
-
 function mapAuthError(code?: string, message?: string) {
-  if (!code && message?.includes('PASSWORD_DOES_NOT_MEET_REQUIREMENTS')) {
-    return 'Sua senha não atende à política (maiúscula, minúscula, número e especial). Atualize a senha.';
-  }
-  const c = String(code || '').toLowerCase();
-  if (c.includes('invalid-email')) return 'E-mail inválido.';
-  if (c.includes('user-disabled')) return 'Usuário desativado.';
-  if (c.includes('user-not-found')) return 'Conta não encontrada. Cadastre-se.';
-  if (c.includes('wrong-password') || c.includes('invalid-credential')) return 'Senha incorreta.';
-  if (c.includes('too-many-requests')) return 'Muitas tentativas. Tente novamente em instantes.';
-  if (c.includes('network-request-failed')) return 'Falha de rede. Verifique sua conexão.';
-  if (c.includes('invalid-api-key')) return 'API key inválida. Verifique as variáveis do deploy.';
+  const combo = `${code ?? ''} ${message ?? ''}`.toLowerCase();
+  if (combo.includes('invalid-email')) return 'E-mail inválido.';
+  if (combo.includes('user-disabled')) return 'Usuário desativado.';
+  if (combo.includes('user-not-found') || combo.includes('email_not_found')) return 'Usuário não encontrado.';
+  if (combo.includes('wrong-password') || combo.includes('invalid-credential') || combo.includes('invalid_password')) return 'Senha incorreta.';
+  if (combo.includes('too-many-requests')) return 'Muitas tentativas. Tente novamente em instantes.';
+  if (combo.includes('network-request-failed')) return 'Falha de rede. Verifique a conexão.';
+  if (combo.includes('invalid-api-key')) return 'API key inválida (checar variáveis no deploy).';
+  if (combo.includes('password_does_not_meet_requirements')) return 'Sua senha não atende à política definida.';
   return 'Não foi possível entrar. Verifique os dados e tente novamente.';
 }
 
+const normalizeEmail = (raw: string) =>
+  raw.normalize('NFKC').replace(/[\u200B-\u200D\uFEFF]/g, '').replace(/\s+/g, '').toLowerCase();
+
 export default function LoginPage() {
   const router = useRouter();
-
   const [email, setEmail] = useState('');
   const [senha, setSenha] = useState('');
   const [mostrarSenha, setMostrarSenha] = useState(false);
@@ -38,61 +36,32 @@ export default function LoginPage() {
   const [loading, setLoading] = useState(false);
 
   const recaptchaRef = useRef<RecaptchaV2Handle>(null);
-  const pendingCreds = useRef<PendingCreds>(null);
+  const pending = useRef<{ email: string; senha: string } | null>(null);
 
   useEffect(() => {
-    // Log útil para confirmar que o build novo está no ar
-    if (typeof window !== 'undefined') {
-      console.info('BUILD_TAG', 'login-v2-2025-10-06');
-    }
+    console.info('BUILD_TAG', 'login-public-v2');
   }, []);
 
-  const normalizeEmail = (raw: string) =>
-    raw
-      .normalize('NFKC')
-      .replace(/[\u200B-\u200D\uFEFF]/g, '')
-      .replace(/\s+/g, '')
-      .toLowerCase()
-      .replace(/[^a-z0-9._%+\-@]/g, '')
-      .trim();
-
-  /** Callback do reCAPTCHA INVISÍVEL após gerar o token */
   const onVerify = async (token: string) => {
     try {
-      if (!pendingCreds.current) {
-        console.debug('[login] onVerify ignorado (sem pendingCreds)');
-        return;
-      }
-      if (!token) {
-        setErro('Falha ao obter o token do reCAPTCHA.');
-        return;
-      }
-
-      // 1) Valida token no backend
-      let ok = false;
-      try {
-        const resp = await fetch('/api/verify-recaptcha', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ token, action: 'login' }),
-        });
-        const data = await resp.json().catch(() => ({}));
-        ok = resp.ok && !!data?.success;
-        if (!ok) {
-          setErro('Falha na verificação do reCAPTCHA.');
-          return;
-        }
-      } catch (e) {
-        console.warn('[verify-recaptcha] erro de rede:', e);
-        setErro('Falha ao validar o reCAPTCHA. Tente novamente.');
+      if (!pending.current) return;
+      // 1) valida token no backend
+      const r = await fetch('/api/verify-recaptcha', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ token, action: 'login' }),
+      });
+      const data = await r.json().catch(() => ({}));
+      if (!(r.ok && data?.success)) {
+        setErro('Falha na verificação do reCAPTCHA.');
         return;
       }
 
-      // 2) Faz login no Firebase
-      const { email: mail, senha: pass } = pendingCreds.current;
-      const cred = await signInWithEmailAndPassword(auth, mail, pass);
+      // 2) login Firebase
+      const { email: em, senha: pw } = pending.current;
+      const cred = await signInWithEmailAndPassword(auth, em, pw);
 
-      // 3) Garante doc mínimo do usuário no Firestore
+      // 3) cria doc básico se não existir
       const ref = doc(db, 'usuarios', cred.user.uid);
       const snap = await getDoc(ref);
       if (!snap.exists()) {
@@ -100,7 +69,7 @@ export default function LoginPage() {
           ref,
           {
             uid: cred.user.uid,
-            email: cred.user.email || mail,
+            email: cred.user.email || em,
             nome: cred.user.displayName || '',
             celular: cred.user.phoneNumber || '',
             telefoneVerificado: !!cred.user.phoneNumber,
@@ -114,16 +83,15 @@ export default function LoginPage() {
 
       router.replace('/produtos');
     } catch (e: any) {
-      console.error('[login] error:', e?.code, e?.message ?? e);
+      console.error('LOGIN ERROR:', e?.code, e?.message ?? e);
       setErro(mapAuthError(e?.code, e?.message));
     } finally {
       setLoading(false);
-      pendingCreds.current = null;
+      pending.current = null;
       recaptchaRef.current?.reset();
     }
   };
 
-  /** Executa o widget invisível (espera ficar pronto) */
   const executeRecaptchaOrFail = async () => {
     const start = Date.now();
     return new Promise<void>((resolve, reject) => {
@@ -147,7 +115,6 @@ export default function LoginPage() {
     });
   };
 
-  /** Submit → salva credenciais e dispara o reCAPTCHA invisível */
   const handleSubmit = async (ev: React.FormEvent) => {
     ev.preventDefault();
     if (loading) return;
@@ -157,45 +124,48 @@ export default function LoginPage() {
 
     const mail = normalizeEmail(email);
 
-    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(mail)) {
-      setLoading(false);
-      setErro('E-mail inválido.');
+    // BYPASS opcional (diagnóstico): defina a var na Vercel se quiser testar só Firebase
+    if (process.env.NEXT_PUBLIC_LOGIN_BYPASS_RECAPTCHA === 'true') {
+      try {
+        await signInWithEmailAndPassword(auth, mail, senha);
+        router.replace('/produtos');
+      } catch (e: any) {
+        console.error('LOGIN (bypass) ERROR', e?.code, e?.message);
+        setErro(mapAuthError(e?.code, e?.message));
+      } finally {
+        setLoading(false);
+      }
       return;
     }
 
-    pendingCreds.current = { email: mail, senha };
-
     try {
-      await executeRecaptchaOrFail();
+      pending.current = { email: mail, senha };
+      await executeRecaptchaOrFail(); // onVerify continua o fluxo
     } catch (e) {
       console.warn('[recaptcha] execute falhou:', e);
       setErro('Não foi possível validar o reCAPTCHA. Atualize a página e tente novamente.');
       setLoading(false);
-      pendingCreds.current = null;
+      pending.current = null;
     }
   };
 
-  /** Login com Google */
-  const handleGoogleSignIn = async () => {
+  const handleGoogle = async () => {
     setErro('');
     setLoading(true);
     try {
       const provider = new GoogleAuthProvider();
       provider.setCustomParameters({ prompt: 'select_account' });
-
-      const result = await signInWithPopup(auth, provider);
-      const user = result.user;
+      const res = await signInWithPopup(auth, provider);
+      const user = res.user;
 
       const ref = doc(db, 'usuarios', user.uid);
       const snap = await getDoc(ref);
-      const mail = normalizeEmail(user.email || email || '');
-
       if (!snap.exists()) {
         await setDoc(
           ref,
           {
             uid: user.uid,
-            email: mail,
+            email: normalizeEmail(user.email || email || ''),
             nome: user.displayName || '',
             celular: user.phoneNumber || '',
             telefoneVerificado: !!user.phoneNumber,
@@ -209,7 +179,7 @@ export default function LoginPage() {
       }
       router.replace('/produtos');
     } catch (e: any) {
-      console.error('[google] error:', e?.code, e?.message ?? e);
+      console.error('GOOGLE LOGIN ERROR', e?.code, e?.message ?? e);
       const c = String(e?.code || '').toLowerCase();
       if (c.includes('popup-blocked')) setErro('Pop-up bloqueado. Desative o bloqueador e tente novamente.');
       else if (c.includes('popup-closed-by-user')) setErro('Pop-up fechado antes de concluir.');
@@ -276,7 +246,7 @@ export default function LoginPage() {
 
         <button
           type="button"
-          onClick={handleGoogleSignIn}
+          onClick={handleGoogle}
           disabled={loading}
           className="flex items-center justify-center w-full gap-2 py-2 mt-3 font-semibold text-white transition bg-blue-600 rounded hover:bg-blue-700 disabled:opacity-60"
         >
@@ -294,7 +264,6 @@ export default function LoginPage() {
         </p>
       </form>
 
-      {/* Widget invisível — dispara onVerify(token) */}
       <RecaptchaV2Invisible ref={recaptchaRef} onVerify={onVerify} />
     </main>
   );
