@@ -1,45 +1,43 @@
 // next.config.ts
 import type { NextConfig } from 'next';
 
+const csp = [
+  // regra base
+  "default-src 'self' https://*.vercel.app",
+  // scripts do Google / reCAPTCHA / Firebase UI
+  "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://www.google.com https://www.gstatic.com https://apis.google.com https://www.recaptcha.net https://accounts.google.com",
+  // estilos (Google Fonts, inline do Next/Tailwind)
+  "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
+  // imagens e data URIs
+  "img-src 'self' data: blob: https://www.google.com https://www.gstatic.com",
+  // fontes
+  "font-src 'self' data: https://fonts.gstatic.com",
+  // iframes (recaptcha e contas Google)
+  "frame-src https://www.google.com https://www.recaptcha.net https://recaptcha.google.com https://accounts.google.com",
+  // conexões XHR/fetch usadas no login
+  "connect-src 'self' https://identitytoolkit.googleapis.com https://securetoken.googleapis.com https://www.googleapis.com https://www.google.com https://www.gstatic.com https://www.recaptcha.net https://firestore.googleapis.com https://firebasestorage.googleapis.com https://oauth2.googleapis.com https://accounts.google.com",
+  // reforços
+  "base-uri 'self'",
+  "form-action 'self' https://www.google.com",
+  "frame-ancestors 'self'"
+].join('; ');
+
 const nextConfig: NextConfig = {
   reactStrictMode: true,
+  experimental: { serverActions: {} },
 
-  // Cabeçalhos globais (inclui CSP)
-  async headers() {
-    // Content Security Policy – liberar somente o essencial p/ Firebase Auth + reCAPTCHA v2
-    const csp = [
-      "default-src 'self'",
-      // gsi/client (Google One-Tap/Popup), recaptcha e libs Google
-      "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://*.google.com https://*.gstatic.com https://apis.google.com https://www.recaptcha.net",
-      // estilos inline e Google Fonts
-      "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
-      "img-src 'self' data: blob: https://*.google.com https://*.gstatic.com",
-      "font-src 'self' data: https://fonts.gstatic.com",
-      // APIs que o Firebase Auth usa no login e troca de token
-      "connect-src 'self' https://*.googleapis.com https://*.google.com https://*.gstatic.com https://www.recaptcha.net",
-      // iframes/frames do Google (popup/gsi + recaptcha)
-      "frame-src 'self' https://*.google.com https://www.recaptcha.net https://recaptcha.google.com",
-      // evitar clickjacking
-      "frame-ancestors 'self'",
-      "base-uri 'self'",
-      "form-action 'self' https://*.google.com",
-      // web workers (se usar)
-      "worker-src 'self' blob:"
-    ].join('; ');
-
-    return [
-      {
-        source: '/(.*)',
-        headers: [
-          { key: 'Content-Security-Policy', value: csp },
-          { key: 'X-Content-Type-Options', value: 'nosniff' },
-          { key: 'X-Frame-Options', value: 'SAMEORIGIN' },
-          // ajuste a Permissions-Policy ao que precisa de verdade
-          { key: 'Permissions-Policy', value: 'camera=(), microphone=(), geolocation=()' },
-        ],
-      },
-    ];
-  },
+  headers: async () => [
+    {
+      source: '/(.*)',
+      headers: [
+        { key: 'Content-Security-Policy', value: csp },
+        { key: 'Referrer-Policy', value: 'strict-origin-when-cross-origin' },
+        { key: 'X-Content-Type-Options', value: 'nosniff' },
+        { key: 'X-Frame-Options', value: 'SAMEORIGIN' },
+        { key: 'Permissions-Policy', value: 'camera=(), microphone=(), geolocation=()' },
+      ],
+    },
+  ],
 };
 
 export default nextConfig;
