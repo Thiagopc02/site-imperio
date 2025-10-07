@@ -27,126 +27,55 @@ export type Brand = {
 };
 
 export default function HistoriaPage() {
-  // Marca 1: Coca-Cola (exemplo inicial – ajuste/adicione outras marcas quando quiser)
+  // --- Coca-Cola ---
   const coca: Brand = {
     slug: "coca-cola",
     name: "Coca-Cola",
-    logo: "/produtos/coca-cola-2L.jpg",   // certifique-se que existe em /public
+    logo: "/produtos/coca-cola-2L.jpg",
     banner: "/produtos/coca-cola-2L.jpg",
     color: "#E10600",
     dark: "#7a0b0b",
     liquid: "#c81414",
     events: [
-      {
-        id: "coca-1886",
-        year: 1886,
-        title: "A fórmula nasce em Atlanta",
-        text:
-          "John Pemberton cria a Coca-Cola na Jacob’s Pharmacy, vendida em fontes de soda como tônico.",
-        image: "/historia/coca/1886.jpg",
-      },
-      {
-        id: "coca-1892",
-        year: 1892,
-        title: "The Coca-Cola Company",
-        text:
-          "Asa Griggs Candler adquire direitos e funda a companhia, acelerando a expansão comercial.",
-        image: "/historia/coca/1892.jpg",
-      },
-      {
-        id: "coca-1915",
-        year: 1915,
-        title: "A garrafa contour",
-        text:
-          "A icônica garrafa de curvas nasce para ser reconhecida até no escuro ou mesmo quebrada.",
-        image: "/historia/coca/1915.jpg",
-      },
-      {
-        id: "coca-1931",
-        year: 1931,
-        title: "O Papai Noel vermelho",
-        text:
-          "Ilustrações de Haddon Sundblom popularizam o visual moderno do Papai Noel em campanhas.",
-        image: "/historia/coca/1931.jpg",
-      },
-      {
-        id: "coca-1941",
-        year: 1941,
-        title: "Guerra & globalização",
-        text:
-          "A promessa de vender Coca por 5 cents aos soldados leva fábricas e a marca ao mundo.",
-        image: "/historia/coca/1941.jpg",
-      },
-      {
-        id: "coca-1955",
-        year: 1955,
-        title: "Novos tamanhos & latas",
-        text:
-          "Mais embalagens e formatos tornam o consumo prático e ampliam a presença da marca.",
-        image: "/historia/coca/1955.jpg",
-      },
-      {
-        id: "coca-1961",
-        year: 1961,
-        title: "Sprite chega ao portfólio",
-        text:
-          "A família cresce com a Sprite, que se torna um refrigerante de limão global.",
-        image: "/historia/coca/1961.jpg",
-      },
-      {
-        id: "coca-1985",
-        year: 1985,
-        title: "New Coke",
-        text:
-          "A mudança de fórmula gera reação histórica; a ‘Coca-Cola Classic’ volta pouco depois.",
-        image: "/historia/coca/1985.jpg",
-      },
-      {
-        id: "coca-2005",
-        year: 2005,
-        title: "Coca-Cola Zero",
-        text:
-          "A linha zero açúcar amplia o alcance para quem busca menos calorias sem abrir mão do sabor.",
-        image: "/historia/coca/2005.jpg",
-      },
-      {
-        id: "coca-2016",
-        year: 2016,
-        title: "Taste the Feeling",
-        text:
-          "Nova plataforma global foca momentos e sensações compartilhadas ao redor da bebida.",
-        image: "/historia/coca/2016.jpg",
-      },
-      {
-        id: "coca-2021",
-        year: 2021,
-        title: "Sustentabilidade & design",
-        text:
-          "Rótulos e portfólio simplificados, foco forte em reciclagem e redução de pegada ambiental.",
-        image: "/historia/coca/2021.jpg",
-      },
-      {
-        id: "coca-2024",
-        year: 2024,
-        title: "Inovações e sabores",
-        text:
-          "Edições limitadas e sabores sazonais; a marca explora experiências e collabs culturais.",
-        image: "/historia/coca/2024.jpg",
-      },
-      {
-        id: "coca-2025",
-        year: 2025,
-        title: "Hoje",
-        text:
-          "A Coca-Cola segue entre as mais valiosas do planeta, com iniciativas digitais e ESG.",
-        image: "/historia/coca/2025.jpg",
-      },
+      { id: "coca-1886", year: 1886, title: "A fórmula nasce em Atlanta", text: "John Pemberton cria a Coca-Cola na Jacob’s Pharmacy, vendida em fontes de soda como tônico.", image: "/historia/coca/1886.jpg" },
+      { id: "coca-1892", year: 1892, title: "The Coca-Cola Company", text: "Asa Griggs Candler adquire direitos e funda a companhia, acelerando a expansão comercial.", image: "/historia/coca/1892.jpg" },
+      { id: "coca-1915", year: 1915, title: "A garrafa contour", text: "A icônica garrafa de curvas nasce para ser reconhecida até no escuro ou mesmo quebrada.", image: "/historia/coca/1915.jpg" },
+      { id: "coca-1931", year: 1931, title: "O Papai Noel vermelho", text: "Ilustrações de Haddon Sundblom popularizam o visual moderno do Papai Noel em campanhas.", image: "/historia/coca/1931.jpg" },
+      { id: "coca-1941", year: 1941, title: "Guerra & globalização", text: "A promessa de vender Coca por 5 cents aos soldados leva fábricas e a marca ao mundo.", image: "/historia/coca/1941.jpg" },
+      { id: "coca-1955", year: 1955, title: "Novos tamanhos & latas", text: "Mais embalagens e formatos tornam o consumo prático e ampliam a presença da marca.", image: "/historia/coca/1955.jpg" },
+      { id: "coca-1961", year: 1961, title: "Sprite chega ao portfólio", text: "A família cresce com a Sprite, que se torna um refrigerante de limão global.", image: "/historia/coca/1961.jpg" },
+      { id: "coca-1985", year: 1985, title: "New Coke", text: "A mudança de fórmula gera reação histórica; a ‘Coca-Cola Classic’ volta pouco depois.", image: "/historia/coca/1985.jpg" },
+      { id: "coca-2005", year: 2005, title: "Coca-Cola Zero", text: "A linha zero açúcar amplia o alcance para quem busca menos calorias sem abrir mão do sabor.", image: "/historia/coca/2005.jpg" },
+      { id: "coca-2016", year: 2016, title: "Taste the Feeling", text: "Nova plataforma global foca momentos e sensações compartilhadas ao redor da bebida.", image: "/historia/coca/2016.jpg" },
+      { id: "coca-2021", year: 2021, title: "Sustentabilidade & design", text: "Rótulos e portfólio simplificados, foco forte em reciclagem e redução de pegada ambiental.", image: "/historia/coca/2021.jpg" },
+      { id: "coca-2024", year: 2024, title: "Inovações e sabores", text: "Edições limitadas e sabores sazonais; a marca explora experiências e collabs culturais.", image: "/historia/coca/2024.jpg" },
+      { id: "coca-2025", year: 2025, title: "Hoje", text: "A Coca-Cola segue entre as mais valiosas do planeta, com iniciativas digitais e ESG.", image: "/historia/coca/2025.jpg" },
     ],
   };
 
-  // Para adicionar mais marcas (ex.: Brahma/Smirnoff), crie novos objetos Brand e passe no array abaixo:
-  // const brahma: Brand = { slug: "brahma", name: "Brahma", logo: "/...", color: "...", dark: "...", liquid: "...", events: [...] };
-  // const smirnoff: Brand = { slug: "smirnoff", name: "Smirnoff", logo: "/...", color: "...", dark: "...", liquid: "...", events: [...] };
+  // --- Guaraná Antarctica ---
+  const guarana: Brand = {
+    slug: "guarana-antarctica",
+    name: "Guaraná Antarctica",
+    logo: "/produtos/guarana-antarctica-2L.jpg",
+    banner: "/produtos/guarana-antarctica-2L.jpg",
+    color: "#118C4F",
+    dark: "#0B5E36",
+    liquid: "#17A95F",
+    events: [
+      { id: "gua-1921", year: 1921, title: "Nasce o refrigerante de guaraná", text: "A Antarctica lança seu refrigerante à base do fruto amazônico, que logo conquista o paladar brasileiro.", image: "/historia/guarana/1921.jpg" },
+      { id: "gua-1950", year: 1950, title: "Popularização nacional", text: "Com a expansão da distribuição, o Guaraná Antarctica se torna presença constante nas mesas do país.", image: "/historia/guarana/1950.jpg" },
+      { id: "gua-1970", year: 1970, title: "Novas embalagens", text: "Latas e garrafas retornáveis ampliam formatos e tornam o consumo mais prático.", image: "/historia/guarana/1970.jpg" },
+      { id: "gua-1980", year: 1980, title: "Esporte e juventude", text: "Parcerias e patrocínios reforçam a ligação com o esporte e um estilo de vida leve e brasileiro.", image: "/historia/guarana/1980.jpg" },
+      { id: "gua-1991", year: 1991, title: "Campanhas icônicas", text: "Jingles e filmes marcantes entram para a cultura pop e viram memória afetiva de várias gerações.", image: "/historia/guarana/1991.jpg" },
+      { id: "gua-2001", year: 2001, title: "Guaraná Zero Açúcar", text: "Versões com menos calorias chegam ao portfólio e ampliam o público da marca.", image: "/historia/guarana/2001.jpg" },
+      { id: "gua-2010", year: 2010, title: "Presença digital", text: "A marca intensifica ações online, conteúdos e colaborações com música, games e influenciadores.", image: "/historia/guarana/2010.jpg" },
+      { id: "gua-2014", year: 2014, title: "Futebol no DNA", text: "Ativações ligadas à Seleção e ao futebol reforçam o vínculo com a torcida brasileira.", image: "/historia/guarana/2014.jpg" },
+      { id: "gua-2021", year: 2021, title: "Sustentabilidade", text: "Avanços em logística reversa e embalagens com conteúdo reciclado ganham destaque.", image: "/historia/guarana/2021.jpg" },
+      { id: "gua-2024", year: 2024, title: "Sabores & collabs", text: "Edições especiais e colaborações sazonais mantêm a marca próxima das novas gerações.", image: "/historia/guarana/2024.jpg" },
+      { id: "gua-2025", year: 2025, title: "Hoje", text: "Símbolo brasileiro, o Guaraná Antarctica segue relevante com portfólio diverso e presença global.", image: "/historia/guarana/2025.jpg" },
+    ],
+  };
 
   return (
     <main className="min-h-screen text-white bg-black">
@@ -160,9 +89,8 @@ export default function HistoriaPage() {
         </p>
       </section>
 
-      {/* Client: mangueira em toda a página, anos dentro dos cards, botão "Próxima parte", copo e modal no fim */}
-      <TimelineClient brands={[coca]} />
-      {/* Para várias marcas: <TimelineClient brands={[coca, brahma, smirnoff]} /> */}
+      {/* Client com múltiplas marcas habilita o botão “Ir para Próxima” no modal */}
+      <TimelineClient brands={[coca, guarana]} />
     </main>
   );
 }

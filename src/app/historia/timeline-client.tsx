@@ -22,29 +22,26 @@ export default function TimelineClient({ brands }: Props) {
   const total = brand.events.length;
   const [activeIdx, setActiveIdx] = useState(0);
 
-  // Modal
+  // Modal final
   const [showModal, setShowModal] = useState(false);
   const [modalShownOnce, setModalShownOnce] = useState(false);
 
-  // Tema (cores)
+  // Cores do tema
   const themeVars: React.CSSProperties = {
     ["--brand" as any]: brand.color,
     ["--brandDark" as any]: brand.dark,
     ["--liquid" as any]: brand.liquid,
   };
 
-  // ---------- geometria / path da mangueira DESCENDO ----------
+  // ---------- path da mangueira (descendo) ----------
   const wrapperRef = useRef<HTMLDivElement | null>(null);
   const sectionsRef = useRef<HTMLDivElement[]>([]);
-  // importante: não reatribua array a cada render; apenas limpe quando troca de marca.
   useEffect(() => {
     sectionsRef.current = [];
   }, [brand.slug]);
 
-  // ref callback CORRETO (retorna void, tipo HTMLDivElement|null)
   const captureSectionRef = (el: HTMLDivElement | null): void => {
-    if (!el) return;
-    if (!sectionsRef.current.includes(el)) sectionsRef.current.push(el);
+    if (el && !sectionsRef.current.includes(el)) sectionsRef.current.push(el);
   };
 
   const [svgSize, setSvgSize] = useState({ w: 1200, h: 600 });
@@ -64,11 +61,10 @@ export default function TimelineClient({ brands }: Props) {
     for (let i = 0; i < sectionsRef.current.length; i++) {
       const s = sectionsRef.current[i];
       const r = s.getBoundingClientRect();
-      const cy = r.top - rect.top + r.height / 2; // relativo ao wrapper
+      const cy = r.top - rect.top + r.height / 2;
       const x = centerX + (i % 2 === 0 ? -ampX : ampX);
       pts.push({ x, y: cy });
     }
-
     setSvgSize({ w: Math.max(800, w), h: Math.max(h, 400) });
     setPoints(pts);
   };
@@ -119,7 +115,7 @@ export default function TimelineClient({ brands }: Props) {
   const dashArray = pathLen;
   const dashOffset = Math.max(0, pathLen * (1 - progress));
 
-  // Modal quando terminar
+  // exibe modal ao terminar
   useEffect(() => {
     if (activeIdx === total - 1 && !modalShownOnce) {
       const t = setTimeout(() => {
@@ -140,10 +136,12 @@ export default function TimelineClient({ brands }: Props) {
   const nextIdx = (idx: number) => Math.min(idx + 1, total - 1);
   const goTop = () => window.scrollTo({ top: 0, behavior: "smooth" });
 
-  // Próxima marca
+  // próxima marca (se existir)
   const brandIndex = brands.findIndex((b) => b.slug === brand.slug);
-  const hasNextBrand = brands.length > 1 && brandIndex !== -1;
-  const nextBrand = hasNextBrand ? brands[(brandIndex + 1) % brands.length] : null;
+  const nextBrand =
+    brands.length > 1 && brandIndex !== -1
+      ? brands[(brandIndex + 1) % brands.length]
+      : null;
 
   const handleReverHistoria = () => {
     setShowModal(false);
@@ -166,7 +164,7 @@ export default function TimelineClient({ brands }: Props) {
 
   return (
     <section className="pb-24" style={themeVars}>
-      {/* Seletor de marcas */}
+      {/* Seleção de marcas */}
       <div className="container pb-6">
         <div className="flex flex-wrap items-center justify-center gap-4">
           {brands.map((b) => (
@@ -203,7 +201,7 @@ export default function TimelineClient({ brands }: Props) {
         </div>
       </div>
 
-      {/* SVG da mangueira descendo por trás */}
+      {/* Mangueira descendo por trás das seções */}
       <div ref={wrapperRef} className="container relative">
         <svg
           className="absolute inset-0 z-0 pointer-events-none"
@@ -251,7 +249,7 @@ export default function TimelineClient({ brands }: Props) {
           />
         </svg>
 
-        {/* Seções alternando lados */}
+        {/* Seções da timeline (texto/imagem alternados) */}
         <div className="relative z-10 space-y-10">
           {brand.events.map((ev, idx) => {
             const invert = idx % 2 === 1;
@@ -268,7 +266,6 @@ export default function TimelineClient({ brands }: Props) {
                   "bg-gradient-to-b from-white/[.02] to-white/[.04]",
                 ].join(" ")}
               >
-                {/* Texto + ano */}
                 <div>
                   <div className="inline-flex items-center gap-2 mb-2">
                     <span className="px-2 py-0.5 rounded-full text-[11px] bg-white/15 ring-1 ring-white/20">
@@ -289,7 +286,6 @@ export default function TimelineClient({ brands }: Props) {
                   </div>
                 </div>
 
-                {/* Imagem + botão Próxima parte */}
                 <div className="w-full max-w-xl justify-self-center">
                   {ev.image ? (
                     <img

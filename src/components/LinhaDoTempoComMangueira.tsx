@@ -7,15 +7,15 @@ export type Marco = {
   ano: number;
   titulo: string;
   texto: string;
-  imagem?: string; // caminho em /public (opcional)
+  imagem?: string;
 };
 
 type Props = {
-  marcos: Marco[];          // itens da linha do tempo (em ordem)
-  passoInicial?: number;    // índice inicial
-  cor?: string;             // cor principal do “líquido” (ex.: #E10600)
-  corEscura?: string;       // cor escura para o gradiente
-  corLiquido?: string;      // terceira cor no gradiente
+  marcos: Marco[];
+  passoInicial?: number;
+  cor?: string;
+  corEscura?: string;
+  corLiquido?: string;
 };
 
 export default function LinhaDoTempoComMangueira({
@@ -27,11 +27,8 @@ export default function LinhaDoTempoComMangueira({
 }: Props) {
   const [ativo, setAtivo] = useState(passoInicial);
 
-  // --------- refs/medidas para a mangueira vertical -----------
   const wrapperRef = useRef<HTMLDivElement | null>(null);
   const secRefs = useRef<HTMLDivElement[]>([]);
-
-  // Zera refs APENAS quando a lista de marcos mudar
   useEffect(() => {
     secRefs.current = [];
   }, [marcos.length]);
@@ -51,13 +48,13 @@ export default function LinhaDoTempoComMangueira({
     const w = rectWrap.width;
     const h = wrap.scrollHeight;
     const centerX = w / 2;
-    const ampX = Math.min(180, Math.max(120, w * 0.12)); // quanto “entra e sai” do centro
+    const ampX = Math.min(180, Math.max(120, w * 0.12));
 
     const pts: Array<{ x: number; y: number }> = [];
     for (let i = 0; i < secRefs.current.length; i++) {
       const s = secRefs.current[i];
       const r = s.getBoundingClientRect();
-      const centerY = r.top - rectWrap.top + r.height / 2; // relativo ao wrapper
+      const centerY = r.top - rectWrap.top + r.height / 2;
       const x = centerX + (i % 2 === 0 ? -ampX : ampX);
       pts.push({ x, y: centerY });
     }
@@ -91,10 +88,9 @@ export default function LinhaDoTempoComMangueira({
     for (let i = 1; i < points.length; i++) {
       const p0 = points[i - 1];
       const p1 = points[i];
-      const cx = (p0.x + p1.x) / 2; // controle no meio para suavizar
+      const cx = (p0.x + p1.x) / 2;
       segs.push(`C ${cx} ${p0.y}, ${cx} ${p1.y}, ${p1.x} ${p1.y}`);
     }
-    // pequena curva final
     const last = points[points.length - 1];
     const endX = Math.min(svgSize.w - 60, last.x + 120);
     const endY = last.y + 36;
@@ -102,27 +98,23 @@ export default function LinhaDoTempoComMangueira({
     return segs.join(" ");
   }, [points, svgSize.w]);
 
-  // comprimento para animar o traço
   const pathRef = useRef<SVGPathElement | null>(null);
   const [comprimento, setComprimento] = useState(1);
   useEffect(() => {
     if (pathRef.current) setComprimento(pathRef.current.getTotalLength());
   }, [hosePath]);
 
-  // PROGRESSO (0 → 1)
   const progresso =
     marcos.length <= 1 ? 1 : Math.min(1, ativo / (marcos.length - 1));
   const dashArray = comprimento;
   const dashOffset = Math.max(0, comprimento * (1 - progresso));
 
-  // navegação
   const irPara = (idx: number) => {
     const el = secRefs.current[idx];
     if (!el) return;
     setAtivo(idx);
     el.scrollIntoView({ behavior: "smooth", block: "start" });
   };
-
   const proximo = (idx: number) => Math.min(idx + 1, marcos.length - 1);
 
   return (
@@ -132,7 +124,6 @@ export default function LinhaDoTempoComMangueira({
           Histórias de Grandes Marcas
         </h2>
 
-        {/* WRAPPER com SVG absoluto descendo por trás das seções */}
         <div ref={wrapperRef} className="relative">
           {/* SVG da mangueira */}
           <svg
@@ -150,7 +141,6 @@ export default function LinhaDoTempoComMangueira({
                   <feMergeNode in="SourceGraphic" />
                 </feMerge>
               </filter>
-              {/* gradiente do líquido na cor da marca */}
               <linearGradient id="ltm-liquid" x1="0%" y1="0%" x2="100%" y2="0%">
                 <stop offset="0%" stopColor={corEscura} />
                 <stop offset="60%" stopColor={cor} />
@@ -158,7 +148,6 @@ export default function LinhaDoTempoComMangueira({
               </linearGradient>
             </defs>
 
-            {/* tubo translúcido */}
             <path
               d={hosePath}
               stroke="rgba(255,255,255,0.18)"
@@ -167,7 +156,6 @@ export default function LinhaDoTempoComMangueira({
               fill="none"
               filter="url(#ltm-glow)"
             />
-            {/* líquido que avança (cor da marca) */}
             <path
               ref={pathRef}
               d={hosePath}
@@ -184,7 +172,7 @@ export default function LinhaDoTempoComMangueira({
             />
           </svg>
 
-          {/* Seções: alternando texto/imagem e ano dentro do card */}
+          {/* Seções */}
           <div className="relative z-10 space-y-10">
             {marcos.map((m, idx) => {
               const invert = idx % 2 === 1;
@@ -200,7 +188,6 @@ export default function LinhaDoTempoComMangueira({
                     "bg-gradient-to-b from-white/[.02] to-white/[.04]",
                   ].join(" ")}
                 >
-                  {/* Texto */}
                   <div>
                     <div className="inline-flex items-center gap-2 mb-2">
                       <span className="px-2 py-0.5 rounded-full text-[11px] bg-white/15 ring-1 ring-white/20">
@@ -221,7 +208,6 @@ export default function LinhaDoTempoComMangueira({
                     </div>
                   </div>
 
-                  {/* Imagem (opcional) + botão Próxima parte */}
                   <div className="w-full max-w-xl justify-self-center">
                     {m.imagem ? (
                       <img
@@ -241,11 +227,7 @@ export default function LinhaDoTempoComMangueira({
                         className="px-3 py-1.5 text-sm rounded-lg font-semibold text-white transition"
                         style={{ backgroundColor: cor }}
                         disabled={idx === marcos.length - 1}
-                        title={
-                          idx === marcos.length - 1
-                            ? "Fim da história"
-                            : "Ir para a próxima parte"
-                        }
+                        title={idx === marcos.length - 1 ? "Fim da história" : "Ir para a próxima parte"}
                       >
                         Próxima parte
                       </button>
@@ -255,30 +237,21 @@ export default function LinhaDoTempoComMangueira({
               );
             })}
 
-            {/* COP0 FINAL — enche conforme 'progresso' */}
+            {/* Copo final (enche com o progresso) */}
             <div className="flex justify-center pt-6">
               <div className="relative w-40 h-48">
-                {/* contorno */}
                 <div className="absolute inset-0 rounded-b-xl rounded-t-md ring-2 ring-white/30 bg-white/5 backdrop-blur-[1px]" />
-                {/* líquido (altura ligada ao progresso) */}
                 <div
                   className="absolute bottom-0 left-0 right-0 rounded-b-xl transition-[height] duration-900"
                   style={{
-                    height: `${Math.min(100, progresso * 100)}%`,
+                    height: `${Math.min(100, (marcos.length <= 1 ? 1 : ativo / (marcos.length - 1)) * 100)}%`,
                     background: `linear-gradient(180deg, ${cor} 0%, ${corLiquido} 70%)`,
                     boxShadow: "inset 0 8px 18px rgba(0,0,0,.35)",
                   }}
                 />
-                {/* brilho */}
                 <div className="absolute inset-0 pointer-events-none rounded-b-xl rounded-t-md bg-gradient-to-br from-white/10 to-transparent" />
               </div>
             </div>
-
-            {progresso === 1 && (
-              <p className="mt-2 text-sm text-center text-white/90">
-                🥂 Linha do tempo completa! Copo cheio.
-              </p>
-            )}
           </div>
         </div>
       </div>
