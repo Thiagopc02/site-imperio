@@ -109,3 +109,67 @@ body {
 .product-desc {
   @apply mt-1 text-sm md:text-[15px] text-gray-300;
 }
+
+/* =========================
+   FAB do Castelo (Histórias)
+   ========================= */
+
+@keyframes neonPulse {
+  0% { box-shadow: 0 0 0 0 rgba(255, 0, 76, .65); }
+  70% { box-shadow: 0 0 0 14px rgba(255, 0, 76, 0); }
+  100% { box-shadow: 0 0 0 0 rgba(255, 0, 76, 0); }
+}
+
+.castle-fab {
+  position: fixed;
+  right: 1.5rem;  /* right-6 */
+  bottom: 1.5rem; /* bottom-6 */
+  z-index: 50;
+  width: 64px;
+  height: 64px;
+  border-radius: 9999px;
+  display: grid;
+  place-items: center;
+  color: #ffffff;
+  background:
+    radial-gradient(120% 120% at 30% 30%, #ff6a8b 0%, #ff004c 38%, #1a1a1a 42%) padding-box,
+    linear-gradient(180deg, rgba(255,255,255,.35), rgba(255,255,255,0)) border-box;
+  border: 1px solid rgba(255, 0, 76, .6);
+  box-shadow:
+    0 10px 28px rgba(0,0,0,.45),
+    0 0 24px rgba(255, 0, 76, .45),
+    inset 0 0 18px rgba(255,255,255,.12);
+  transition: transform .18s ease;
+  animation: neonPulse 2.2s infinite;
+}
+
+.castle-fab::after {
+  content: "";
+  position: absolute;
+  top: 6px;
+  right: 10px;
+  width: 8px; height: 8px;
+  border-radius: 9999px;
+  background: #fff;
+  opacity: .9;
+  box-shadow: 0 0 8px #fff, 0 0 16px #ff004c;
+}
+
+.castle-fab:hover { transform: translateY(-2px) scale(1.06); }
+
+.castle-fab-tip {
+  position: absolute;
+  right: 76px;
+  padding: .4rem .6rem;
+  border-radius: .5rem;
+  font-size: .85rem;
+  background: #111;
+  color: #fff;
+  border: 1px solid #2a2a2a;
+  box-shadow: 0 8px 20px rgba(0,0,0,.4);
+  opacity: 0;
+  transform: translateY(6px);
+  pointer-events: none;
+  white-space: nowrap;
+}
+.castle-fab:hover .castle-fab-tip { opacity: 1; transform: translateY(0); }
