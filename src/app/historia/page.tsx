@@ -33,7 +33,7 @@ export default function HistoriaPage() {
     slug: "coca-cola",
     name: "Coca-Cola",
     logo: "/produtos/coca-cola-2L.jpg",
-    badgeLogo: "/logos/coca-cola-logo.png",
+    badgeLogo: "/logos/coca-cola-logo-256.png", // versão maior p/ ficar nítida
     banner: "/produtos/coca-cola-2L.jpg",
     color: "#E10600",
     dark: "#7a0b0b",
@@ -60,7 +60,7 @@ export default function HistoriaPage() {
     slug: "guarana-antarctica",
     name: "Guaraná Antarctica",
     logo: "/produtos/guarana-antarctica-2L.jpg",
-    badgeLogo: "/logos/guarana-antarctica-logo.png",
+    badgeLogo: "/logos/guarana-antarctica-logo-256.png", // maior também
     banner: "/produtos/guarana-antarctica-2L.jpg",
     color: "#118C4F",
     dark: "#0B5E36",
@@ -86,7 +86,6 @@ export default function HistoriaPage() {
         <h1 className="text-3xl font-bold text-center md:text-4xl">
           Histórias de Grandes Marcas
         </h1>
-        {/* novo subtítulo */}
         <p className="max-w-3xl mx-auto mt-2 text-center text-gray-300">
           Escolha uma marca e viva sua jornada — cada clique revela um novo capítulo.
         </p>

@@ -53,7 +53,7 @@ export default function TimelineClient({ brands }: Props) {
     const w = rect.width;
     const h = wrap.scrollHeight;
     const centerX = w / 2;
-    const ampX = Math.min(180, Math.max(120, w * 0.12));
+    const ampX = Math.min(200, Math.max(140, w * 0.14)); // um pouco maior p/ curvas mais amplas
 
     const pts: Array<{ x: number; y: number }> = [];
     for (let i = 0; i < sectionsRef.current.length; i++) {
@@ -63,7 +63,7 @@ export default function TimelineClient({ brands }: Props) {
       const x = centerX + (i % 2 === 0 ? -ampX : ampX);
       pts.push({ x, y: cy });
     }
-    setSvgSize({ w: Math.max(800, w), h: Math.max(h, 400) });
+    setSvgSize({ w: Math.max(900, w), h: Math.max(h, 480) });
     setPoints(pts);
   };
 
@@ -97,8 +97,8 @@ export default function TimelineClient({ brands }: Props) {
       segs.push(`C ${cx} ${p0.y}, ${cx} ${p1.y}, ${p1.x} ${p1.y}`);
     }
     const last = points[points.length - 1];
-    const endX = Math.min(svgSize.w - 60, last.x + 140);
-    const endY = last.y + 40;
+    const endX = Math.min(svgSize.w - 60, last.x + 160);
+    const endY = last.y + 44;
     segs.push(`C ${endX - 120} ${last.y}, ${endX - 40} ${endY}, ${endX} ${endY}`);
     return segs.join(" ");
   }, [points, svgSize.w]);
@@ -160,9 +160,9 @@ export default function TimelineClient({ brands }: Props) {
 
   return (
     <section className="pb-24" style={themeVars}>
-      {/* Seletor de marcas — topo refinado */}
-      <div className="container pb-8">
-        <div className="flex flex-wrap items-end justify-center gap-10">
+      {/* Seletor de marcas — MAIOR */}
+      <div className="container pb-10">
+        <div className="flex flex-wrap items-end justify-center gap-14">
           {brands.map((b) => {
             const isActive = b.slug === brand.slug;
             return (
@@ -180,23 +180,23 @@ export default function TimelineClient({ brands }: Props) {
                 aria-label={`Ver ${b.name}`}
                 title={`Ver ${b.name}`}
               >
-                {/* Plaquinha acima */}
+                {/* Plaquinha acima — maior e mais “bold” */}
                 <span
                   className={[
-                    "absolute -top-9 left-1/2 -translate-x-1/2",
-                    "px-3 py-1 rounded-full shadow-lg ring-1 ring-black/10",
-                    "text-xs md:text-sm font-extrabold tracking-tight",
+                    "absolute -top-12 left-1/2 -translate-x-1/2",
+                    "px-4 py-1.5 rounded-full shadow-xl ring-1 ring-black/10",
+                    "text-sm md:text-base font-extrabold tracking-tight",
                     isActive ? "bg-white text-black" : "bg-white/90 text-black",
                   ].join(" ")}
                 >
                   {b.name}
                 </span>
 
-                {/* Orbe com borda e glow */}
+                {/* Orbe bem maior, com borda e glow */}
                 <span
                   className={[
-                    "block size-20 md:size-24 rounded-full shadow-xl transition-transform",
-                    "ring-4 ring-white/30 ring-offset-2 ring-offset-black",
+                    "block size-28 md:size-32 rounded-full transition-transform",
+                    "ring-4 ring-white/35 ring-offset-2 ring-offset-black shadow-[0_20px_60px_rgba(0,0,0,.45)]",
                     "group-hover:scale-105",
                   ].join(" ")}
                   style={{
@@ -204,17 +204,17 @@ export default function TimelineClient({ brands }: Props) {
                       ? `radial-gradient(35% 35% at 30% 25%, rgba(255,255,255,.9), rgba(255,255,255,.05)), var(--brand)`
                       : "linear-gradient(180deg, #1f2937 0%, #111827 100%)",
                     boxShadow: isActive
-                      ? "0 16px 50px rgba(225,6,0,.45)"
-                      : "0 12px 28px rgba(0,0,0,.35)",
+                      ? "0 22px 70px rgba(225,6,0,.45)"
+                      : "0 16px 44px rgba(0,0,0,.35)",
                   }}
                 />
 
-                {/* Logo embaixo como pill */}
-                <span className="absolute px-2 py-1 -translate-x-1/2 rounded-full shadow-lg -bottom-8 left-1/2 bg-white/95 ring-1 ring-black/5">
+                {/* Logo inferior — bem maior */}
+                <span className="absolute px-3 py-2 -translate-x-1/2 rounded-full shadow-xl -bottom-12 left-1/2 bg-white/95 ring-1 ring-black/5">
                   <img
                     src={b.badgeLogo}
                     alt={`${b.name} logo`}
-                    className="object-contain w-auto h-6"
+                    className="object-contain w-auto h-12" // ~48px de altura
                   />
                 </span>
               </button>
@@ -223,7 +223,7 @@ export default function TimelineClient({ brands }: Props) {
         </div>
       </div>
 
-      {/* (restante da página: mangueira + seções + copo + modal) */}
+      {/* Mangueira + seções + copo + modal */}
       <div ref={wrapperRef} className="container relative">
         <svg
           className="absolute inset-0 z-0 pointer-events-none"
@@ -250,7 +250,7 @@ export default function TimelineClient({ brands }: Props) {
           <path
             d={hosePath}
             stroke="rgba(255,255,255,0.18)"
-            strokeWidth="14"
+            strokeWidth="16"
             fill="none"
             strokeLinecap="round"
             filter="url(#softGlow)"
@@ -259,7 +259,7 @@ export default function TimelineClient({ brands }: Props) {
             ref={pathRef}
             d={hosePath}
             stroke="url(#liquidGrad)"
-            strokeWidth="14"
+            strokeWidth="16"
             fill="none"
             strokeLinecap="round"
             style={{
@@ -334,9 +334,9 @@ export default function TimelineClient({ brands }: Props) {
             );
           })}
 
-          {/* Copo final */}
+          {/* Copo final preenchendo */}
           <div className="flex justify-center pt-6">
-            <div className="relative w-40 h-48">
+            <div className="relative h-56 w-44">
               <div className="absolute inset-0 rounded-b-xl rounded-t-md ring-2 ring-white/30 bg-white/5 backdrop-blur-[1px]" />
               <div
                 className="absolute bottom-0 left-0 right-0 rounded-b-xl transition-[height] duration-900"
