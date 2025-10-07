@@ -10,15 +10,6 @@ import {
 } from "react";
 import type { Brand } from "./page";
 
-/**
- * Funcionamento:
- * - Mede a posição (y) do centro de cada seção de história e desenha um path SVG
- *   “meandrando” entre elas, descendo pela página inteira.
- * - O preenchimento (stroke) da mangueira avança até o índice ativo.
- * - Cada bloco mostra o ANO dentro do card, e há um botão “Próxima parte”
- *   sob a imagem que avança para a próxima seção.
- */
-
 type Props = { brands: Brand[] };
 
 export default function TimelineClient({ brands }: Props) {
@@ -31,6 +22,10 @@ export default function TimelineClient({ brands }: Props) {
   const total = brand.events.length;
   const [activeIdx, setActiveIdx] = useState(0);
 
+  // Modal
+  const [showModal, setShowModal] = useState(false);
+  const [modalShownOnce, setModalShownOnce] = useState(false);
+
   // Tema (cores)
   const themeVars: React.CSSProperties = {
     ["--brand" as any]: brand.color,
@@ -38,59 +33,65 @@ export default function TimelineClient({ brands }: Props) {
     ["--liquid" as any]: brand.liquid,
   };
 
-  // ------------ refs/medidas p/ mangueira ------------
+  // ---------- geometria / path da mangueira DESCENDO ----------
   const wrapperRef = useRef<HTMLDivElement | null>(null);
   const sectionsRef = useRef<HTMLDivElement[]>([]);
-  sectionsRef.current = [];
+  // importante: não reatribua array a cada render; apenas limpe quando troca de marca.
+  useEffect(() => {
+    sectionsRef.current = [];
+  }, [brand.slug]);
 
-  const pushRef = (el: HTMLDivElement | null) => {
-    if (el && !sectionsRef.current.includes(el)) {
-      sectionsRef.current.push(el);
-    }
+  // ref callback CORRETO (retorna void, tipo HTMLDivElement|null)
+  const captureSectionRef = (el: HTMLDivElement | null): void => {
+    if (!el) return;
+    if (!sectionsRef.current.includes(el)) sectionsRef.current.push(el);
   };
 
   const [svgSize, setSvgSize] = useState({ w: 1200, h: 600 });
   const [points, setPoints] = useState<Array<{ x: number; y: number }>>([]);
 
-  // calcula pontos (x alternando para dar "voltas" e y no centro de cada seção)
-  const recalc = () => {
+  const recalc = (): void => {
     const wrap = wrapperRef.current;
     if (!wrap) return;
+    const rect = wrap.getBoundingClientRect();
 
-    const rectWrap = wrap.getBoundingClientRect();
-    const w = rectWrap.width;
-    const h = wrap.scrollHeight; // altura total do conteúdo dentro do wrapper
+    const w = rect.width;
+    const h = wrap.scrollHeight;
     const centerX = w / 2;
-    const ampX = Math.min(180, Math.max(120, w * 0.12)); // amplitude das curvas
+    const ampX = Math.min(180, Math.max(120, w * 0.12));
 
     const pts: Array<{ x: number; y: number }> = [];
     for (let i = 0; i < sectionsRef.current.length; i++) {
       const s = sectionsRef.current[i];
       const r = s.getBoundingClientRect();
-      const centerY = r.top - rectWrap.top + r.height / 2; // relativo ao wrapper
+      const cy = r.top - rect.top + r.height / 2; // relativo ao wrapper
       const x = centerX + (i % 2 === 0 ? -ampX : ampX);
-      pts.push({ x, y: centerY });
+      pts.push({ x, y: cy });
     }
 
-    // bordas do SVG
     setSvgSize({ w: Math.max(800, w), h: Math.max(h, 400) });
     setPoints(pts);
   };
 
-  // Recalcular em resize/layout
   useLayoutEffect(() => {
     recalc();
-    const ro = new ResizeObserver(() => recalc());
-    if (wrapperRef.current) ro.observe(wrapperRef.current);
-    window.addEventListener("resize", recalc);
+    const canObserve =
+      typeof window !== "undefined" &&
+      typeof (window as any).ResizeObserver !== "undefined";
+    let ro: ResizeObserver | null = null;
+    if (canObserve && wrapperRef.current) {
+      ro = new ResizeObserver(() => recalc());
+      ro.observe(wrapperRef.current);
+    }
+    const onResize = () => recalc();
+    window.addEventListener("resize", onResize);
     return () => {
-      window.removeEventListener("resize", recalc);
-      ro.disconnect();
+      window.removeEventListener("resize", onResize);
+      if (ro) ro.disconnect();
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [brand.slug]);
 
-  // path meândrico descendo e curvando para a “boca do copo” no fim
   const hosePath = useMemo(() => {
     if (!points.length) return "";
     const segs: string[] = [];
@@ -101,7 +102,6 @@ export default function TimelineClient({ brands }: Props) {
       const cx = (p0.x + p1.x) / 2;
       segs.push(`C ${cx} ${p0.y}, ${cx} ${p1.y}, ${p1.x} ${p1.y}`);
     }
-    // curva final sutil até a borda direita (boca do copo)
     const last = points[points.length - 1];
     const endX = Math.min(svgSize.w - 60, last.x + 140);
     const endY = last.y + 40;
@@ -109,19 +109,27 @@ export default function TimelineClient({ brands }: Props) {
     return segs.join(" ");
   }, [points, svgSize.w]);
 
-  // comprimento do path para animar "strokeDashoffset"
   const pathRef = useRef<SVGPathElement | null>(null);
   const [pathLen, setPathLen] = useState(1);
   useEffect(() => {
     if (pathRef.current) setPathLen(pathRef.current.getTotalLength());
   }, [hosePath]);
 
-  // progresso: até o centro do evento ativo
   const progress = total <= 1 ? 1 : Math.min(1, activeIdx / (total - 1));
   const dashArray = pathLen;
   const dashOffset = Math.max(0, pathLen * (1 - progress));
 
-  // navegação p/ próxima parte
+  // Modal quando terminar
+  useEffect(() => {
+    if (activeIdx === total - 1 && !modalShownOnce) {
+      const t = setTimeout(() => {
+        setShowModal(true);
+        setModalShownOnce(true);
+      }, 950);
+      return () => clearTimeout(t);
+    }
+  }, [activeIdx, total, modalShownOnce]);
+
   const goToIdx = (idx: number) => {
     const el = sectionsRef.current[idx];
     if (el) {
@@ -129,15 +137,36 @@ export default function TimelineClient({ brands }: Props) {
       el.scrollIntoView({ behavior: "smooth", block: "start" });
     }
   };
-
   const nextIdx = (idx: number) => Math.min(idx + 1, total - 1);
-
-  // topo
   const goTop = () => window.scrollTo({ top: 0, behavior: "smooth" });
 
+  // Próxima marca
+  const brandIndex = brands.findIndex((b) => b.slug === brand.slug);
+  const hasNextBrand = brands.length > 1 && brandIndex !== -1;
+  const nextBrand = hasNextBrand ? brands[(brandIndex + 1) % brands.length] : null;
+
+  const handleReverHistoria = () => {
+    setShowModal(false);
+    setModalShownOnce(false);
+    goTop();
+    setTimeout(() => goToIdx(0), 150);
+  };
+  const handleIrParaProxima = () => {
+    if (nextBrand) {
+      setShowModal(false);
+      setModalShownOnce(false);
+      setActiveSlug(nextBrand.slug);
+      setActiveIdx(0);
+      goTop();
+      setTimeout(recalc, 80);
+    } else {
+      handleReverHistoria();
+    }
+  };
+
   return (
-    <section style={themeVars} className="pb-24">
-      {/* Seletor de marcas (mantido) */}
+    <section className="pb-24" style={themeVars}>
+      {/* Seletor de marcas */}
       <div className="container pb-6">
         <div className="flex flex-wrap items-center justify-center gap-4">
           {brands.map((b) => (
@@ -146,8 +175,9 @@ export default function TimelineClient({ brands }: Props) {
               onClick={() => {
                 setActiveSlug(b.slug);
                 setActiveIdx(0);
+                setShowModal(false);
+                setModalShownOnce(false);
                 goTop();
-                // espera layout estabilizar para recalc
                 setTimeout(recalc, 50);
               }}
               className="group relative rounded-full p-[3px]"
@@ -173,9 +203,8 @@ export default function TimelineClient({ brands }: Props) {
         </div>
       </div>
 
-      {/* WRAPPER: SVG absoluto descendo por trás de todas as seções */}
+      {/* SVG da mangueira descendo por trás */}
       <div ref={wrapperRef} className="container relative">
-        {/* SVG da mangueira, cobrindo TODA a altura do wrapper */}
         <svg
           className="absolute inset-0 z-0 pointer-events-none"
           width="100%"
@@ -191,11 +220,6 @@ export default function TimelineClient({ brands }: Props) {
                 <feMergeNode in="SourceGraphic" />
               </feMerge>
             </filter>
-            <linearGradient id="hoseGrad" x1="0%" y1="0%" x2="100%" y2="0%">
-              <stop offset="0%" stopColor="rgba(255,255,255,0.25)" />
-              <stop offset="100%" stopColor="rgba(255,255,255,0.65)" />
-            </linearGradient>
-            {/* gradiente do líquido na cor da marca */}
             <linearGradient id="liquidGrad" x1="0%" y1="0%" x2="100%" y2="0%">
               <stop offset="0%" stopColor="var(--brandDark)" />
               <stop offset="60%" stopColor="var(--brand)" />
@@ -203,7 +227,6 @@ export default function TimelineClient({ brands }: Props) {
             </linearGradient>
           </defs>
 
-          {/* tubo translúcido */}
           <path
             d={hosePath}
             stroke="rgba(255,255,255,0.18)"
@@ -212,7 +235,6 @@ export default function TimelineClient({ brands }: Props) {
             strokeLinecap="round"
             filter="url(#softGlow)"
           />
-          {/* líquido avançando (cor da marca) */}
           <path
             ref={pathRef}
             d={hosePath}
@@ -229,25 +251,24 @@ export default function TimelineClient({ brands }: Props) {
           />
         </svg>
 
-        {/* LISTA DE SEÇÕES (alternando lados) */}
+        {/* Seções alternando lados */}
         <div className="relative z-10 space-y-10">
           {brand.events.map((ev, idx) => {
-            const invert = idx % 2 === 1; // alterna lado
+            const invert = idx % 2 === 1;
             const isActive = idx === activeIdx;
             return (
               <section
-                key={ev.id}
                 id={ev.id}
-                ref={pushRef}
+                key={ev.id}
+                ref={captureSectionRef}
                 className={[
-                  "grid gap-6 items-center",
-                  "md:grid-cols-2",
+                  "grid items-center gap-6 md:grid-cols-2",
                   invert ? "md:[&>*:first-child]:order-2" : "",
                   "rounded-2xl p-5 ring-1 ring-white/10",
                   "bg-gradient-to-b from-white/[.02] to-white/[.04]",
                 ].join(" ")}
               >
-                {/* Texto + ANO dentro do bloco */}
+                {/* Texto + ano */}
                 <div>
                   <div className="inline-flex items-center gap-2 mb-2">
                     <span className="px-2 py-0.5 rounded-full text-[11px] bg-white/15 ring-1 ring-white/20">
@@ -268,7 +289,7 @@ export default function TimelineClient({ brands }: Props) {
                   </div>
                 </div>
 
-                {/* Imagem + botão “Próxima parte” */}
+                {/* Imagem + botão Próxima parte */}
                 <div className="w-full max-w-xl justify-self-center">
                   {ev.image ? (
                     <img
@@ -297,14 +318,14 @@ export default function TimelineClient({ brands }: Props) {
             );
           })}
 
-          {/* Copo ao final (opcional, decorativo) */}
+          {/* Copo final */}
           <div className="flex justify-center pt-6">
             <div className="relative w-40 h-48">
               <div className="absolute inset-0 rounded-b-xl rounded-t-md ring-2 ring-white/30 bg-white/5 backdrop-blur-[1px]" />
               <div
                 className="absolute bottom-0 left-0 right-0 rounded-b-xl transition-[height] duration-900"
                 style={{
-                  height: `${progress * 100}%`,
+                  height: `${Math.min(100, progress * 100)}%`,
                   background:
                     "linear-gradient(180deg, var(--brand) 0%, var(--liquid) 70%)",
                   boxShadow: "inset 0 8px 18px rgba(0,0,0,.35)",
@@ -313,6 +334,46 @@ export default function TimelineClient({ brands }: Props) {
               <div className="absolute inset-0 pointer-events-none rounded-b-xl rounded-t-md bg-gradient-to-br from-white/10 to-transparent" />
             </div>
           </div>
+
+          {/* Modal final */}
+          {showModal && (
+            <div
+              className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70"
+              role="dialog"
+              aria-modal="true"
+            >
+              <div className="relative w-full max-w-md text-white shadow-2xl rounded-2xl bg-neutral-900 ring-1 ring-white/10">
+                <div className="p-5">
+                  <h4 className="text-xl font-bold">🎉 Parabéns!</h4>
+                  <p className="mt-2 text-white/80">
+                    Você chegou ao fim desta história. Quer rever desde o início
+                    ou seguir para a próxima?
+                  </p>
+                  <div className="flex items-center justify-end gap-3 mt-5">
+                    <button
+                      onClick={handleReverHistoria}
+                      className="px-3 py-1.5 rounded-lg text-sm font-semibold bg-white/10 hover:bg-white/15"
+                    >
+                      Rever História
+                    </button>
+                    <button
+                      onClick={handleIrParaProxima}
+                      className="px-3 py-1.5 rounded-lg text-sm font-semibold bg-[var(--brand)] text-white hover:brightness-110"
+                    >
+                      Ir para Próxima
+                    </button>
+                  </div>
+                </div>
+                <button
+                  aria-label="Fechar"
+                  onClick={() => setShowModal(false)}
+                  className="absolute top-3 right-4 text-white/60 hover:text-white"
+                >
+                  ✕
+                </button>
+              </div>
+            </div>
+          )}
         </div>
       </div>
     </section>
