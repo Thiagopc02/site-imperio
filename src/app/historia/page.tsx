@@ -60,7 +60,7 @@ export default function HistoriaPage() {
     slug: "guarana-antarctica",
     name: "Guaraná Antarctica",
     logo: "/produtos/guarana-antarctica-logo.jpg",
-    badgeLogo: "/logos/guarana-antarctica-logo-256.png",
+    badgeLogo: "/logos/guarana-antarctica-logo.png",
     banner: "/produtos/guarana-antarctica-2L.jpg",
     color: "#118C4F",
     dark: "#0B5E36",
