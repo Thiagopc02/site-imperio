@@ -142,35 +142,36 @@ export default function Home() {
             {
               nome: 'VodKa SMIIRNOFF 1l',
               descricao:
-                'CAMPEÃ DE VENDAS  A Smirnoff se encontra em uma faixa Neutra, suave e versátil — triplamente destilada.',
+                'CAMPEÃ DE VENDAS A Smirnoff se encontra em uma faixa Neutra, suave e versátil — triplamente destilada.',
               preco: '37,87',
               img: '/produtos/Smirnoff-1L-uni00.jpg',
             },
           ].map((produto, idx) => (
-            <div
-              key={idx}
-              className="relative bg-neutral-900 rounded-2xl overflow-hidden shadow-2xl transition hover:scale-[1.015] hover:shadow-[0_35px_60px_rgba(0,0,0,0.55)]"
-            >
-              {/* badge OFERTA */}
-              <span className="offer-badge">Oferta</span>
-
+            <div key={idx} className="product-card">
+              {/* Imagem */}
               <img
                 src={produto.img}
                 alt={produto.nome}
                 className="object-contain w-full bg-white h-60"
               />
 
+              {/* Conteúdo */}
               <div className="p-5">
-                <h3 className="text-xl font-semibold">{produto.nome}</h3>
-                <p className="mt-1 text-gray-400">{produto.descricao}</p>
+                <h3 className="product-title">{produto.nome}</h3>
+                <p className="product-desc">{produto.descricao}</p>
 
-                {/* placa + preço (menor) */}
-                <div className="mt-5">
-                  <div className="price-plaque">
-                    <span className="pin" aria-hidden />
-                    <span className="price-prefix">R$</span>
-                    <span className="price-text">{produto.preco}</span>
-                  </div>
+                {/* ===== Selo OFERTA entre a descrição e o preço ===== */}
+                <span className="oferta-pill">OFERTA</span>
+
+                {/* Cartão de Preço */}
+                <div className="price-card">
+                  <span className="price-dot" />
+                  <span className="price-currency">R$</span>
+                  <span
+                    className="text-4xl align-middle  neon-price md:text-5xl xl:text-6xl"
+                  >
+                    {produto.preco}
+                  </span>
                 </div>
               </div>
             </div>
@@ -178,6 +179,7 @@ export default function Home() {
         </div>
       </section>
 
+      {/* Rodapé */}
       <Footer />
     </>
   );

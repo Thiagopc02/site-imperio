@@ -2,6 +2,9 @@
 @tailwind components;
 @tailwind utilities;
 
+/* =========================
+   Tema base
+   ========================= */
 :root {
   --background: #ffffff;
   --foreground: #111111;
@@ -18,6 +21,9 @@ body {
   @apply bg-[var(--background)] text-[var(--foreground)] font-sans antialiased;
 }
 
+/* =========================
+   Utilitários do projeto
+   ========================= */
 .input-style {
   @apply w-full p-3 mb-4 rounded bg-zinc-800 text-white placeholder-zinc-400 border border-zinc-700 focus:outline-none focus:ring-2 focus:ring-yellow-400;
 }
@@ -46,92 +52,60 @@ body {
   @apply hover:underline transition;
 }
 
-/* --------- Destaques (placa + neon) ---------- */
+/* =========================
+   Destaques da semana
+   ========================= */
 
-/* placa cinza com relevo */
-.price-plaque {
-  position: relative;
-  border-radius: 1.25rem;
-  background: radial-gradient(120% 120% at 30% 20%, #3a3a3a 0%, #2a2a2a 45%, #1f1f1f 100%);
-  box-shadow:
-    inset 0 6px 14px rgba(255,255,255,.08),
-    inset 0 -8px 18px rgba(0,0,0,.6),
-    0 22px 35px rgba(0,0,0,.45);
-  padding: 1.25rem 1.25rem 1.1rem 1.25rem;
-  display: inline-flex;
-  align-items: center;
-  gap: .75rem;
+/* Selo OFERTA que vai ENTRE a descrição e o cartão de preço */
+.oferta-pill {
+  @apply inline-block self-start mt-3 mb-3 px-3 py-1 rounded-full text-[11px] md:text-xs font-bold tracking-wider
+         text-white bg-gradient-to-b from-red-500 to-red-700 ring-1 ring-red-400/60
+         shadow-[0_0_10px_rgba(255,0,0,0.55)];
 }
 
-/* pino */
-.price-plaque .pin {
-  width: 18px; height: 18px;
-  border-radius: 50%;
-  background: #6b7280;                /* cinza */
-  box-shadow:
-    inset 0 2px 4px rgba(255,255,255,.2),
-    inset 0 -3px 5px rgba(0,0,0,.35),
-    0 0 12px rgba(255,0,0,.25);
-  position: relative;
-}
-.price-plaque .pin::after{
-  content:"";
-  position:absolute; inset:0;
-  border-radius:inherit;
-  box-shadow: 0 0 18px rgba(255,0,0,.55);
-  opacity:.55;
+/* Cartão cinza do preço */
+.price-card {
+  @apply relative mt-1 w-full max-w-[520px]
+         rounded-2xl bg-gradient-to-b from-zinc-700 to-zinc-900
+         ring-1 ring-zinc-600/50
+         shadow-[inset_0_10px_20px_rgba(255,255,255,0.06),0_25px_60px_rgba(0,0,0,0.55)]
+         px-6 py-5;
 }
 
-/* texto do preço – menor, com neon vermelho e preenchimento PRETO */
-.price-text {
-  font-weight: 900;
-  letter-spacing: .5px;
-  line-height: .95;
-  color: #000;                         /* números pretos */
-  /* tamanho menor e responsivo */
-  font-size: clamp(2rem, 2.4vw + 1rem, 3rem);
+/* “parafuso/led” da esquerda */
+.price-dot {
+  @apply absolute left-4 top-1/2 -translate-y-1/2 size-3 rounded-full
+         bg-gradient-to-b from-zinc-200 to-zinc-400
+         shadow-[0_0_10px_rgba(255,255,255,0.45)];
+}
+
+/* texto “R$” à esquerda do valor */
+.price-currency {
+  @apply pl-6 pr-2 text-sm md:text-base font-semibold tracking-wider text-gray-300;
+}
+
+/* Número com preenchimento PRETO e neon vermelho */
+.neon-price {
+  color: #000000;              /* preenchimento preto */
+  -webkit-text-stroke: 0.5px #000; /* leve contorno p/ nitidez (webkit) */
   text-shadow:
-    0 0 6px rgba(255,0,0,.55),
-    0 0 16px rgba(255,0,0,.55),
-    0 0 26px rgba(255,30,30,.45),
-    0 0 46px rgba(255,60,60,.35);
-  -webkit-text-stroke: 3px rgba(255,70,70,.8); /* borda vermelha */
+    0 0 6px rgba(255, 0, 0, .65),
+    0 0 14px rgba(255, 0, 0, .60),
+    0 0 26px rgba(255, 0, 0, .55),
+    0 0 46px rgba(255, 0, 0, .50);
 }
 
-/* prefixo R$ */
-.price-prefix {
-  font-weight: 800;
-  margin-right: .35rem;
-  color: #000;
-  font-size: clamp(1.15rem, 1.4vw + .5rem, 1.65rem);
-  text-shadow:
-    0 0 6px rgba(255,0,0,.6),
-    0 0 16px rgba(255,0,0,.6);
-  -webkit-text-stroke: 2px rgba(255,70,70,.85);
+/* Cartão do produto (corpo preto, cantos arredondados, sombra) */
+.product-card {
+  @apply bg-neutral-900 rounded-2xl overflow-hidden shadow-xl transition
+         hover:scale-[1.01] hover:shadow-2xl;
 }
 
-/* badge “OFERTA” no topo do cartão */
-.offer-badge{
-  @apply absolute left-5 -top-3;
-  padding: .35rem .85rem;
-  border-radius: .6rem;
-  background: linear-gradient(90deg,#ff2a2a 0%, #ff6b6b 100%);
-  color:#fff;
-  font-weight: 900;
-  letter-spacing:.06em;
-  text-transform: uppercase;
-  font-size: .9rem;
-  box-shadow:
-    0 6px 18px rgba(255,0,0,.35),
-    inset 0 2px 6px rgba(255,255,255,.25);
-  position: absolute;
+/* Título e descrição dentro do card */
+.product-title {
+  @apply text-lg md:text-xl font-semibold;
 }
 
-/* leve brilho extra */
-.offer-badge::after{
-  content:"";
-  position:absolute; inset:0;
-  border-radius:inherit;
-  box-shadow: 0 0 28px rgba(255,0,0,.65);
-  opacity:.45; pointer-events:none;
+.product-desc {
+  @apply mt-1 text-sm md:text-[15px] text-gray-300;
 }
