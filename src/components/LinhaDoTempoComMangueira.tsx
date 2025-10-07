@@ -30,9 +30,13 @@ export default function LinhaDoTempoComMangueira({
   // --------- refs/medidas para a mangueira vertical -----------
   const wrapperRef = useRef<HTMLDivElement | null>(null);
   const secRefs = useRef<HTMLDivElement[]>([]);
-  secRefs.current = [];
 
-  const addRef = (el: HTMLDivElement | null) => {
+  // Zera refs APENAS quando a lista de marcos mudar
+  useEffect(() => {
+    secRefs.current = [];
+  }, [marcos.length]);
+
+  const addRef = (el: HTMLDivElement | null): void => {
     if (el && !secRefs.current.includes(el)) secRefs.current.push(el);
   };
 
@@ -63,12 +67,19 @@ export default function LinhaDoTempoComMangueira({
 
   useLayoutEffect(() => {
     recalcular();
-    const ro = new ResizeObserver(() => recalcular());
-    if (wrapperRef.current) ro.observe(wrapperRef.current);
-    window.addEventListener("resize", recalcular);
+    const canObserve =
+      typeof window !== "undefined" &&
+      typeof (window as any).ResizeObserver !== "undefined";
+    let ro: ResizeObserver | null = null;
+    if (canObserve && wrapperRef.current) {
+      ro = new ResizeObserver(() => recalcular());
+      ro.observe(wrapperRef.current);
+    }
+    const onResize = () => recalcular();
+    window.addEventListener("resize", onResize);
     return () => {
-      window.removeEventListener("resize", recalcular);
-      ro.disconnect();
+      window.removeEventListener("resize", onResize);
+      if (ro) ro.disconnect();
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [marcos.length]);
@@ -98,7 +109,9 @@ export default function LinhaDoTempoComMangueira({
     if (pathRef.current) setComprimento(pathRef.current.getTotalLength());
   }, [hosePath]);
 
-  const progresso = marcos.length <= 1 ? 1 : Math.min(1, ativo / (marcos.length - 1));
+  // PROGRESSO (0 → 1)
+  const progresso =
+    marcos.length <= 1 ? 1 : Math.min(1, ativo / (marcos.length - 1));
   const dashArray = comprimento;
   const dashOffset = Math.max(0, comprimento * (1 - progresso));
 
@@ -228,7 +241,11 @@ export default function LinhaDoTempoComMangueira({
                         className="px-3 py-1.5 text-sm rounded-lg font-semibold text-white transition"
                         style={{ backgroundColor: cor }}
                         disabled={idx === marcos.length - 1}
-                        title={idx === marcos.length - 1 ? "Fim da história" : "Ir para a próxima parte"}
+                        title={
+                          idx === marcos.length - 1
+                            ? "Fim da história"
+                            : "Ir para a próxima parte"
+                        }
                       >
                         Próxima parte
                       </button>
@@ -237,6 +254,31 @@ export default function LinhaDoTempoComMangueira({
                 </section>
               );
             })}
+
+            {/* COP0 FINAL — enche conforme 'progresso' */}
+            <div className="flex justify-center pt-6">
+              <div className="relative w-40 h-48">
+                {/* contorno */}
+                <div className="absolute inset-0 rounded-b-xl rounded-t-md ring-2 ring-white/30 bg-white/5 backdrop-blur-[1px]" />
+                {/* líquido (altura ligada ao progresso) */}
+                <div
+                  className="absolute bottom-0 left-0 right-0 rounded-b-xl transition-[height] duration-900"
+                  style={{
+                    height: `${Math.min(100, progresso * 100)}%`,
+                    background: `linear-gradient(180deg, ${cor} 0%, ${corLiquido} 70%)`,
+                    boxShadow: "inset 0 8px 18px rgba(0,0,0,.35)",
+                  }}
+                />
+                {/* brilho */}
+                <div className="absolute inset-0 pointer-events-none rounded-b-xl rounded-t-md bg-gradient-to-br from-white/10 to-transparent" />
+              </div>
+            </div>
+
+            {progresso === 1 && (
+              <p className="mt-2 text-sm text-center text-white/90">
+                🥂 Linha do tempo completa! Copo cheio.
+              </p>
+            )}
           </div>
         </div>
       </div>

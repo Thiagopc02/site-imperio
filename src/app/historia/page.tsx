@@ -145,8 +145,8 @@ export default function HistoriaPage() {
   };
 
   // Para adicionar mais marcas (ex.: Brahma/Smirnoff), crie novos objetos Brand e passe no array abaixo:
-  // const brahma: Brand = { ... };
-  // const smirnoff: Brand = { ... };
+  // const brahma: Brand = { slug: "brahma", name: "Brahma", logo: "/...", color: "...", dark: "...", liquid: "...", events: [...] };
+  // const smirnoff: Brand = { slug: "smirnoff", name: "Smirnoff", logo: "/...", color: "...", dark: "...", liquid: "...", events: [...] };
 
   return (
     <main className="min-h-screen text-white bg-black">
@@ -160,7 +160,7 @@ export default function HistoriaPage() {
         </p>
       </section>
 
-      {/* Client: mangueira em toda a página, anos dentro dos cards e botão "Próxima parte" */}
+      {/* Client: mangueira em toda a página, anos dentro dos cards, botão "Próxima parte", copo e modal no fim */}
       <TimelineClient brands={[coca]} />
       {/* Para várias marcas: <TimelineClient brands={[coca, brahma, smirnoff]} /> */}
     </main>
