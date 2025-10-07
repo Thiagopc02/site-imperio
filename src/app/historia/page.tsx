@@ -12,7 +12,7 @@ export type TimelineEvent = {
   year: number;
   title: string;
   text: string;
-  image?: string; // coloque seus arquivos aqui (ex.: /historia/coca/1886.jpg)
+  image?: string; // ex.: /historia/coca/1886.jpg (coloque seus arquivos em /public)
 };
 
 export type Brand = {
@@ -27,11 +27,11 @@ export type Brand = {
 };
 
 export default function HistoriaPage() {
-  // coca-cola: marcos até hoje (exemplo – troque / adicione os seus)
+  // Coca-Cola (exemplo inicial – ajuste livremente)
   const coca: Brand = {
     slug: "coca-cola",
     name: "Coca-Cola",
-    logo: "/produtos/coca-cola-2L.jpg",
+    logo: "/produtos/coca-cola-2L.jpg",   // garanta que existe em /public
     banner: "/produtos/coca-cola-2L.jpg",
     color: "#E10600",
     dark: "#7a0b0b",
@@ -58,7 +58,7 @@ export default function HistoriaPage() {
         year: 1915,
         title: "A garrafa contour",
         text:
-          "A icônica garrafa de curvas nasce para ser reconhecida até no escuro ou quebrada.",
+          "A icônica garrafa de curvas nasce para ser reconhecida até no escuro ou mesmo quebrada.",
         image: "/historia/coca/1915.jpg",
       },
       {
@@ -74,7 +74,7 @@ export default function HistoriaPage() {
         year: 1941,
         title: "Guerra & globalização",
         text:
-          "A promessa de vender Coca por 5 cents a todos os soldados leva fábricas e a marca ao mundo.",
+          "A promessa de vender Coca por 5 cents aos soldados leva fábricas e a marca ao mundo.",
         image: "/historia/coca/1941.jpg",
       },
       {
@@ -82,7 +82,7 @@ export default function HistoriaPage() {
         year: 1955,
         title: "Novos tamanhos & latas",
         text:
-          "Más embalagens e formatos tornam o consumo ainda mais prático e difundem a marca.",
+          "Mais embalagens e formatos tornam o consumo prático e ampliam a presença da marca.",
         image: "/historia/coca/1955.jpg",
       },
       {
@@ -106,7 +106,7 @@ export default function HistoriaPage() {
         year: 2005,
         title: "Coca-Cola Zero",
         text:
-          "Linha zero açúcar amplia o alcance para quem busca menos calorias sem abrir mão do sabor.",
+          "A linha zero açúcar amplia o alcance para quem busca menos calorias sem abrir mão do sabor.",
         image: "/historia/coca/2005.jpg",
       },
       {
