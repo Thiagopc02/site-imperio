@@ -22,11 +22,9 @@ export default function TimelineClient({ brands }: Props) {
   const total = brand.events.length;
   const [activeIdx, setActiveIdx] = useState(0);
 
-  // Modal final
   const [showModal, setShowModal] = useState(false);
   const [modalShownOnce, setModalShownOnce] = useState(false);
 
-  // Cores do tema
   const themeVars: React.CSSProperties = {
     ["--brand" as any]: brand.color,
     ["--brandDark" as any]: brand.dark,
@@ -115,7 +113,6 @@ export default function TimelineClient({ brands }: Props) {
   const dashArray = pathLen;
   const dashOffset = Math.max(0, pathLen * (1 - progress));
 
-  // exibe modal ao terminar
   useEffect(() => {
     if (activeIdx === total - 1 && !modalShownOnce) {
       const t = setTimeout(() => {
@@ -136,7 +133,6 @@ export default function TimelineClient({ brands }: Props) {
   const nextIdx = (idx: number) => Math.min(idx + 1, total - 1);
   const goTop = () => window.scrollTo({ top: 0, behavior: "smooth" });
 
-  // próxima marca (se existir)
   const brandIndex = brands.findIndex((b) => b.slug === brand.slug);
   const nextBrand =
     brands.length > 1 && brandIndex !== -1
@@ -164,44 +160,68 @@ export default function TimelineClient({ brands }: Props) {
 
   return (
     <section className="pb-24" style={themeVars}>
-      {/* Seleção de marcas */}
+      {/* Seletor de marcas */}
       <div className="container pb-6">
-        <div className="flex flex-wrap items-center justify-center gap-4">
-          {brands.map((b) => (
-            <button
-              key={b.slug}
-              onClick={() => {
-                setActiveSlug(b.slug);
-                setActiveIdx(0);
-                setShowModal(false);
-                setModalShownOnce(false);
-                goTop();
-                setTimeout(recalc, 50);
-              }}
-              className="group relative rounded-full p-[3px]"
-              style={{
-                background:
-                  b.slug === brand.slug
-                    ? `radial-gradient(35% 35% at 30% 25%, rgba(255,255,255,.9), rgba(255,255,255,.05)), var(--brand)`
-                    : "linear-gradient(180deg, #1f2937 0%, #111827 100%)",
-              }}
-              aria-label={`Ver ${b.name}`}
-              title={`Ver ${b.name}`}
-            >
-              <span className="block overflow-hidden rounded-full shadow-lg size-20 md:size-24 ring-2 ring-white/20">
-                <img src={b.logo} alt={b.name} className="object-cover w-full h-full" />
-              </span>
-              {b.slug === brand.slug && (
-                <span className="absolute -bottom-6 left-1/2 -translate-x-1/2 px-2 py-0.5 text-[11px] rounded-full bg-white/90 text-black font-semibold shadow">
+        <div className="flex flex-wrap items-center justify-center gap-6 md:gap-8">
+          {brands.map((b) => {
+            const isActive = b.slug === brand.slug;
+            return (
+              <button
+                key={b.slug}
+                onClick={() => {
+                  setActiveSlug(b.slug);
+                  setActiveIdx(0);
+                  setShowModal(false);
+                  setModalShownOnce(false);
+                  goTop();
+                  setTimeout(recalc, 50);
+                }}
+                className="relative group"
+                aria-label={`Ver ${b.name}`}
+                title={`Ver ${b.name}`}
+              >
+                {/* Plaquinha acima com o nome */}
+                <span
+                  className={[
+                    "absolute -top-6 left-1/2 -translate-x-1/2",
+                    "px-2 py-0.5 text-[11px] rounded-full",
+                    isActive
+                      ? "bg-white text-black font-semibold shadow"
+                      : "bg-white/80 text-black",
+                  ].join(" ")}
+                >
                   {b.name}
                 </span>
-              )}
-            </button>
-          ))}
+
+                {/* Orbe da marca (sem texto) */}
+                <span
+                  className="block transition-transform rounded-full shadow-lg size-20 md:size-24 ring-2 ring-white/20 group-hover:scale-105"
+                  style={{
+                    background:
+                      isActive
+                        ? `radial-gradient(35% 35% at 30% 25%, rgba(255,255,255,.9), rgba(255,255,255,.05)), var(--brand)`
+                        : "linear-gradient(180deg, #1f2937 0%, #111827 100%)",
+                    boxShadow: isActive
+                      ? "0 12px 40px rgba(225,6,0,.45)"
+                      : "0 12px 28px rgba(0,0,0,.35)",
+                  }}
+                />
+
+                {/* Logo embaixo (no lugar do nome) */}
+                <span className="absolute p-1 -translate-x-1/2 bg-white rounded-md shadow -bottom-8 left-1/2 ring-1 ring-black/5">
+                  <img
+                    src={b.badgeLogo}
+                    alt={`${b.name} logo`}
+                    className="object-contain w-auto h-5"
+                  />
+                </span>
+              </button>
+            );
+          })}
         </div>
       </div>
 
-      {/* Mangueira descendo por trás das seções */}
+      {/* WRAPPER + Mangueira + Seções + Copo + Modal (inalterados) */}
       <div ref={wrapperRef} className="container relative">
         <svg
           className="absolute inset-0 z-0 pointer-events-none"
@@ -249,7 +269,6 @@ export default function TimelineClient({ brands }: Props) {
           />
         </svg>
 
-        {/* Seções da timeline (texto/imagem alternados) */}
         <div className="relative z-10 space-y-10">
           {brand.events.map((ev, idx) => {
             const invert = idx % 2 === 1;
@@ -298,7 +317,6 @@ export default function TimelineClient({ brands }: Props) {
                       sem imagem
                     </div>
                   )}
-
                   <div className="flex justify-end mt-3">
                     <button
                       onClick={() => goToIdx(nextIdx(idx))}

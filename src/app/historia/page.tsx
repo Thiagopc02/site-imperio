@@ -18,11 +18,12 @@ export type TimelineEvent = {
 export type Brand = {
   slug: string;
   name: string;
-  logo: string;     // ícone redondo do topo
-  banner?: string;  // opcional
-  color: string;    // cor principal (ex.: vermelho Coca)
-  dark: string;     // cor escura p/ gradientes
-  liquid: string;   // cor do “líquido” no copo
+  logo: string;       // imagem do "orbe" (pode deixar um placeholder)
+  badgeLogo: string;  // logo pequeno para a plaquinha inferior
+  banner?: string;
+  color: string;
+  dark: string;
+  liquid: string;
   events: TimelineEvent[];
 };
 
@@ -31,7 +32,8 @@ export default function HistoriaPage() {
   const coca: Brand = {
     slug: "coca-cola",
     name: "Coca-Cola",
-    logo: "/produtos/coca-cola-2L.jpg",
+    logo: "/produtos/coca-cola-2L.jpg",         // pode ser ignorado no novo orbe (usamos gradiente)
+    badgeLogo: "/logos/coca-cola-logo.png",     // <== coloque este arquivo em /public/logos
     banner: "/produtos/coca-cola-2L.jpg",
     color: "#E10600",
     dark: "#7a0b0b",
@@ -58,6 +60,7 @@ export default function HistoriaPage() {
     slug: "guarana-antarctica",
     name: "Guaraná Antarctica",
     logo: "/produtos/guarana-antarctica-2L.jpg",
+    badgeLogo: "/logos/guarana-antarctica-logo.png", // atenção à extensão .png
     banner: "/produtos/guarana-antarctica-2L.jpg",
     color: "#118C4F",
     dark: "#0B5E36",
@@ -89,7 +92,6 @@ export default function HistoriaPage() {
         </p>
       </section>
 
-      {/* Client com múltiplas marcas habilita o botão “Ir para Próxima” no modal */}
       <TimelineClient brands={[coca, guarana]} />
     </main>
   );
