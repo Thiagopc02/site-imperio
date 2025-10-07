@@ -7,6 +7,7 @@ import {
   FaShoppingCart,
   FaSearch,
 } from 'react-icons/fa';
+import { GiCastle } from 'react-icons/gi'; // ⬅️ castelo
 import { useRouter } from 'next/navigation';
 import { useEffect, useState } from 'react';
 import { onAuthStateChanged, User } from 'firebase/auth';
@@ -82,14 +83,15 @@ export default function Home() {
         </nav>
       </header>
 
-      {/* Botão flutuante de categorias */}
+      {/* Botão flutuante → HISTÓRIA */}
       <div className="fixed z-50 bottom-6 right-6 animate-bounce">
         <a
-          href="/produtos"
+          href="/historia"
           className="p-4 text-black transition bg-yellow-400 rounded-full shadow-lg hover:scale-110"
-          title="Ver Categorias"
+          title="História das marcas"
+          aria-label="História das marcas"
         >
-          <FaBoxes size={24} />
+          <GiCastle size={24} />
         </a>
       </div>
 
@@ -160,16 +162,14 @@ export default function Home() {
                 <h3 className="product-title">{produto.nome}</h3>
                 <p className="product-desc">{produto.descricao}</p>
 
-                {/* ===== Selo OFERTA entre a descrição e o preço ===== */}
+                {/* Selo OFERTA */}
                 <span className="oferta-pill">OFERTA</span>
 
                 {/* Cartão de Preço */}
                 <div className="price-card">
                   <span className="price-dot" />
                   <span className="price-currency">R$</span>
-                  <span
-                    className="text-4xl align-middle neon-price md:text-5xl xl:text-6xl"
-                  >
+                  <span className="text-4xl align-middle neon-price md:text-5xl xl:text-6xl">
                     {produto.preco}
                   </span>
                 </div>
