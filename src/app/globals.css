@@ -48,83 +48,81 @@ body {
   @apply hover:underline transition;
 }
 
-/* ---------- “Etiqueta” de preço (neon + 3D) ---------- */
-/* base */
-.price-card {
-  @apply relative inline-flex items-center;
-}
-.price-tag {
-  --tag-bg: #ef4444;               /* cor base (vermelho) */
-  --glow: 0 0 30px rgba(16, 185, 129, .55),
-           0 0 60px rgba(16, 185, 129, .35);
-  position: relative;
-  padding: 18px 22px 18px 64px;
-  border-radius: 16px;
-  color: #fff;
-  background: var(--tag-bg);
-  box-shadow:
-    inset 0 6px 14px rgba(255,255,255,.15),
-    inset 0 -8px 12px rgba(0,0,0,.25),
-    0 14px 22px rgba(0,0,0,.45);
-  filter: drop-shadow(0 10px 18px rgba(0,0,0,.35));
-}
+/* ===================================================================
+   “Placa” de preço — CINZA + neon vermelho e tamanho cheio da placa
+   =================================================================== */
 
-/* recorte triangular (lado esquerdo) */
-.price-tag::after{
-  content:"";
-  position:absolute;
-  left:0; top:50%;
-  transform: translateY(-50%);
-  border-width: 26px 20px 26px 0;
-  border-style: solid;
-  border-color: transparent var(--tag-bg) transparent transparent;
-}
-
-/* “furo” da etiqueta */
-.price-tag::before{
-  content:"";
-  position:absolute;
-  left:22px; top:50%;
-  transform: translateY(-50%);
-  width:22px; height:22px;
-  border-radius:9999px;
-  background:#fff;
-  box-shadow: inset 0 0 0 6px var(--tag-bg),
-              0 0 14px rgba(0,0,0,.35);
-}
-
-/* texto grande neon */
-.price-value{
-  display:block;
-  line-height: .95;
-  font-weight: 900;
-  letter-spacing: 1px;
-  text-shadow:
-     0 0 4px rgba(34,211,238,.95),
-     0 0 10px rgba(34,211,238,.8),
-     0 0 22px rgba(34,211,238,.65),
-     0 4px 0 rgba(0,0,0,.35);
-  filter: drop-shadow(var(--glow));
-}
-
-/* tamanho e quebra do “R$” e do valor */
-.price-currency{
-  font-size: clamp(26px, 3.2vw, 44px);
-  opacity:.95;
-}
-.price-number{
-  font-size: clamp(38px, 4.8vw, 68px);
-}
-
-/* opção ciano/teal para o fundo do “cartão” atrás da etiqueta */
+/* fundo do bloco que segura a placa (cartão “encaixe”) */
 .price-socket{
-  @apply bg-neutral-900/70 rounded-2xl p-5;
+  @apply bg-neutral-900/80 rounded-2xl p-5;
   box-shadow:
     inset 0 10px 18px rgba(255,255,255,.05),
     inset 0 -10px 18px rgba(0,0,0,.25);
 }
 
-/* variações de cor da etiqueta (use junto de .price-tag) */
-.price-tag.teal  { --tag-bg:#14b8a6; }
-.price-tag.amber { --tag-bg:#f59e0b; }
-.price-tag.sky   { --tag-bg:#0ea5e9; }
+/* placa cinza (sempre cinza) ocupando a largura, altura fixa */
+.price-tag{
+  /* cinza com leve gradiente e relevo */
+  --plate:#3b3b3b;
+  position: relative;
+  width: 100%;
+  height: 140px;                     /* altura da placa */
+  padding: 0 24px 0 86px;            /* espaço pro “furo”/recorte */
+  border-radius: 20px;
+  display: flex; align-items: center; justify-content: center;
+  background: linear-gradient(180deg,#4a4a4a 0%, var(--plate) 55%, #2f2f2f 100%);
+  box-shadow:
+    inset 0 10px 18px rgba(255,255,255,.08),
+    inset 0 -12px 16px rgba(0,0,0,.35),
+    0 16px 26px rgba(0,0,0,.45);
+  filter: drop-shadow(0 10px 18px rgba(0,0,0,.35));
+}
+
+/* recorte (lado esquerdo) */
+.price-tag::after{
+  content:"";
+  position:absolute; left:0; top:50%;
+  transform: translateY(-50%);
+  border-width: 38px 26px 38px 0;    /* maior pra casar com a altura */
+  border-style: solid;
+  border-color: transparent var(--plate) transparent transparent;
+}
+
+/* furo */
+.price-tag::before{
+  content:"";
+  position:absolute; left:26px; top:50%;
+  transform: translateY(-50%);
+  width:26px; height:26px; border-radius:9999px;
+  background:#cfcfcf;
+  box-shadow: inset 0 0 0 6px var(--plate),
+              0 0 14px rgba(0,0,0,.35);
+}
+
+/* texto ocupa “quase” a placa inteira */
+.price-value{
+  display:block;
+  text-align:center;
+  line-height: .9;
+  font-weight: 900;
+  color:#000;                         /* números pretos */
+  /* NEON VERMELHO */
+  text-shadow:
+    0 0 4px rgba(255, 82, 82, .95),
+    0 0 12px rgba(255, 82, 82, .85),
+    0 0 26px rgba(255, 82, 82, .65),
+    0 6px 0 rgba(0,0,0,.35);
+}
+
+/* tamanhos para preencher a placa */
+.price-currency{
+  display:block;
+  font-size: clamp(30px, 3.4vw, 48px);
+  margin-bottom: 2px;
+}
+.price-number{
+  display:block;
+  font-size: clamp(54px, 6.4vw, 92px);   /* bem grande para ocupar a placa */
+}
+
+/* você pode diminuir/aumentar a placa alterando a altura em .price-tag */

@@ -115,7 +115,7 @@ export default function Home() {
         </div>
       </section>
 
-      {/* Destaques da Semana (apenas aqui na home) */}
+      {/* Destaques da Semana */}
       <section className="px-4 py-16 text-white bg-black">
         <h2 className="mb-10 text-3xl font-bold text-center md:text-4xl">
           Destaques da Semana
@@ -129,14 +129,12 @@ export default function Home() {
                 'A queridinha gelada e a apenas A um clique de você com UNI. APENAS R$2,93, PEÇA JA !!!',
               preco: '44,00',
               img: '/produtos/Brahma-chopp-cx.jpg',
-              cor: 'amber', // variação da etiqueta (amber / teal / sky)
             },
             {
               nome: 'Royal Salute 21 Anos',
               descricao: 'Whisky Escocês Luxo',
               preco: '999,90',
               img: '/produtos/royal-salute.jpg',
-              cor: 'teal',
             },
             {
               nome: 'VodKa SMIIRNOFF 1l',
@@ -144,7 +142,6 @@ export default function Home() {
                 'CAMPEÃ DE VENDAS  A Smirnoff se encontra em uma faixa Neutra, suave e versátil — triplamente destilada.',
               preco: '37,87',
               img: '/produtos/Smirnoff-1L-uni00.jpg',
-              cor: 'sky',
             },
           ].map((p, idx) => (
             <article
@@ -160,12 +157,11 @@ export default function Home() {
                 <h3 className="text-lg font-semibold">{p.nome}</h3>
                 <p className="text-sm text-gray-400">{p.descricao}</p>
 
-                {/* cartão/etiqueta de preço */}
+                {/* PLACA CINZA COM PREÇO GIGANTE E NEON VERMELHO */}
                 <div className="price-socket">
-                  <div className={`price-tag ${p.cor}`}>
+                  <div className="price-tag">
                     <span className="price-value">
                       <span className="price-currency">R$</span>
-                      <br />
                       <span className="price-number">{p.preco}</span>
                     </span>
                   </div>
