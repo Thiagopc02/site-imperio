@@ -142,7 +142,7 @@ export default function Home() {
               nome: 'VodKa SMIIRNOFF 1l',
               descricao: 'CAMPEÃ DE VENDAS  A Smirnoff se encontra em uma faixa Neutra, suave e versátil — triplamente destilada.',
               preco: 'R$ 37,87',
-              img: '/produtos/Smirnoff-1L-uni.jpg',
+              img: '/produtos/Smirnoff-1L-uni00.jpg',
             },
           ].map((produto, idx) => (
             <div
