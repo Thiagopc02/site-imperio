@@ -2,6 +2,7 @@
 @tailwind components;
 @tailwind utilities;
 
+/* ====== Tema base ====== */
 :root {
   --background: #ffffff;
   --foreground: #111111;
@@ -18,6 +19,7 @@ body {
   @apply bg-[var(--background)] text-[var(--foreground)] font-sans antialiased;
 }
 
+/* ====== Utilitários do projeto ====== */
 .input-style {
   @apply w-full p-3 mb-4 rounded bg-zinc-800 text-white placeholder-zinc-400 border border-zinc-700 focus:outline-none focus:ring-2 focus:ring-yellow-400;
 }
@@ -44,4 +46,51 @@ body {
 
 .link-hover {
   @apply hover:underline transition;
+}
+
+/* ====== PREÇO NEON 3D (Destaques da Semana) ====== */
+.neon-price {
+  font-size: clamp(2.4rem, 3.5vw + 1rem, 4.2rem);
+  line-height: 1;
+  font-weight: 900;
+  letter-spacing: .5px;
+
+  color: #c8fff3;
+  background: linear-gradient(180deg, #eaffff 0%, #a6fff0 55%, #6fffe3 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+
+  -webkit-text-stroke: 1px rgba(0, 255, 234, .35);
+
+  text-shadow:
+    0 0 6px  rgba(0, 255, 234, .7),
+    0 0 16px rgba(0, 255, 234, .6),
+    0 0 32px rgba(0, 184, 255, .45),
+    0 0 56px rgba(168, 85, 247, .35);
+
+  transform: perspective(600px) rotateX(8deg);
+}
+
+.neon-price-shadow {
+  position: absolute;
+  inset: 0;
+  transform: translate(.15rem, .3rem) perspective(600px) rotateX(8deg);
+  filter: blur(2px);
+  opacity: .6;
+  background: linear-gradient(180deg, #00ffe6 0%, #00a3ff 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  text-shadow:
+    0 0 10px rgba(0, 255, 234, .6),
+    0 0 24px rgba(0, 255, 234, .5),
+    0 0 45px rgba(168, 85, 247, .35);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .neon-price,
+  .neon-price-shadow {
+    transform: none;
+  }
 }
