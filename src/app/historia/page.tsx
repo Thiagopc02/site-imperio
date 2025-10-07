@@ -33,7 +33,7 @@ export default function HistoriaPage() {
     slug: "coca-cola",
     name: "Coca-Cola",
     logo: "/produtos/coca-cola-2L.jpg",
-    badgeLogo: "/logos/coca-cola-logo-256.png", // versão maior p/ ficar nítida
+    badgeLogo: "/logos/coca-cola-logo.png", // versão maior p/ ficar nítida
     banner: "/produtos/coca-cola-2L.jpg",
     color: "#E10600",
     dark: "#7a0b0b",
