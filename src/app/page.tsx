@@ -18,14 +18,11 @@ export default function Home() {
   const [user, setUser] = useState<User | null>(null);
 
   useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, setUser);
-    return () => unsubscribe();
+    const unsub = onAuthStateChanged(auth, setUser);
+    return () => unsub();
   }, []);
 
-  const handleCarrinhoClick = () => {
-    router.push(user ? '/carrinho' : '/login');
-  };
-
+  const handleCarrinhoClick = () => router.push(user ? '/carrinho' : '/login');
   const handleLoginClick = () => router.push('/login');
 
   return (
@@ -118,7 +115,7 @@ export default function Home() {
         </div>
       </section>
 
-      {/* ===== Destaques da Semana (somente aqui) ===== */}
+      {/* Destaques da Semana (apenas aqui na home) */}
       <section className="px-4 py-16 text-white bg-black">
         <h2 className="mb-10 text-3xl font-bold text-center md:text-4xl">
           Destaques da Semana
@@ -130,53 +127,52 @@ export default function Home() {
               nome: 'Brahma Chopp 15x269ML',
               descricao:
                 'A queridinha gelada e a apenas A um clique de você com UNI. APENAS R$2,93, PEÇA JA !!!',
-              preco: 44.0,
+              preco: '44,00',
               img: '/produtos/Brahma-chopp-cx.jpg',
+              cor: 'amber', // variação da etiqueta (amber / teal / sky)
             },
             {
               nome: 'Royal Salute 21 Anos',
               descricao: 'Whisky Escocês Luxo',
-              preco: 999.9,
+              preco: '999,90',
               img: '/produtos/royal-salute.jpg',
+              cor: 'teal',
             },
             {
               nome: 'VodKa SMIIRNOFF 1l',
               descricao:
                 'CAMPEÃ DE VENDAS  A Smirnoff se encontra em uma faixa Neutra, suave e versátil — triplamente destilada.',
-              preco: 37.87,
+              preco: '37,87',
               img: '/produtos/Smirnoff-1L-uni00.jpg',
+              cor: 'sky',
             },
-          ].map((produto, idx) => {
-            const precoBRL = produto.preco.toLocaleString('pt-BR', {
-              minimumFractionDigits: 2,
-              maximumFractionDigits: 2,
-            });
+          ].map((p, idx) => (
+            <article
+              key={idx}
+              className="bg-neutral-900 rounded-2xl overflow-hidden shadow-xl transition hover:scale-105 hover:shadow-2xl hover:rotate-[1deg]"
+            >
+              <img
+                src={p.img}
+                alt={p.nome}
+                className="object-contain w-full bg-white h-60"
+              />
+              <div className="p-5 space-y-3">
+                <h3 className="text-lg font-semibold">{p.nome}</h3>
+                <p className="text-sm text-gray-400">{p.descricao}</p>
 
-            return (
-              <div
-                key={idx}
-                className="bg-neutral-900 rounded-xl overflow-hidden shadow-xl transition hover:scale-105 hover:shadow-2xl hover:rotate-[1deg]"
-              >
-                <img
-                  src={produto.img}
-                  alt={produto.nome}
-                  className="object-contain w-full bg-white h-60"
-                />
-                <div className="p-4">
-                  <h3 className="text-xl font-semibold">{produto.nome}</h3>
-                  <p className="mt-1 text-gray-400">{produto.descricao}</p>
-
-                  {/* Preço NEON 3D */}
-                  <div className="relative inline-block px-3 py-2 mt-3 rounded-xl bg-black/30 backdrop-blur-sm">
-                    <span aria-hidden className="neon-price-shadow">
-                      R$ {precoBRL}
+                {/* cartão/etiqueta de preço */}
+                <div className="price-socket">
+                  <div className={`price-tag ${p.cor}`}>
+                    <span className="price-value">
+                      <span className="price-currency">R$</span>
+                      <br />
+                      <span className="price-number">{p.preco}</span>
                     </span>
-                    <span className="neon-price">R$ {precoBRL}</span>
                   </div>
                 </div>
               </div>
-            );
-          })}
+            </article>
+          ))}
         </div>
       </section>
 
