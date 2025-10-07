@@ -59,7 +59,7 @@ export default function HistoriaPage() {
   const guarana: Brand = {
     slug: "guarana-antarctica",
     name: "Guaraná Antarctica",
-    logo: "/produtos/guarana-antarctica-2L.jpg",
+    logo: "/produtos/guarana-antarctica.jpg",
     badgeLogo: "/logos/guarana-antarctica-logo-256.png",
     banner: "/produtos/guarana-antarctica-2L.jpg",
     color: "#118C4F",
