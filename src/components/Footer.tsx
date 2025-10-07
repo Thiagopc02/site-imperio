@@ -10,7 +10,7 @@ export default function Footer() {
           <div className="flex items-center gap-3">
             {/* Altere o src se o arquivo do logo tiver outro nome/caminho */}
             <img
-              src="/logo-imperio-ilimitada.png"
+              src="/logo-imperio-fundo-branco-rodapé.png"
               alt="Império Bebidas & Tabacos"
               className="w-auto h-9"
             />
