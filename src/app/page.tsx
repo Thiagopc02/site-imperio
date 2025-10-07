@@ -119,7 +119,7 @@ export default function Home() {
       </section>
 
       {/* Destaques da Semana */}
-      <section className="px-4 py-16 text-white bg-black">
+      <section className="px-4 py-16 text-white bg-white">
         <h2 className="mb-10 text-3xl font-bold text-center md:text-4xl">
           Destaques da Semana
         </h2>
@@ -168,7 +168,7 @@ export default function Home() {
                   <span className="price-dot" />
                   <span className="price-currency">R$</span>
                   <span
-                    className="text-4xl align-middle  neon-price md:text-5xl xl:text-6xl"
+                    className="text-4xl align-middle neon-price md:text-5xl xl:text-6xl"
                   >
                     {produto.preco}
                   </span>
