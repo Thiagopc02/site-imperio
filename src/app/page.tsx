@@ -83,17 +83,12 @@ export default function Home() {
         </nav>
       </header>
 
-      {/* Botão flutuante → HISTÓRIA (bolinha com castelo) */}
-      <a
-        href="/historia"
-        className="castle-fab"
-        title="História das marcas"
-        aria-label="História das marcas"
-      >
-        <span className="sr-only">História das marcas</span>
-        <GiCastle className="w-7 h-7 drop-shadow-[0_0_8px_rgba(0,0,0,.45)]" />
-        <span className="castle-fab-tip">Histórias</span>
-      </a>
+      {/* Botão flutuante → HISTÓRIA (castelo maior) */}
+      <div className="castle-fab animate-bounce" title="História das marcas" aria-label="História das marcas">
+        <a href="/historia" className="grid w-full h-full place-items-center">
+          <GiCastle className="w-10 h-10 drop-shadow-[0_0_8px_rgba(0,0,0,.45)]" />
+        </a>
+      </div>
 
       {/* Hero */}
       <section className="relative h-[80vh] bg-black overflow-hidden">
@@ -113,7 +108,7 @@ export default function Home() {
           </p>
           <a
             href="/produtos"
-            className="inline-block px-6 py-3 mt-6 font-semibold text-black transition duration-300 bg-white rounded-full shadow-md hover:bg-gray-200"
+            className="inline-block px-6 py-3 mt-6 font-semibold text-white transition duration-300 bg-white rounded-full shadow-md hover:bg-gray-200"
           >
             Ver produtos
           </a>
