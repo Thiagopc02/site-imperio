@@ -27,11 +27,11 @@ export type Brand = {
 };
 
 export default function HistoriaPage() {
-  // Coca-Cola (exemplo inicial – ajuste livremente)
+  // Marca 1: Coca-Cola (exemplo inicial – ajuste/adicione outras marcas quando quiser)
   const coca: Brand = {
     slug: "coca-cola",
     name: "Coca-Cola",
-    logo: "/produtos/coca-cola-2L.jpg",   // garanta que existe em /public
+    logo: "/produtos/coca-cola-2L.jpg",   // certifique-se que existe em /public
     banner: "/produtos/coca-cola-2L.jpg",
     color: "#E10600",
     dark: "#7a0b0b",
@@ -144,6 +144,10 @@ export default function HistoriaPage() {
     ],
   };
 
+  // Para adicionar mais marcas (ex.: Brahma/Smirnoff), crie novos objetos Brand e passe no array abaixo:
+  // const brahma: Brand = { ... };
+  // const smirnoff: Brand = { ... };
+
   return (
     <main className="min-h-screen text-white bg-black">
       <section className="container py-10">
@@ -151,13 +155,14 @@ export default function HistoriaPage() {
           Histórias de Grandes Marcas
         </h1>
         <p className="max-w-3xl mx-auto mt-2 text-center text-gray-300">
-          Clique na marca para ver a linha do tempo. Começamos com a Coca-Cola —
-          em breve adicionaremos outras (Brahma, Smirnoff, Royal Salute…).
+          Clique na marca e acompanhe a mangueira enchendo a história — começamos com Coca-Cola.
+          Em breve adicionaremos outras (Brahma, Smirnoff, Royal Salute…).
         </p>
       </section>
 
-      {/* Client: interações, mangueira e copo */}
+      {/* Client: mangueira em toda a página, anos dentro dos cards e botão "Próxima parte" */}
       <TimelineClient brands={[coca]} />
+      {/* Para várias marcas: <TimelineClient brands={[coca, brahma, smirnoff]} /> */}
     </main>
   );
 }
