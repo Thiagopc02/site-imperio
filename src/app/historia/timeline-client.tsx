@@ -160,9 +160,9 @@ export default function TimelineClient({ brands }: Props) {
 
   return (
     <section className="pb-24" style={themeVars}>
-      {/* Seletor de marcas */}
-      <div className="container pb-6">
-        <div className="flex flex-wrap items-center justify-center gap-6 md:gap-8">
+      {/* Seletor de marcas — topo refinado */}
+      <div className="container pb-8">
+        <div className="flex flex-wrap items-end justify-center gap-10">
           {brands.map((b) => {
             const isActive = b.slug === brand.slug;
             return (
@@ -180,39 +180,41 @@ export default function TimelineClient({ brands }: Props) {
                 aria-label={`Ver ${b.name}`}
                 title={`Ver ${b.name}`}
               >
-                {/* Plaquinha acima com o nome */}
+                {/* Plaquinha acima */}
                 <span
                   className={[
-                    "absolute -top-6 left-1/2 -translate-x-1/2",
-                    "px-2 py-0.5 text-[11px] rounded-full",
-                    isActive
-                      ? "bg-white text-black font-semibold shadow"
-                      : "bg-white/80 text-black",
+                    "absolute -top-9 left-1/2 -translate-x-1/2",
+                    "px-3 py-1 rounded-full shadow-lg ring-1 ring-black/10",
+                    "text-xs md:text-sm font-extrabold tracking-tight",
+                    isActive ? "bg-white text-black" : "bg-white/90 text-black",
                   ].join(" ")}
                 >
                   {b.name}
                 </span>
 
-                {/* Orbe da marca (sem texto) */}
+                {/* Orbe com borda e glow */}
                 <span
-                  className="block transition-transform rounded-full shadow-lg size-20 md:size-24 ring-2 ring-white/20 group-hover:scale-105"
+                  className={[
+                    "block size-20 md:size-24 rounded-full shadow-xl transition-transform",
+                    "ring-4 ring-white/30 ring-offset-2 ring-offset-black",
+                    "group-hover:scale-105",
+                  ].join(" ")}
                   style={{
-                    background:
-                      isActive
-                        ? `radial-gradient(35% 35% at 30% 25%, rgba(255,255,255,.9), rgba(255,255,255,.05)), var(--brand)`
-                        : "linear-gradient(180deg, #1f2937 0%, #111827 100%)",
+                    background: isActive
+                      ? `radial-gradient(35% 35% at 30% 25%, rgba(255,255,255,.9), rgba(255,255,255,.05)), var(--brand)`
+                      : "linear-gradient(180deg, #1f2937 0%, #111827 100%)",
                     boxShadow: isActive
-                      ? "0 12px 40px rgba(225,6,0,.45)"
+                      ? "0 16px 50px rgba(225,6,0,.45)"
                       : "0 12px 28px rgba(0,0,0,.35)",
                   }}
                 />
 
-                {/* Logo embaixo (no lugar do nome) */}
-                <span className="absolute p-1 -translate-x-1/2 bg-white rounded-md shadow -bottom-8 left-1/2 ring-1 ring-black/5">
+                {/* Logo embaixo como pill */}
+                <span className="absolute px-2 py-1 -translate-x-1/2 rounded-full shadow-lg -bottom-8 left-1/2 bg-white/95 ring-1 ring-black/5">
                   <img
                     src={b.badgeLogo}
                     alt={`${b.name} logo`}
-                    className="object-contain w-auto h-5"
+                    className="object-contain w-auto h-6"
                   />
                 </span>
               </button>
@@ -221,7 +223,7 @@ export default function TimelineClient({ brands }: Props) {
         </div>
       </div>
 
-      {/* WRAPPER + Mangueira + Seções + Copo + Modal (inalterados) */}
+      {/* (restante da página: mangueira + seções + copo + modal) */}
       <div ref={wrapperRef} className="container relative">
         <svg
           className="absolute inset-0 z-0 pointer-events-none"

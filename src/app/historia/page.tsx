@@ -18,7 +18,7 @@ export type TimelineEvent = {
 export type Brand = {
   slug: string;
   name: string;
-  logo: string;       // imagem do "orbe" (pode deixar um placeholder)
+  logo: string;       // imagem do “orbe” (pode ser placeholder)
   badgeLogo: string;  // logo pequeno para a plaquinha inferior
   banner?: string;
   color: string;
@@ -32,8 +32,8 @@ export default function HistoriaPage() {
   const coca: Brand = {
     slug: "coca-cola",
     name: "Coca-Cola",
-    logo: "/produtos/coca-cola-2L.jpg",         // pode ser ignorado no novo orbe (usamos gradiente)
-    badgeLogo: "/logos/coca-cola-logo.png",     // <== coloque este arquivo em /public/logos
+    logo: "/produtos/coca-cola-2L.jpg",
+    badgeLogo: "/logos/coca-cola-logo.png",
     banner: "/produtos/coca-cola-2L.jpg",
     color: "#E10600",
     dark: "#7a0b0b",
@@ -60,7 +60,7 @@ export default function HistoriaPage() {
     slug: "guarana-antarctica",
     name: "Guaraná Antarctica",
     logo: "/produtos/guarana-antarctica-2L.jpg",
-    badgeLogo: "/logos/guarana-antarctica-logo.png", // atenção à extensão .png
+    badgeLogo: "/logos/guarana-antarctica-logo.png",
     banner: "/produtos/guarana-antarctica-2L.jpg",
     color: "#118C4F",
     dark: "#0B5E36",
@@ -86,9 +86,9 @@ export default function HistoriaPage() {
         <h1 className="text-3xl font-bold text-center md:text-4xl">
           Histórias de Grandes Marcas
         </h1>
+        {/* novo subtítulo */}
         <p className="max-w-3xl mx-auto mt-2 text-center text-gray-300">
-          Clique na marca e acompanhe a mangueira enchendo a história — começamos com Coca-Cola.
-          Em breve adicionaremos outras (Brahma, Smirnoff, Royal Salute…).
+          Escolha uma marca e viva sua jornada — cada clique revela um novo capítulo.
         </p>
       </section>
 
