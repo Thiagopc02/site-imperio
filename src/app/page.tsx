@@ -35,7 +35,7 @@ export default function Home() {
         <div className="flex items-center justify-between w-full md:w-auto">
           <a href="/" aria-label="Página inicial">
             <img
-              src="/logo-coroa.png"
+              src="/logo-imperio-ilimitada.png"
               alt="Império Bebidas & Tabacos"
               className="w-auto h-10 md:h-12"
             />
