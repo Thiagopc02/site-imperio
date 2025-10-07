@@ -4,121 +4,132 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { Brand } from "./page";
 
+/**
+ * O comportamento:
+ * - A mangueira (SVG) faz curvas suaves passando pelos "pontos" centrais de cada evento.
+ * - Ao clicar numa data, o "líquido" avança até aquele ponto (anima o strokeDashoffset).
+ * - As seções de evento alternam: texto à esquerda / imagem à direita e vice-versa.
+ * - Em telas pequenas, tudo empilha (acessível).
+ */
+
 type Props = { brands: Brand[] };
 
 export default function TimelineClient({ brands }: Props) {
-  const [active, setActive] = useState<string>(brands[0]?.slug ?? "");
-  const activeBrand = useMemo(
-    () => brands.find((b) => b.slug === active) ?? brands[0],
-    [active, brands]
+  const [activeSlug, setActiveSlug] = useState(brands[0]?.slug ?? "");
+  const brand = useMemo(
+    () => brands.find((b) => b.slug === activeSlug) ?? brands[0],
+    [activeSlug, brands]
   );
 
-  // progresso: ids que o usuário já “visitou”
-  const [visited, setVisited] = useState<Set<string>>(new Set());
-  const total = activeBrand.events.length;
-  const done = activeBrand.events.filter((e) => visited.has(e.id)).length;
-  const progress = total === 0 ? 0 : Math.min(1, done / total);
+  const total = brand.events.length;
+  const [activeIdx, setActiveIdx] = useState(0);
 
-  // variáveis de tema
+  // === Tema (cores) ===
   const themeVars = {
-    ["--brand" as any]: activeBrand.color,
-    ["--brandDark" as any]: activeBrand.dark,
-    ["--liquid" as any]: activeBrand.liquid,
+    ["--brand" as any]: brand.color,
+    ["--brandDark" as any]: brand.dark,
+    ["--liquid" as any]: brand.liquid,
   };
 
-  const markVisited = (id: string) =>
-    setVisited((prev) => {
-      if (prev.has(id)) return prev;
-      const n = new Set(prev);
-      n.add(id);
-      return n;
-    });
+  // === Geometria do SVG (mangueira) ===
+  // ViewBox fixo para responsividade. O SVG fica ABSOLUTO no "corredor" central.
+  const W = 1400;                 // largura do viewBox
+  const H = 420;                  // altura do viewBox
+  const marginX = 80;             // margem interna
+  const midY = H / 2;             // linha central
+  const amplitude = 120;          // quanto a mangueira "sobe/desce"
+  const xGlass = W - 60;          // posição do copo
+  const yGlass = midY + 70;
 
-  const scrollTo = (id: string) => {
-    const el = document.getElementById(id);
-    if (!el) return;
-    el.scrollIntoView({ behavior: "smooth", block: "start" });
-    setTimeout(() => markVisited(id), 150);
-  };
+  // Pontos meândricos: X igualmente espaçado; Y alternando acima/abaixo do centro.
+  const points = useMemo(() => {
+    if (total === 0) return [] as Array<{ x: number; y: number }>;
+    const dx = (xGlass - marginX * 2) / Math.max(1, total - 1);
+    return brand.events.map((_, i) => ({
+      x: marginX + dx * i,
+      y: midY + (i % 2 === 0 ? -amplitude : amplitude) * 0.85, // curvas suaves
+    }));
+  }, [brand.events, total]);
 
-  const goTop = () =>
-    window.scrollTo({
-      top: 0,
-      behavior: "smooth",
-    });
-
-  // ---------------- SVG Mangueira ----------------
-  // viewBox fixo p/ responsivo
-  const W = 1000;
-  const H = 210;
-  const yLine = 85;     // altura da régua/marcadores
-  const yGlass = 170;   // boca do copo
-  const xGlass = W - 70;
-
-  // posições X igualmente espaçadas até antes do copo
-  const xs = useMemo(() => {
-    if (total <= 1) return [60, xGlass - 60];
-    const dx = (xGlass - 140) / (total - 1);
-    return Array.from({ length: total }, (_, i) => 70 + dx * i);
-  }, [total]);
-
-  // path que liga as datas e curva até o copo
+  // Constrói um path cúbico suave passando pelos pontos e curvando até a boca do copo
   const hosePath = useMemo(() => {
-    if (!xs.length) return "";
-    const move = `M ${xs[0]} ${yLine}`;
-    const lines = xs.slice(1).map((x) => `L ${x} ${yLine}`).join(" ");
-    const curve = `C ${xGlass - 140} ${yLine}, ${xGlass - 140} ${yGlass}, ${xGlass} ${yGlass}`;
-    return `${move} ${lines} ${curve}`;
-  }, [xs]);
+    if (!points.length) return "";
+    const segs: string[] = [];
+    segs.push(`M ${points[0].x} ${points[0].y}`);
+    for (let i = 1; i < points.length; i++) {
+      const p0 = points[i - 1];
+      const p1 = points[i];
+      const cx = (p0.x + p1.x) / 2;      // controle no meio para suavizar
+      segs.push(
+        `C ${cx} ${p0.y}, ${cx} ${p1.y}, ${p1.x} ${p1.y}`
+      );
+    }
+    // curva final descendo/encaixando na "boca" do copo
+    const last = points[points.length - 1];
+    segs.push(
+      `C ${xGlass - 120} ${last.y}, ${xGlass - 120} ${yGlass}, ${xGlass} ${yGlass}`
+    );
+    return segs.join(" ");
+  }, [points]);
 
-  // medir comprimento para animar “enchimento”
+  // Animação do traço preenchendo até o índice ativo
   const pathRef = useRef<SVGPathElement | null>(null);
   const [pathLen, setPathLen] = useState(1);
   useEffect(() => {
-    if (pathRef.current) setPathLen(pathRef.current.getTotalLength());
+    if (pathRef.current) {
+      const len = pathRef.current.getTotalLength();
+      setPathLen(len);
+    }
   }, [hosePath]);
 
+  // Progresso: porcentagem do caminho até o ponto clicado
+  const progress = total <= 1 ? 1 : Math.min(1, activeIdx / (total - 1));
   const dashArray = pathLen;
   const dashOffset = Math.max(0, pathLen * (1 - progress));
 
+  // Scroll para a seção ao clicar na data
+  const goTo = (id: string, idx: number) => {
+    setActiveIdx(idx);
+    const el = document.getElementById(id);
+    if (!el) return;
+    // pequeno atraso para o usuário "ver" a mangueira encher
+    setTimeout(() => el.scrollIntoView({ behavior: "smooth", block: "start" }), 100);
+  };
+
+  // Topo
+  const goTop = () => window.scrollTo({ top: 0, behavior: "smooth" });
+
   return (
     <section className="pb-24" style={themeVars}>
-      {/* Balões de marcas */}
-      <div id="topo-historia" className="container pb-2">
-        <div className="flex flex-wrap items-center justify-center gap-4 md:gap-6">
+      {/* Seleção de marcas */}
+      <div id="topo-historia" className="container pb-4">
+        <div className="flex flex-wrap items-center justify-center gap-4">
           {brands.map((b) => (
             <button
               key={b.slug}
               onClick={() => {
-                setActive(b.slug);
+                setActiveSlug(b.slug);
+                setActiveIdx(0);
                 goTop();
               }}
               className="group relative rounded-full p-[3px]"
-              aria-label={`Ver linha do tempo da ${b.name}`}
-              title={`Ver ${b.name}`}
               style={{
                 background:
-                  b.slug === active
+                  b.slug === brand.slug
                     ? `radial-gradient(35% 35% at 30% 25%, rgba(255,255,255,.9), rgba(255,255,255,.05)), var(--brand)`
                     : "linear-gradient(180deg, #1f2937 0%, #111827 100%)",
               }}
+              aria-label={`Ver ${b.name}`}
+              title={`Ver ${b.name}`}
             >
-              <span
-                className="block overflow-hidden rounded-full shadow-lg size-20 md:size-24 ring-2 ring-white/20"
-                style={{
-                  boxShadow:
-                    b.slug === active
-                      ? "0 12px 40px rgba(225,6,0,.45)"
-                      : "0 12px 28px rgba(0,0,0,.35)",
-                }}
-              >
+              <span className="block overflow-hidden rounded-full shadow-lg size-20 md:size-24 ring-2 ring-white/20">
                 <img
                   src={b.logo}
                   alt={b.name}
                   className="object-cover w-full h-full"
                 />
               </span>
-              {b.slug === active && (
+              {b.slug === brand.slug && (
                 <span className="absolute -bottom-6 left-1/2 -translate-x-1/2 px-2 py-0.5 text-[11px] rounded-full bg-white/90 text-black font-semibold shadow">
                   {b.name}
                 </span>
@@ -128,14 +139,14 @@ export default function TimelineClient({ brands }: Props) {
         </div>
       </div>
 
-      {/* Mangueira + régua + marcadores */}
-      <div className="container mt-6">
-        <div className="relative overflow-visible">
-          {/* SVG da mangueira */}
+      {/* Corredor central com a MANGUEIRA meandrando */}
+      <div className="relative">
+        {/* SVG absoluto por trás dos cards */}
+        <div className="absolute inset-0 z-0 pointer-events-none">
           <svg
             viewBox={`0 0 ${W} ${H}`}
             preserveAspectRatio="none"
-            className="w-full h-[172px] md:h-[190px]"
+            className="w-full h-[380px] md:h-[420px]"
           >
             <defs>
               <filter id="softGlow">
@@ -147,64 +158,35 @@ export default function TimelineClient({ brands }: Props) {
               </filter>
               <linearGradient id="hoseGrad" x1="0%" y1="0%" x2="100%" y2="0%">
                 <stop offset="0%" stopColor="rgba(255,255,255,0.25)" />
-                <stop offset="100%" stopColor="rgba(255,255,255,0.55)" />
+                <stop offset="100%" stopColor="rgba(255,255,255,0.6)" />
               </linearGradient>
             </defs>
 
-            {/* trilho (mangueira “vazia”) */}
+            {/* trilho (mangueira transparente) */}
             <path
               d={hosePath}
               stroke="rgba(255,255,255,0.18)"
-              strokeWidth="10"
+              strokeWidth="12"
               fill="none"
               strokeLinecap="round"
               filter="url(#softGlow)"
             />
-
-            {/* preenchimento (líquido avançando) */}
+            {/* líquido que avança */}
             <path
               ref={pathRef}
               d={hosePath}
               stroke="url(#hoseGrad)"
-              strokeWidth="10"
+              strokeWidth="12"
               fill="none"
               strokeLinecap="round"
               style={{
                 strokeDasharray: dashArray,
                 strokeDashoffset: dashOffset,
-                transition: "stroke-dashoffset 700ms ease",
+                transition: "stroke-dashoffset 800ms ease",
               }}
               filter="url(#softGlow)"
             />
-
-            {/* bolinhas sobre a régua na posição exata da mangueira */}
-            {xs.map((x, i) => {
-              const ev = activeBrand.events[i];
-              const seen = ev && visited.has(ev.id);
-              return (
-                <g key={`${ev?.id ?? i}`}>
-                  <circle
-                    cx={x}
-                    cy={yLine}
-                    r={10}
-                    fill={seen ? "var(--brand)" : "rgba(255,255,255,0.35)"}
-                    stroke="#fff"
-                    strokeWidth="1.4"
-                  />
-                  <text
-                    x={x}
-                    y={yLine + 28}
-                    textAnchor="middle"
-                    className="fill-white"
-                    style={{ fontSize: 12, opacity: 0.9 }}
-                  >
-                    {activeBrand.events[i]?.year}
-                  </text>
-                </g>
-              );
-            })}
-
-            {/* “boca do copo” (alvo final) */}
+            {/* boca do copo (destino visual) */}
             <rect
               x={xGlass - 18}
               y={yGlass - 22}
@@ -215,108 +197,101 @@ export default function TimelineClient({ brands }: Props) {
               opacity="0.35"
             />
           </svg>
-
-          {/* instrução + percentual */}
-          <div className="flex items-center justify-between px-1 -mt-3">
-            <span className="text-[11px] text-white/70">
-              Progresso: {(progress * 100).toFixed(0)}% ({done}/{total})
-            </span>
-            {progress < 1 && (
-              <span className="text-[11px] text-white/80 animate-pulse">
-                clique nas datas / imagens para “encher”
-              </span>
-            )}
-          </div>
         </div>
-      </div>
 
-      {/* Barra de datas clicável (para navegação) */}
-      <div className="container mt-4">
-        <div className="relative overflow-x-auto">
-          <div className="min-w-[760px] w-full">
-            <div className="w-full h-1 rounded bg-white/10" />
-            <div className="relative flex gap-6 -mt-3 md:gap-10">
-              {activeBrand.events.map((ev) => {
-                const seen = visited.has(ev.id);
-                return (
-                  <button
-                    key={ev.id}
-                    onClick={() => scrollTo(ev.id)}
-                    className="flex flex-col items-center pt-3 group"
-                    title={`Ir para ${ev.year}`}
-                  >
-                    <span
-                      className={[
-                        "size-3 rounded-full transition-transform",
-                        seen
-                          ? "bg-[var(--brand)] shadow-[0_0_14px_rgba(225,6,0,.8)]"
-                          : "bg-white/40 group-hover:scale-110",
-                      ].join(" ")}
-                    />
-                    <span className="mt-2 text-xs text-gray-300 md:text-sm group-hover:text-white">
-                      {ev.year}
-                    </span>
-                  </button>
-                );
-              })}
-            </div>
-          </div>
-        </div>
-      </div>
-
-      {/* Seções da timeline */}
-      <div className="container mt-8 space-y-10">
-        {activeBrand.events.map((ev, idx) => (
-          <article
-            id={ev.id}
-            key={ev.id}
-            className="grid items-center grid-cols-1 gap-6 p-5 shadow-xl md:grid-cols-3 rounded-2xl ring-1 ring-white/5"
-            style={{
-              background:
-                "linear-gradient(180deg, rgba(255,255,255,0.02) 0%, rgba(255,255,255,0.04) 100%)",
-            }}
-          >
-            {ev.image ? (
-              <>
-                <img
-                  src={ev.image}
-                  alt={`${activeBrand.name} — ${ev.year}`}
-                  className="object-contain w-full h-48 bg-white md:h-56 rounded-xl"
-                  onLoad={() => markVisited(ev.id)}
-                  onClick={() => scrollTo(ev.id)}
+        {/* Barra de datas clicável (em cima do corredor) */}
+        <div className="container relative z-10">
+          <div className="flex flex-wrap items-center justify-center gap-4">
+            {brand.events.map((ev, idx) => (
+              <button
+                key={ev.id}
+                onClick={() => goTo(ev.id, idx)}
+                className={[
+                  "flex items-center gap-2 px-2 py-1 rounded-full",
+                  "bg-white/8 hover:bg-white/15 ring-1 ring-white/10 transition",
+                ].join(" ")}
+                title={`Ir para ${ev.year}`}
+              >
+                <span
+                  className={[
+                    "inline-block size-2.5 rounded-full",
+                    idx <= activeIdx ? "bg-[var(--brand)]" : "bg-white/60",
+                  ].join(" ")}
                 />
-                <div className="md:col-span-2">
-                  <h3 className="text-xl font-extrabold">
-                    {ev.year} — {ev.title}
-                  </h3>
-                  <p className="mt-2 text-gray-300">{ev.text}</p>
-                </div>
-              </>
-            ) : (
-              <div className="md:col-span-3" onClick={() => scrollTo(ev.id)}>
+                <span
+                  className={[
+                    "text-xs",
+                    idx <= activeIdx ? "text-white" : "text-white/80",
+                  ].join(" ")}
+                >
+                  {ev.year}
+                </span>
+              </button>
+            ))}
+          </div>
+
+          <div className="mt-2 text-xs text-center text-white/70">
+            Progresso: {(progress * 100).toFixed(0)}% ({activeIdx + 1}/{total})
+          </div>
+        </div>
+      </div>
+
+      {/* Seções alternando lados (texto/imagem) */}
+      <div className="container relative z-10 mt-8 space-y-10">
+        {brand.events.map((ev, idx) => {
+          const invert = idx % 2 === 1; // alterna lado
+          return (
+            <section
+              id={ev.id}
+              key={ev.id}
+              className={[
+                "grid gap-6 items-center",
+                "md:grid-cols-2",
+                invert ? "md:[&>*:first-child]:order-2" : "",
+                "rounded-2xl p-5 ring-1 ring-white/10",
+                "bg-gradient-to-b from-white/[.02] to-white/[.04]",
+              ].join(" ")}
+            >
+              {/* Texto */}
+              <div>
                 <h3 className="text-xl font-extrabold">
                   {ev.year} — {ev.title}
                 </h3>
-                <p className="mt-2 text-gray-300">{ev.text}</p>
+                <p className="mt-2 text-white/80">{ev.text}</p>
+                <div className="mt-3 text-[11px] text-white/60">
+                  Passo {idx + 1} de {total}
+                </div>
               </div>
-            )}
 
-            <div className="md:col-span-3">
-              <span className="inline-block mt-2 text-[11px] px-2 py-0.5 rounded-full bg-white/10 text-white/80">
-                Passo {idx + 1} de {activeBrand.events.length}
-              </span>
-            </div>
-          </article>
-        ))}
+              {/* Imagem (se houver) */}
+              <div className="w-full max-w-xl justify-self-center">
+                {ev.image ? (
+                  <img
+                    src={ev.image}
+                    alt={`${brand.name} — ${ev.year}`}
+                    className="object-contain w-full h-56 bg-white md:h-64 rounded-xl"
+                    onLoad={() => {
+                      // opcional: ao carregar a imagem do passo atual,
+                      // se o usuário clicou num passo anterior, mantém;
+                      // se for o passo ativo, nada a fazer.
+                    }}
+                  />
+                ) : (
+                  <div className="grid h-56 md:h-64 rounded-xl bg-white/5 ring-1 ring-white/10 place-items-center text-white/50">
+                    sem imagem
+                  </div>
+                )}
+              </div>
+            </section>
+          );
+        })}
 
-        {/* Copo preenchendo conforme progresso */}
+        {/* Copo preenchendo (decorativo) */}
         <div className="flex justify-center pt-6">
           <div className="relative w-40 h-48">
-            {/* contorno do copo */}
             <div className="absolute inset-0 rounded-b-xl rounded-t-md ring-2 ring-white/30 bg-white/5 backdrop-blur-[1px]" />
-            {/* líquido */}
             <div
-              className="absolute bottom-0 left-0 right-0 rounded-b-xl transition-[height] duration-700"
+              className="absolute bottom-0 left-0 right-0 rounded-b-xl transition-[height] duration-800"
               style={{
                 height: `${progress * 100}%`,
                 background:
@@ -324,18 +299,10 @@ export default function TimelineClient({ brands }: Props) {
                 boxShadow: "inset 0 8px 18px rgba(0,0,0,.35)",
               }}
             />
-            {/* brilho */}
             <div className="absolute inset-0 pointer-events-none rounded-b-xl rounded-t-md bg-gradient-to-br from-white/10 to-transparent" />
           </div>
         </div>
 
-        {progress === 1 && (
-          <p className="mt-2 text-sm text-center text-white/90">
-            🥂 Linha do tempo completa! Copo cheio de {activeBrand.name}.
-          </p>
-        )}
-
-        {/* Voltar topo */}
         <div className="flex justify-end px-2 pb-10">
           <a
             href="#topo-historia"
