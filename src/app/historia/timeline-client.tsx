@@ -53,7 +53,7 @@ export default function TimelineClient({ brands }: Props) {
     const w = rect.width;
     const h = wrap.scrollHeight;
     const centerX = w / 2;
-    const ampX = Math.min(200, Math.max(140, w * 0.14)); // um pouco maior p/ curvas mais amplas
+    const ampX = Math.min(200, Math.max(140, w * 0.14)); // curvas mais amplas
 
     const pts: Array<{ x: number; y: number }> = [];
     for (let i = 0; i < sectionsRef.current.length; i++) {
@@ -160,7 +160,7 @@ export default function TimelineClient({ brands }: Props) {
 
   return (
     <section className="pb-24" style={themeVars}>
-      {/* Seletor de marcas — MAIOR */}
+      {/* Seletor de marcas — grande */}
       <div className="container pb-10">
         <div className="flex flex-wrap items-end justify-center gap-14">
           {brands.map((b) => {
@@ -180,7 +180,7 @@ export default function TimelineClient({ brands }: Props) {
                 aria-label={`Ver ${b.name}`}
                 title={`Ver ${b.name}`}
               >
-                {/* Plaquinha acima — maior e mais “bold” */}
+                {/* Plaquinha acima — maior e bold */}
                 <span
                   className={[
                     "absolute -top-12 left-1/2 -translate-x-1/2",
@@ -192,7 +192,7 @@ export default function TimelineClient({ brands }: Props) {
                   {b.name}
                 </span>
 
-                {/* Orbe bem maior, com borda e glow */}
+                {/* Orbe maior, com borda e glow */}
                 <span
                   className={[
                     "block size-28 md:size-32 rounded-full transition-transform",
@@ -209,12 +209,14 @@ export default function TimelineClient({ brands }: Props) {
                   }}
                 />
 
-                {/* Logo inferior — bem maior */}
-                <span className="absolute px-3 py-2 -translate-x-1/2 rounded-full shadow-xl -bottom-12 left-1/2 bg-white/95 ring-1 ring-black/5">
+                {/* Logo inferior — GRANDE e circular */}
+                <span
+                  className="absolute flex items-center justify-center overflow-hidden -translate-x-1/2 rounded-full shadow-xl  -bottom-14 left-1/2 size-20 md:size-24 bg-white/95 ring-1 ring-black/5"
+                >
                   <img
                     src={b.badgeLogo}
                     alt={`${b.name} logo`}
-                    className="object-contain w-auto h-12" // ~48px de altura
+                    className="object-contain w-full h-full p-2"
                   />
                 </span>
               </button>

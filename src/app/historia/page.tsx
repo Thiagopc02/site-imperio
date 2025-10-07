@@ -19,7 +19,7 @@ export type Brand = {
   slug: string;
   name: string;
   logo: string;       // imagem do “orbe” (pode ser placeholder)
-  badgeLogo: string;  // logo pequeno para a plaquinha inferior
+  badgeLogo: string;  // logo pequeno para a plaquinha inferior (PNG com transparência)
   banner?: string;
   color: string;
   dark: string;
@@ -33,7 +33,7 @@ export default function HistoriaPage() {
     slug: "coca-cola",
     name: "Coca-Cola",
     logo: "/produtos/coca-cola-2L.jpg",
-    badgeLogo: "/logos/coca-cola-logo.png", // versão maior p/ ficar nítida
+    badgeLogo: "/logos/coca-cola-logo.png", // PNG com fundo transparente
     banner: "/produtos/coca-cola-2L.jpg",
     color: "#E10600",
     dark: "#7a0b0b",
@@ -60,7 +60,7 @@ export default function HistoriaPage() {
     slug: "guarana-antarctica",
     name: "Guaraná Antarctica",
     logo: "/produtos/guarana-antarctica-2L.jpg",
-    badgeLogo: "/logos/guarana-antarctica-logo-256.png", // maior também
+    badgeLogo: "/logos/guarana-antarctica-logo-256.png",
     banner: "/produtos/guarana-antarctica-2L.jpg",
     color: "#118C4F",
     dark: "#0B5E36",
