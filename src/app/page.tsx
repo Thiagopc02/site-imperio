@@ -127,10 +127,10 @@ export default function Home() {
         <div className="grid max-w-6xl grid-cols-1 gap-8 mx-auto sm:grid-cols-2 md:grid-cols-3">
           {[
             {
-              nome: 'Johnnie Walker Black Label',
-              descricao: 'Whisky Escocês 1L',
-              preco: 'R$ 169,90',
-              img: '/produtos/johnnie-black.jpg',
+              nome: 'Brahma Chopp 15x269ML',
+              descricao: 'A queridinha gelada e a apenas A um clique de você com UNI. APENAS R$2,93, PEÇA JA !!!',
+              preco: 'R$ 44,00',
+              img: '/produtos/Brahma-chopp-cx.jpg',
             },
             {
               nome: 'Johnnie Walker Blue Label',
@@ -141,7 +141,7 @@ export default function Home() {
             {
               nome: 'Royal Salute 21 Anos',
               descricao: 'Whisky Escocês Luxo',
-              preco: 'R$ 1.299,90',
+              preco: 'R$ 999,99',
               img: '/produtos/royal-salute.jpg',
             },
           ].map((produto, idx) => (
