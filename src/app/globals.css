@@ -2,7 +2,6 @@
 @tailwind components;
 @tailwind utilities;
 
-/* ---------- tema ---------- */
 :root {
   --background: #ffffff;
   --foreground: #111111;
@@ -19,7 +18,6 @@ body {
   @apply bg-[var(--background)] text-[var(--foreground)] font-sans antialiased;
 }
 
-/* ---------- utilitários do site ---------- */
 .input-style {
   @apply w-full p-3 mb-4 rounded bg-zinc-800 text-white placeholder-zinc-400 border border-zinc-700 focus:outline-none focus:ring-2 focus:ring-yellow-400;
 }
@@ -48,81 +46,92 @@ body {
   @apply hover:underline transition;
 }
 
-/* ===================================================================
-   “Placa” de preço — CINZA + neon vermelho e tamanho cheio da placa
-   =================================================================== */
+/* --------- Destaques (placa + neon) ---------- */
 
-/* fundo do bloco que segura a placa (cartão “encaixe”) */
-.price-socket{
-  @apply bg-neutral-900/80 rounded-2xl p-5;
-  box-shadow:
-    inset 0 10px 18px rgba(255,255,255,.05),
-    inset 0 -10px 18px rgba(0,0,0,.25);
-}
-
-/* placa cinza (sempre cinza) ocupando a largura, altura fixa */
-.price-tag{
-  /* cinza com leve gradiente e relevo */
-  --plate:#3b3b3b;
+/* placa cinza com relevo */
+.price-plaque {
   position: relative;
-  width: 100%;
-  height: 140px;                     /* altura da placa */
-  padding: 0 24px 0 86px;            /* espaço pro “furo”/recorte */
-  border-radius: 20px;
-  display: flex; align-items: center; justify-content: center;
-  background: linear-gradient(180deg,#4a4a4a 0%, var(--plate) 55%, #2f2f2f 100%);
+  border-radius: 1.25rem;
+  background: radial-gradient(120% 120% at 30% 20%, #3a3a3a 0%, #2a2a2a 45%, #1f1f1f 100%);
   box-shadow:
-    inset 0 10px 18px rgba(255,255,255,.08),
-    inset 0 -12px 16px rgba(0,0,0,.35),
-    0 16px 26px rgba(0,0,0,.45);
-  filter: drop-shadow(0 10px 18px rgba(0,0,0,.35));
+    inset 0 6px 14px rgba(255,255,255,.08),
+    inset 0 -8px 18px rgba(0,0,0,.6),
+    0 22px 35px rgba(0,0,0,.45);
+  padding: 1.25rem 1.25rem 1.1rem 1.25rem;
+  display: inline-flex;
+  align-items: center;
+  gap: .75rem;
 }
 
-/* recorte (lado esquerdo) */
-.price-tag::after{
+/* pino */
+.price-plaque .pin {
+  width: 18px; height: 18px;
+  border-radius: 50%;
+  background: #6b7280;                /* cinza */
+  box-shadow:
+    inset 0 2px 4px rgba(255,255,255,.2),
+    inset 0 -3px 5px rgba(0,0,0,.35),
+    0 0 12px rgba(255,0,0,.25);
+  position: relative;
+}
+.price-plaque .pin::after{
   content:"";
-  position:absolute; left:0; top:50%;
-  transform: translateY(-50%);
-  border-width: 38px 26px 38px 0;    /* maior pra casar com a altura */
-  border-style: solid;
-  border-color: transparent var(--plate) transparent transparent;
+  position:absolute; inset:0;
+  border-radius:inherit;
+  box-shadow: 0 0 18px rgba(255,0,0,.55);
+  opacity:.55;
 }
 
-/* furo */
-.price-tag::before{
-  content:"";
-  position:absolute; left:26px; top:50%;
-  transform: translateY(-50%);
-  width:26px; height:26px; border-radius:9999px;
-  background:#cfcfcf;
-  box-shadow: inset 0 0 0 6px var(--plate),
-              0 0 14px rgba(0,0,0,.35);
-}
-
-/* texto ocupa “quase” a placa inteira */
-.price-value{
-  display:block;
-  text-align:center;
-  line-height: .9;
+/* texto do preço – menor, com neon vermelho e preenchimento PRETO */
+.price-text {
   font-weight: 900;
-  color:#000;                         /* números pretos */
-  /* NEON VERMELHO */
+  letter-spacing: .5px;
+  line-height: .95;
+  color: #000;                         /* números pretos */
+  /* tamanho menor e responsivo */
+  font-size: clamp(2rem, 2.4vw + 1rem, 3rem);
   text-shadow:
-    0 0 4px rgba(255, 82, 82, .95),
-    0 0 12px rgba(255, 82, 82, .85),
-    0 0 26px rgba(255, 82, 82, .65),
-    0 6px 0 rgba(0,0,0,.35);
+    0 0 6px rgba(255,0,0,.55),
+    0 0 16px rgba(255,0,0,.55),
+    0 0 26px rgba(255,30,30,.45),
+    0 0 46px rgba(255,60,60,.35);
+  -webkit-text-stroke: 3px rgba(255,70,70,.8); /* borda vermelha */
 }
 
-/* tamanhos para preencher a placa */
-.price-currency{
-  display:block;
-  font-size: clamp(30px, 3.4vw, 48px);
-  margin-bottom: 2px;
-}
-.price-number{
-  display:block;
-  font-size: clamp(54px, 6.4vw, 92px);   /* bem grande para ocupar a placa */
+/* prefixo R$ */
+.price-prefix {
+  font-weight: 800;
+  margin-right: .35rem;
+  color: #000;
+  font-size: clamp(1.15rem, 1.4vw + .5rem, 1.65rem);
+  text-shadow:
+    0 0 6px rgba(255,0,0,.6),
+    0 0 16px rgba(255,0,0,.6);
+  -webkit-text-stroke: 2px rgba(255,70,70,.85);
 }
 
-/* você pode diminuir/aumentar a placa alterando a altura em .price-tag */
+/* badge “OFERTA” no topo do cartão */
+.offer-badge{
+  @apply absolute left-5 -top-3;
+  padding: .35rem .85rem;
+  border-radius: .6rem;
+  background: linear-gradient(90deg,#ff2a2a 0%, #ff6b6b 100%);
+  color:#fff;
+  font-weight: 900;
+  letter-spacing:.06em;
+  text-transform: uppercase;
+  font-size: .9rem;
+  box-shadow:
+    0 6px 18px rgba(255,0,0,.35),
+    inset 0 2px 6px rgba(255,255,255,.25);
+  position: absolute;
+}
+
+/* leve brilho extra */
+.offer-badge::after{
+  content:"";
+  position:absolute; inset:0;
+  border-radius:inherit;
+  box-shadow: 0 0 28px rgba(255,0,0,.65);
+  opacity:.45; pointer-events:none;
+}

@@ -18,11 +18,14 @@ export default function Home() {
   const [user, setUser] = useState<User | null>(null);
 
   useEffect(() => {
-    const unsub = onAuthStateChanged(auth, setUser);
-    return () => unsub();
+    const unsubscribe = onAuthStateChanged(auth, setUser);
+    return () => unsubscribe();
   }, []);
 
-  const handleCarrinhoClick = () => router.push(user ? '/carrinho' : '/login');
+  const handleCarrinhoClick = () => {
+    router.push(user ? '/carrinho' : '/login');
+  };
+
   const handleLoginClick = () => router.push('/login');
 
   return (
@@ -143,36 +146,38 @@ export default function Home() {
               preco: '37,87',
               img: '/produtos/Smirnoff-1L-uni00.jpg',
             },
-          ].map((p, idx) => (
-            <article
+          ].map((produto, idx) => (
+            <div
               key={idx}
-              className="bg-neutral-900 rounded-2xl overflow-hidden shadow-xl transition hover:scale-105 hover:shadow-2xl hover:rotate-[1deg]"
+              className="relative bg-neutral-900 rounded-2xl overflow-hidden shadow-2xl transition hover:scale-[1.015] hover:shadow-[0_35px_60px_rgba(0,0,0,0.55)]"
             >
+              {/* badge OFERTA */}
+              <span className="offer-badge">Oferta</span>
+
               <img
-                src={p.img}
-                alt={p.nome}
+                src={produto.img}
+                alt={produto.nome}
                 className="object-contain w-full bg-white h-60"
               />
-              <div className="p-5 space-y-3">
-                <h3 className="text-lg font-semibold">{p.nome}</h3>
-                <p className="text-sm text-gray-400">{p.descricao}</p>
 
-                {/* PLACA CINZA COM PREÇO GIGANTE E NEON VERMELHO */}
-                <div className="price-socket">
-                  <div className="price-tag">
-                    <span className="price-value">
-                      <span className="price-currency">R$</span>
-                      <span className="price-number">{p.preco}</span>
-                    </span>
+              <div className="p-5">
+                <h3 className="text-xl font-semibold">{produto.nome}</h3>
+                <p className="mt-1 text-gray-400">{produto.descricao}</p>
+
+                {/* placa + preço (menor) */}
+                <div className="mt-5">
+                  <div className="price-plaque">
+                    <span className="pin" aria-hidden />
+                    <span className="price-prefix">R$</span>
+                    <span className="price-text">{produto.preco}</span>
                   </div>
                 </div>
               </div>
-            </article>
+            </div>
           ))}
         </div>
       </section>
 
-      {/* Rodapé */}
       <Footer />
     </>
   );
