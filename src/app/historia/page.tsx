@@ -4,127 +4,160 @@ import TimelineClient from "./timeline-client";
 export const metadata = {
   title: "História das Marcas | Império",
   description:
-    "Explore a linha do tempo de marcas icônicas. Começando pela Coca-Cola: marcos, curiosidades e capítulos que moldaram uma das marcas mais famosas do mundo.",
+    "Linha do tempo interativa das grandes marcas. Começando pela Coca-Cola, com marcos, imagens e curiosidades até os dias atuais.",
 };
 
-type TimelineEvent = {
+export type TimelineEvent = {
   id: string;
   year: number;
   title: string;
   text: string;
-  image?: string;
+  image?: string; // coloque seus arquivos aqui (ex.: /historia/coca/1886.jpg)
 };
 
-type Brand = {
+export type Brand = {
   slug: string;
   name: string;
-  logo: string;   // imagem circular do “balão”
-  banner?: string;
-  color: string;  // cor de destaque da marca
+  logo: string;     // ícone redondo do topo
+  banner?: string;  // opcional
+  color: string;    // cor principal (ex.: vermelho Coca)
+  dark: string;     // cor escura p/ gradientes
+  liquid: string;   // cor do “líquido” no copo
   events: TimelineEvent[];
 };
 
 export default function HistoriaPage() {
-  // — Apenas Coca-Cola por enquanto —
-  const cocaEvents: TimelineEvent[] = [
-    {
-      id: "coca-1886",
-      year: 1886,
-      title: "A fórmula nasce em Atlanta",
-      text:
-        "O farmacêutico John Pemberton cria a Coca-Cola na Jacob’s Pharmacy, servida inicialmente como tônico em fontes de soda.",
-      image: "/produtos/coca-cola-2L.jpg",
-    },
-    {
-      id: "coca-1892",
-      year: 1892,
-      title: "The Coca-Cola Company",
-      text:
-        "Asa Griggs Candler adquire direitos e funda oficialmente a The Coca-Cola Company, iniciando a expansão comercial.",
-    },
-    {
-      id: "coca-1915",
-      year: 1915,
-      title: "A garrafa contour",
-      text:
-        "Nasce a icônica garrafa de curvas (“contour bottle”), criada para ser reconhecida até no escuro ou quebrada.",
-    },
-    {
-      id: "coca-1931",
-      year: 1931,
-      title: "O Papai Noel vermelho",
-      text:
-        "As ilustrações de Haddon Sundblom para campanhas da marca ajudam a popularizar o visual moderno do Papai Noel.",
-    },
-    {
-      id: "coca-1941",
-      year: 1941,
-      title: "Segunda Guerra Mundial",
-      text:
-        "A empresa promete fornecer Coca-Cola a US$ 0,05 a todos os soldados americanos, levando fábricas e a marca ao mundo.",
-    },
-    {
-      id: "coca-1955",
-      year: 1955,
-      title: "Novos tamanhos & embalagens",
-      text:
-        "Chegam garrafas em diferentes tamanhos e, mais tarde, as versões em lata tornam o consumo ainda mais prático.",
-    },
-    {
-      id: "coca-1961",
-      year: 1961,
-      title: "Sprite é lançada",
-      text:
-        "A família de produtos cresce com a Sprite, que se torna um dos refrigerantes de limão mais vendidos do planeta.",
-    },
-    {
-      id: "coca-1985",
-      year: 1985,
-      title: "New Coke",
-      text:
-        "A tentativa de mudar a fórmula gera reação histórica dos consumidores. A marca traz de volta a ‘Coca-Cola Classic’.",
-    },
-    {
-      id: "coca-2005",
-      year: 2005,
-      title: "Coca-Cola Zero",
-      text:
-        "Uma nova linha ‘zero açúcar’ expande o portfólio e atinge público que buscava sabor clássico com menos calorias.",
-    },
-    {
-      id: "coca-2021",
-      year: 2021,
-      title: "Novos rótulos e foco em sustentabilidade",
-      text:
-        "A companhia renova design, simplifica portfólio global e acelera metas de reciclagem e redução de pegada ambiental.",
-    },
-  ];
-
-  const brands: Brand[] = [
-    {
-      slug: "coca-cola",
-      name: "Coca-Cola",
-      logo: "/produtos/coca-cola-2L.jpg", // usa sua imagem já na pasta /public/produtos
-      banner: "/produtos/coca-cola-2L.jpg",
-      color: "#E10600",
-      events: cocaEvents,
-    },
-  ];
+  // coca-cola: marcos até hoje (exemplo – troque / adicione os seus)
+  const coca: Brand = {
+    slug: "coca-cola",
+    name: "Coca-Cola",
+    logo: "/produtos/coca-cola-2L.jpg",
+    banner: "/produtos/coca-cola-2L.jpg",
+    color: "#E10600",
+    dark: "#7a0b0b",
+    liquid: "#c81414",
+    events: [
+      {
+        id: "coca-1886",
+        year: 1886,
+        title: "A fórmula nasce em Atlanta",
+        text:
+          "John Pemberton cria a Coca-Cola na Jacob’s Pharmacy, vendida em fontes de soda como tônico.",
+        image: "/historia/coca/1886.jpg",
+      },
+      {
+        id: "coca-1892",
+        year: 1892,
+        title: "The Coca-Cola Company",
+        text:
+          "Asa Griggs Candler adquire direitos e funda a companhia, acelerando a expansão comercial.",
+        image: "/historia/coca/1892.jpg",
+      },
+      {
+        id: "coca-1915",
+        year: 1915,
+        title: "A garrafa contour",
+        text:
+          "A icônica garrafa de curvas nasce para ser reconhecida até no escuro ou quebrada.",
+        image: "/historia/coca/1915.jpg",
+      },
+      {
+        id: "coca-1931",
+        year: 1931,
+        title: "O Papai Noel vermelho",
+        text:
+          "Ilustrações de Haddon Sundblom popularizam o visual moderno do Papai Noel em campanhas.",
+        image: "/historia/coca/1931.jpg",
+      },
+      {
+        id: "coca-1941",
+        year: 1941,
+        title: "Guerra & globalização",
+        text:
+          "A promessa de vender Coca por 5 cents a todos os soldados leva fábricas e a marca ao mundo.",
+        image: "/historia/coca/1941.jpg",
+      },
+      {
+        id: "coca-1955",
+        year: 1955,
+        title: "Novos tamanhos & latas",
+        text:
+          "Más embalagens e formatos tornam o consumo ainda mais prático e difundem a marca.",
+        image: "/historia/coca/1955.jpg",
+      },
+      {
+        id: "coca-1961",
+        year: 1961,
+        title: "Sprite chega ao portfólio",
+        text:
+          "A família cresce com a Sprite, que se torna um refrigerante de limão global.",
+        image: "/historia/coca/1961.jpg",
+      },
+      {
+        id: "coca-1985",
+        year: 1985,
+        title: "New Coke",
+        text:
+          "A mudança de fórmula gera reação histórica; a ‘Coca-Cola Classic’ volta pouco depois.",
+        image: "/historia/coca/1985.jpg",
+      },
+      {
+        id: "coca-2005",
+        year: 2005,
+        title: "Coca-Cola Zero",
+        text:
+          "Linha zero açúcar amplia o alcance para quem busca menos calorias sem abrir mão do sabor.",
+        image: "/historia/coca/2005.jpg",
+      },
+      {
+        id: "coca-2016",
+        year: 2016,
+        title: "Taste the Feeling",
+        text:
+          "Nova plataforma global foca momentos e sensações compartilhadas ao redor da bebida.",
+        image: "/historia/coca/2016.jpg",
+      },
+      {
+        id: "coca-2021",
+        year: 2021,
+        title: "Sustentabilidade & design",
+        text:
+          "Rótulos e portfólio simplificados, foco forte em reciclagem e redução de pegada ambiental.",
+        image: "/historia/coca/2021.jpg",
+      },
+      {
+        id: "coca-2024",
+        year: 2024,
+        title: "Inovações e sabores",
+        text:
+          "Edições limitadas e sabores sazonais; a marca explora experiências e collabs culturais.",
+        image: "/historia/coca/2024.jpg",
+      },
+      {
+        id: "coca-2025",
+        year: 2025,
+        title: "Hoje",
+        text:
+          "A Coca-Cola segue entre as mais valiosas do planeta, com iniciativas digitais e ESG.",
+        image: "/historia/coca/2025.jpg",
+      },
+    ],
+  };
 
   return (
     <main className="min-h-screen text-white bg-black">
       <section className="container py-10">
-        <h1 className="mb-2 text-3xl font-bold text-center md:text-4xl">
+        <h1 className="text-3xl font-bold text-center md:text-4xl">
           Histórias de Grandes Marcas
         </h1>
-        <p className="max-w-3xl mx-auto text-center text-gray-300">
+        <p className="max-w-3xl mx-auto mt-2 text-center text-gray-300">
           Clique na marca para ver a linha do tempo. Começamos com a Coca-Cola —
           em breve adicionaremos outras (Brahma, Smirnoff, Royal Salute…).
         </p>
       </section>
 
-      {/* Componente client: balões + timeline + seções com rolagem */}
-      <TimelineClient brands={brands} />
+      {/* Client: interações, mangueira e copo */}
+      <TimelineClient brands={[coca]} />
     </main>
   );
 }
