@@ -133,16 +133,16 @@ export default function Home() {
               img: '/produtos/Brahma-chopp-cx.jpg',
             },
             {
-              nome: 'Johnnie Walker Blue Label',
-              descricao: 'Whisky Escocês Premium',
-              preco: 'R$ 999,90',
-              img: '/produtos/blue-label.jpg',
-            },
-            {
               nome: 'Royal Salute 21 Anos',
               descricao: 'Whisky Escocês Luxo',
-              preco: 'R$ 999,99',
+              preco: 'R$ 999,90',
               img: '/produtos/royal-salute.jpg',
+            },
+            {
+              nome: 'VodKa SMIIRNOFF 1l',
+              descricao: 'CAMPEÃ DE VENDAS  A Smirnoff se encontra em uma faixa Neutra, suave e versátil — triplamente destilada.',
+              preco: 'R$ 37,87',
+              img: '/produtos/Smirnoff-1L-uni.jpg',
             },
           ].map((produto, idx) => (
             <div
