@@ -111,7 +111,7 @@ export default function Home() {
           </p>
           <a
             href="/produtos"
-            className="inline-block px-6 py-3 mt-6 font-semibold text-black transition duration-300 bg-white rounded-full shadow-md hover:bg-gray-200"
+            className="inline-block px-6 py-3 mt-6 font-semibold text-white transition duration-300 bg-white rounded-full shadow-md hover:bg-gray-200"
           >
             Ver produtos
           </a>
@@ -119,7 +119,7 @@ export default function Home() {
       </section>
 
       {/* Destaques da Semana */}
-      <section className="px-4 py-16 text-white bg-white">
+      <section className="px-4 py-16 text-white bg-black">
         <h2 className="mb-10 text-3xl font-bold text-center md:text-4xl">
           Destaques da Semana
         </h2>
