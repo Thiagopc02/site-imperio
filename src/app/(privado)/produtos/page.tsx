@@ -1,7 +1,7 @@
 'use client';
 
 import { useRouter } from 'next/navigation';
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { onAuthStateChanged } from 'firebase/auth';
 import { collection, getDocs } from 'firebase/firestore';
 import { auth, db } from '@/firebase/config';
@@ -14,11 +14,11 @@ type Produto = {
   precoCaixa?: number;
   itensPorCaixa?: number;
   descrição: string;
-  imagem: string;
-  categoria: string;
-  destaque: boolean;        // “Novidade”
+  imagem: string;       // ex.: "coca-zero-2l.png" ou "/produtos/coca-zero-2l.png"
+  categoria: string;    // ex.: "Refrescos e Sucos"
+  destaque: boolean;    // “Novidade”
   disponivelPor?: string[];
-  emFalta?: boolean;        // controle de estoque
+  emFalta?: boolean;    // controle de estoque
 };
 
 const NOV_KEY = '__novidades__';
@@ -77,41 +77,32 @@ function CopaoButton({ active, onClick }: { active: boolean; onClick: () => void
         width: 200,
         height: 52,
         background: 'linear-gradient(135deg, #0ea5e9 0%, #22c55e 55%, #f59e0b 100%)',
-        boxShadow:
-          '0 10px 26px rgba(14,165,233,.35), inset 0 0 12px rgba(255,255,255,.18)',
+        boxShadow: '0 10px 26px rgba(14,165,233,.35), inset 0 0 12px rgba(255,255,255,.18)',
       }}
     >
-      {/* “3D text” com múltiplas sombras */}
       <span
         className="flex items-center gap-2 text-white"
         style={{
           fontWeight: 900,
           letterSpacing: 0.4,
-          textShadow:
-            '0 2px 0 #0f172a, 0 4px 0 rgba(0,0,0,.35), 0 6px 12px rgba(0,0,0,.45)',
+          textShadow: '0 2px 0 #0f172a, 0 4px 0 rgba(0,0,0,.35), 0 6px 12px rgba(0,0,0,.45)',
           filter: 'drop-shadow(0 2px 6px rgba(0,0,0,.35))',
         }}
       >
         🥤
         <span
-          style={{
-            transform: 'translateY(-1px)',
-            // leve extrusão simulada
-            WebkitTextStroke: '0.5px rgba(255,255,255,.22)',
-          }}
+          style={{ transform: 'translateY(-1px)', WebkitTextStroke: '0.5px rgba(255,255,255,.22)' }}
           className="text-sm md:text-base"
         >
           COPÃO DE <span className="whitespace-nowrap">770ml</span>
         </span>
       </span>
 
-      {/* brilho suave ao hover */}
       <span
         aria-hidden
         className="absolute inset-0 transition opacity-0 pointer-events-none rounded-xl hover:opacity-100"
         style={{
-          background:
-            'radial-gradient(70% 60% at 50% 45%, rgba(255,255,255,.18), transparent 60%)',
+          background: 'radial-gradient(70% 60% at 50% 45%, rgba(255,255,255,.18), transparent 60%)',
           filter: 'blur(8px)',
         }}
       />
@@ -119,11 +110,37 @@ function CopaoButton({ active, onClick }: { active: boolean; onClick: () => void
   );
 }
 
+/** Deduz a “marca” a partir do nome do produto (flexível e case-insensitive) */
+function inferirMarca(nome: string): string {
+  const n = (nome || '').toLowerCase();
+
+  // mapeamentos de prefixos / palavras-chave
+  const regras: [string, RegExp][] = [
+    ['Coca Cola', /\b(coca[\s-]?cola|coca)\b/],
+    ['Guaraná Antarctica', /\b(guaran[aá][\s-]?antarctica|guaran[aá])\b/],
+    ['H2OH!', /\bh2oh!?/],
+    ['Schweppes', /\bschweppes\b/],
+    ['Fanta', /\bfanta\b/],
+    ['Sprite', /\bsprite\b/],
+    ['Monster', /\bmonster\b/],
+    ['Itubaína', /\bitubain[aã]\b/],
+    ['Água Crystal', /\b(crystal|cristal)\b/],
+  ];
+
+  for (const [marca, regex] of regras) {
+    if (regex.test(n)) return marca;
+  }
+  // fallback: 1ª palavra com inicial maiúscula
+  const primeira = (nome || '').trim().split(/\s+/)[0];
+  return primeira ? primeira.charAt(0).toUpperCase() + primeira.slice(1) : 'Outras';
+}
+
 export default function ProdutosPage() {
   const router = useRouter();
   const [produtos, setProdutos] = useState<Produto[]>([]);
   const [quantidade, setQuantidade] = useState<Record<string, number>>({});
   const [categoriaSelecionada, setCategoriaSelecionada] = useState<string>('');
+  const [marcaSelecionada, setMarcaSelecionada] = useState<string>(''); // NEW
   const [tipoSelecionado, setTipoSelecionado] = useState<Record<string, string>>({});
   const { adicionarAoCarrinho } = useCart();
 
@@ -193,10 +210,39 @@ export default function ProdutosPage() {
     { nome: 'Chocolates', emoji: '🍫' },
   ];
 
-  const produtosFiltrados =
-    categoriaSelecionada === NOV_KEY
-      ? produtos.filter((p) => p.destaque)
-      : produtos.filter((p) => p.categoria === categoriaSelecionada);
+  /** Marcas derivadas dinamicamente dos produtos (já carregados) */
+  const marcas = useMemo(() => {
+    const set = new Set<string>();
+    produtos.forEach((p) => set.add(inferirMarca(p.nome)));
+    // ordenar deixando as mais “populares” primeiro
+    const arr = Array.from(set);
+    const popularidade = (m: string) => produtos.filter((p) => inferirMarca(p.nome) === m).length;
+    return arr.sort((a, b) => popularidade(b) - popularidade(a));
+  }, [produtos]);
+
+  /** Aplica filtros combinados: categoria/novidade + marca */
+  const produtosFiltrados = useMemo(() => {
+    let base: Produto[] = produtos;
+
+    if (categoriaSelecionada === NOV_KEY) {
+      base = base.filter((p) => p.destaque);
+    } else if (categoriaSelecionada === COPAO_CAT) {
+      base = base.filter((p) => p.categoria === COPAO_CAT);
+    } else if (categoriaSelecionada) {
+      base = base.filter((p) => p.categoria === categoriaSelecionada);
+    }
+
+    if (marcaSelecionada) {
+      base = base.filter((p) => inferirMarca(p.nome) === marcaSelecionada);
+    }
+
+    return base;
+  }, [produtos, categoriaSelecionada, marcaSelecionada]);
+
+  const limparFiltros = () => {
+    setCategoriaSelecionada('');
+    setMarcaSelecionada('');
+  };
 
   return (
     <main className="min-h-screen px-4 py-8 text-white bg-black">
@@ -206,11 +252,13 @@ export default function ProdutosPage() {
         </h1>
 
         {/* Barra de categorias */}
-        <div className="flex flex-wrap justify-center gap-3 mb-10">
+        <div className="flex flex-wrap justify-center gap-3 mb-6">
           {categorias.map((cat) => (
             <button
               key={cat.nome}
-              className={`px-4 py-2 rounded-lg bg-gray-800 hover:bg-gray-700 transition text-white text-sm font-medium flex items-center gap-2 ${categoriaSelecionada === cat.nome ? 'ring-2 ring-yellow-400' : ''}`}
+              className={`px-4 py-2 rounded-lg bg-gray-800 hover:bg-gray-700 transition text-white text-sm font-medium flex items-center gap-2 ${
+                categoriaSelecionada === cat.nome ? 'ring-2 ring-yellow-400' : ''
+              }`}
               onClick={() => setCategoriaSelecionada(cat.nome)}
             >
               <span>{cat.emoji}</span>
@@ -229,15 +277,43 @@ export default function ProdutosPage() {
           />
         </div>
 
-        {!categoriaSelecionada && (
+        {/* Barra de marcas */}
+        <div className="flex flex-wrap justify-center gap-2 mb-8">
+          {marcas.map((m) => (
+            <button
+              key={m}
+              className={`px-3 py-1.5 rounded-full text-sm border transition ${
+                marcaSelecionada === m
+                  ? 'bg-yellow-400 text-black border-yellow-400'
+                  : 'bg-zinc-800 text-white border-zinc-700 hover:bg-zinc-700'
+              }`}
+              onClick={() => setMarcaSelecionada(m)}
+              aria-pressed={marcaSelecionada === m}
+            >
+              {m}
+            </button>
+          ))}
+
+          {(marcaSelecionada || categoriaSelecionada) && (
+            <button
+              onClick={limparFiltros}
+              className="px-3 py-1.5 rounded-full text-sm bg-zinc-700 hover:bg-zinc-600 text-white border border-zinc-600"
+              title="Limpar filtros"
+            >
+              Limpar filtros
+            </button>
+          )}
+        </div>
+
+        {!categoriaSelecionada && !marcaSelecionada && (
           <p className="mb-10 text-lg text-center text-gray-300">
-            👇 Escolha uma aba da categoria que deseja ver
+            👇 Escolha uma categoria ou uma marca para filtrar os produtos
           </p>
         )}
 
-        {categoriaSelecionada && produtosFiltrados.length === 0 && (
+        {(categoriaSelecionada || marcaSelecionada) && produtosFiltrados.length === 0 && (
           <p className="text-lg font-bold text-center text-red-400">
-            Nenhum produto encontrado nesta categoria.
+            Nenhum produto encontrado com esses filtros.
           </p>
         )}
 
@@ -247,10 +323,18 @@ export default function ProdutosPage() {
             const preco = tipo === 'caixa' ? produto.precoCaixa ?? 0 : produto.precoUnidade ?? 0;
             const esgotado = !!produto.emFalta;
 
+            // garante caminho correto para imagens locais dentro de /public/produtos
+            const imgSrc =
+              produto.imagem?.startsWith('http') || produto.imagem?.startsWith('/')
+                ? produto.imagem
+                : `/produtos/${produto.imagem}`;
+
             return (
               <div
                 key={produto.id}
-                className={`flex flex-col p-4 transition-transform shadow-2xl rounded-xl bg-gradient-to-br from-neutral-900 via-neutral-800 to-neutral-900 hover:scale-105 hover:shadow-yellow-400/20 ${esgotado ? 'opacity-70' : ''}`}
+                className={`flex flex-col p-4 transition-transform shadow-2xl rounded-xl bg-gradient-to-br from-neutral-900 via-neutral-800 to-neutral-900 hover:scale-105 hover:shadow-yellow-400/20 ${
+                  esgotado ? 'opacity-70' : ''
+                }`}
               >
                 <div className="relative flex items-center justify-center w-full mb-3 overflow-hidden rounded-md aspect-square bg-black/20">
                   {esgotado && (
@@ -259,7 +343,7 @@ export default function ProdutosPage() {
                     </span>
                   )}
                   <img
-                    src={`/produtos/${produto.imagem}`}
+                    src={imgSrc}
                     alt={produto.nome}
                     className="object-contain max-w-full max-h-full"
                   />
@@ -288,7 +372,11 @@ export default function ProdutosPage() {
                     </select>
                   )}
 
-                  <p className={`mb-2 text-lg font-semibold ${esgotado ? 'text-gray-400' : 'text-green-400'}`}>
+                  <p
+                    className={`mb-2 text-lg font-semibold ${
+                      esgotado ? 'text-gray-400' : 'text-green-400'
+                    }`}
+                  >
                     R$ {preco.toFixed(2)}
                   </p>
 
