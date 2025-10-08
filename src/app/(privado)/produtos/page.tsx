@@ -14,11 +14,11 @@ type Produto = {
   precoCaixa?: number;
   itensPorCaixa?: number;
   descrição: string;
-  imagem: string;       // ex.: "coca-zero-2l.png" ou "/produtos/coca-zero-2l.png"
-  categoria: string;    // ex.: "Refrescos e Sucos"
-  destaque: boolean;    // “Novidade”
+  imagem: string;       // "coca-zero-2l.png" ou "/produtos/coca-zero-2l.png"
+  categoria: string;    // "Refrescos e Sucos", etc.
+  destaque: boolean;
   disponivelPor?: string[];
-  emFalta?: boolean;    // controle de estoque
+  emFalta?: boolean;
 };
 
 const NOV_KEY = '__novidades__';
@@ -62,7 +62,7 @@ function NovidadeButton({ active, onClick }: { active: boolean; onClick: () => v
   );
 }
 
-/** Botão especial “Copão de 770ml” — estilo próprio com título 3D */
+/** Botão especial “Copão de 770ml” */
 function CopaoButton({ active, onClick }: { active: boolean; onClick: () => void }) {
   return (
     <button
@@ -97,7 +97,6 @@ function CopaoButton({ active, onClick }: { active: boolean; onClick: () => void
           COPÃO DE <span className="whitespace-nowrap">770ml</span>
         </span>
       </span>
-
       <span
         aria-hidden
         className="absolute inset-0 transition opacity-0 pointer-events-none rounded-xl hover:opacity-100"
@@ -110,11 +109,11 @@ function CopaoButton({ active, onClick }: { active: boolean; onClick: () => void
   );
 }
 
-/** Deduz a “marca” a partir do nome do produto (flexível e case-insensitive) */
+/* ---------- utils: marca e volume ---------- */
+
+/** Deduz a “marca” a partir do nome (flexível) */
 function inferirMarca(nome: string): string {
   const n = (nome || '').toLowerCase();
-
-  // mapeamentos de prefixos / palavras-chave
   const regras: [string, RegExp][] = [
     ['Coca Cola', /\b(coca[\s-]?cola|coca)\b/],
     ['Guaraná Antarctica', /\b(guaran[aá][\s-]?antarctica|guaran[aá])\b/],
@@ -123,34 +122,50 @@ function inferirMarca(nome: string): string {
     ['Fanta', /\bfanta\b/],
     ['Sprite', /\bsprite\b/],
     ['Monster', /\bmonster\b/],
-    ['Itubaína', /\bitubain[aã]\b/],
     ['Água Crystal', /\b(crystal|cristal)\b/],
   ];
-
-  for (const [marca, regex] of regras) {
-    if (regex.test(n)) return marca;
-  }
-  // fallback: 1ª palavra com inicial maiúscula
+  for (const [marca, regex] of regras) if (regex.test(n)) return marca;
   const primeira = (nome || '').trim().split(/\s+/)[0];
   return primeira ? primeira.charAt(0).toUpperCase() + primeira.slice(1) : 'Outras';
 }
+
+/** Extrai um volume aproximado em ML a partir do nome (2L, 1,5L, 310ml, 500 ML, etc.) */
+function extrairVolumeMl(nome: string): number {
+  const n = (nome || '').toLowerCase().replace(',', '.').replace(/\s+/g, '');
+  const litro = n.match(/(\d+(?:\.\d+)?)l/);
+  const ml = n.match(/(\d+)\s?ml/);
+  if (litro) {
+    const v = parseFloat(litro[1]);
+    if (!Number.isNaN(v)) return Math.round(v * 1000);
+  }
+  if (ml) {
+    const v = parseInt(ml[1], 10);
+    if (!Number.isNaN(v)) return v;
+  }
+  const qualquer = n.match(/(\d+(?:\.\d+)?)/);
+  if (qualquer) {
+    const v = parseFloat(qualquer[1]);
+    if (v > 10) return Math.round(v);      // supõe ml (ex.: 600 -> 600 ml)
+    if (v > 0) return Math.round(v * 1000); // supõe L (ex.: 2 -> 2000 ml)
+  }
+  return 0;
+}
+
+/* ------------------------------------------ */
 
 export default function ProdutosPage() {
   const router = useRouter();
   const [produtos, setProdutos] = useState<Produto[]>([]);
   const [quantidade, setQuantidade] = useState<Record<string, number>>({});
-  const [categoriaSelecionada, setCategoriaSelecionada] = useState<string>('');
-  const [marcaSelecionada, setMarcaSelecionada] = useState<string>(''); // NEW
+  const [categoriaSelecionada, setCategoriaSelecionada] = useState<string>(''); // pode ficar vazia
+  const [marcaSelecionada, setMarcaSelecionada] = useState<string>('');        // idem
   const [tipoSelecionado, setTipoSelecionado] = useState<Record<string, string>>({});
   const { adicionarAoCarrinho } = useCart();
 
   useEffect(() => {
     const unsub = onAuthStateChanged(auth, (user) => {
-      if (!user) {
-        router.push('/login');
-      } else {
-        carregarProdutos();
-      }
+      if (!user) router.push('/login');
+      else carregarProdutos();
     });
     return () => unsub();
   }, [router]);
@@ -178,28 +193,18 @@ export default function ProdutosPage() {
   };
 
   const alterarQuantidade = (id: string, delta: number) => {
-    setQuantidade((prev) => ({
-      ...prev,
-      [id]: Math.max((prev[id] || 0) + delta, 0),
-    }));
+    setQuantidade((prev) => ({ ...prev, [id]: Math.max((prev[id] || 0) + delta, 0) }));
   };
 
   const handleAdicionar = (produto: Produto) => {
     if (produto.emFalta) return;
     const tipo = tipoSelecionado[produto.id] || 'unidade';
     const preco = tipo === 'caixa' ? produto.precoCaixa ?? 0 : produto.precoUnidade ?? 0;
-
-    adicionarAoCarrinho({
-      ...produto,
-      tipo,
-      preco,
-      quantidade: quantidade[produto.id] || 1,
-    });
-
+    adicionarAoCarrinho({ ...produto, tipo, preco, quantidade: quantidade[produto.id] || 1 });
     setQuantidade((prev) => ({ ...prev, [produto.id]: 0 }));
   };
 
-  // Lista normal de categorias (SEM o Copão — ele vira botão especial)
+  // Categorias (Copão & Novidade continuam funcionando)
   const categorias = [
     { nome: 'Refrescos e Sucos', emoji: '🧃' },
     { nome: 'Fermentados', emoji: '🍺' },
@@ -210,49 +215,74 @@ export default function ProdutosPage() {
     { nome: 'Chocolates', emoji: '🍫' },
   ];
 
-  /** Marcas derivadas dinamicamente dos produtos (já carregados) */
-  const marcas = useMemo(() => {
-    const set = new Set<string>();
-    produtos.forEach((p) => set.add(inferirMarca(p.nome)));
-    // ordenar deixando as mais “populares” primeiro
-    const arr = Array.from(set);
-    const popularidade = (m: string) => produtos.filter((p) => inferirMarca(p.nome) === m).length;
-    return arr.sort((a, b) => popularidade(b) - popularidade(a));
-  }, [produtos]);
-
-  /** Aplica filtros combinados: categoria/novidade + marca */
-  const produtosFiltrados = useMemo(() => {
-    let base: Produto[] = produtos;
-
-    if (categoriaSelecionada === NOV_KEY) {
-      base = base.filter((p) => p.destaque);
-    } else if (categoriaSelecionada === COPAO_CAT) {
-      base = base.filter((p) => p.categoria === COPAO_CAT);
-    } else if (categoriaSelecionada) {
-      base = base.filter((p) => p.categoria === categoriaSelecionada);
-    }
-
-    if (marcaSelecionada) {
-      base = base.filter((p) => inferirMarca(p.nome) === marcaSelecionada);
-    }
-
+  // Base filtrada por categoria/novidade — se nenhuma selecionada, usa TODOS
+  const baseFiltrada = useMemo(() => {
+    let base = produtos;
+    if (categoriaSelecionada === NOV_KEY) base = base.filter((p) => p.destaque);
+    else if (categoriaSelecionada === COPAO_CAT) base = base.filter((p) => p.categoria === COPAO_CAT);
+    else if (categoriaSelecionada) base = base.filter((p) => p.categoria === categoriaSelecionada);
     return base;
-  }, [produtos, categoriaSelecionada, marcaSelecionada]);
+  }, [produtos, categoriaSelecionada]);
+
+  // Grupos por marca, ordenados por volume desc; se marcaSelecionada setada, mostra só ela
+  const gruposPorMarca = useMemo(() => {
+    const lista = marcaSelecionada
+      ? baseFiltrada.filter((p) => inferirMarca(p.nome) === marcaSelecionada)
+      : baseFiltrada;
+
+    const mapa = new Map<string, Produto[]>();
+    for (const p of lista) {
+      const marca = inferirMarca(p.nome);
+      if (!mapa.has(marca)) mapa.set(marca, []);
+      mapa.get(marca)!.push(p);
+    }
+
+    for (const [_, arr] of mapa) {
+      arr.sort((a, b) => {
+        const va = extrairVolumeMl(a.nome);
+        const vb = extrairVolumeMl(b.nome);
+        if (vb !== va) return vb - va; // maior ml primeiro
+        return a.nome.localeCompare(b.nome);
+      });
+    }
+
+    // ordem das marcas: alfabética
+    return Array.from(mapa.entries()).sort(([a], [b]) => a.localeCompare(b));
+  }, [baseFiltrada, marcaSelecionada]);
 
   const limparFiltros = () => {
     setCategoriaSelecionada('');
     setMarcaSelecionada('');
   };
 
+  // chips de marcas para filtrar rapidamente
+  const marcasDisponiveis = useMemo(() => {
+    const set = new Set<string>();
+    baseFiltrada.forEach((p) => set.add(inferirMarca(p.nome)));
+    return Array.from(set).sort((a, b) => a.localeCompare(b));
+  }, [baseFiltrada]);
+
+  const imgSrcFrom = (produto: Produto) =>
+    produto.imagem?.startsWith('http') || produto.imagem?.startsWith('/')
+      ? produto.imagem
+      : `/produtos/${produto.imagem}`;
+
+  const tituloSecao = (marca: string) => `Refrigerantes ${marca}`;
+
   return (
     <main className="min-h-screen px-4 py-8 text-white bg-black">
       <div className="max-w-6xl mx-auto">
-        <h1 className="text-4xl sm:text-5xl md:text-6xl text-center font-extrabold bg-clip-text text-transparent bg-gradient-to-r from-yellow-500 via-orange-600 to-red-600 mb-8 drop-shadow-[2px_2px_2px_#ff0000]">
+        {/* Frase acima de CATEGORIAS */}
+        <p className="mb-2 text-sm text-center text-zinc-300">
+          Produtos já organizados por marca — do MAIOR para o MENOR volume (ml).
+        </p>
+
+        <h1 className="text-4xl sm:text-5xl md:text-6xl text-center font-extrabold bg-clip-text text-transparent bg-gradient-to-r from-yellow-500 via-orange-600 to-red-600 mb-6 drop-shadow-[2px_2px_2px_#ff0000]">
           CATEGORIAS
         </h1>
 
         {/* Barra de categorias */}
-        <div className="flex flex-wrap justify-center gap-3 mb-6">
+        <div className="flex flex-wrap justify-center gap-3 mb-4">
           {categorias.map((cat) => (
             <button
               key={cat.nome}
@@ -265,8 +295,6 @@ export default function ProdutosPage() {
               {cat.nome}
             </button>
           ))}
-
-          {/* Botões especiais */}
           <CopaoButton
             active={categoriaSelecionada === COPAO_CAT}
             onClick={() => setCategoriaSelecionada(COPAO_CAT)}
@@ -277,9 +305,9 @@ export default function ProdutosPage() {
           />
         </div>
 
-        {/* Barra de marcas */}
-        <div className="flex flex-wrap justify-center gap-2 mb-8">
-          {marcas.map((m) => (
+        {/* Barra de marcas (funciona para QUALQUER categoria escolhida) */}
+        <div className="flex flex-wrap justify-center gap-2 mb-6">
+          {marcasDisponiveis.map((m) => (
             <button
               key={m}
               className={`px-3 py-1.5 rounded-full text-sm border transition ${
@@ -305,113 +333,107 @@ export default function ProdutosPage() {
           )}
         </div>
 
-        {!categoriaSelecionada && !marcaSelecionada && (
-          <p className="mb-10 text-lg text-center text-gray-300">
-            👇 Escolha uma categoria ou uma marca para filtrar os produtos
-          </p>
-        )}
+        {/* AGRUPAMENTOS — já aparecem assim na ABERTURA da página */}
+        {gruposPorMarca.length === 0 ? (
+          <p className="font-semibold text-center text-red-400">Nenhum produto encontrado.</p>
+        ) : (
+          gruposPorMarca.map(([marca, itens]) => (
+            <section key={marca} className="mb-10">
+              <h2 className="mb-4 text-2xl font-extrabold text-yellow-400 md:text-3xl">
+                {tituloSecao(marca)}
+              </h2>
 
-        {(categoriaSelecionada || marcaSelecionada) && produtosFiltrados.length === 0 && (
-          <p className="text-lg font-bold text-center text-red-400">
-            Nenhum produto encontrado com esses filtros.
-          </p>
-        )}
+              <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 md:grid-cols-3">
+                {itens.map((produto) => {
+                  const tipo = tipoSelecionado[produto.id] || 'unidade';
+                  const preco = tipo === 'caixa' ? produto.precoCaixa ?? 0 : produto.precoUnidade ?? 0;
+                  const esgotado = !!produto.emFalta;
+                  const imgSrc = imgSrcFrom(produto);
 
-        <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 md:grid-cols-3">
-          {produtosFiltrados.map((produto) => {
-            const tipo = tipoSelecionado[produto.id] || 'unidade';
-            const preco = tipo === 'caixa' ? produto.precoCaixa ?? 0 : produto.precoUnidade ?? 0;
-            const esgotado = !!produto.emFalta;
-
-            // garante caminho correto para imagens locais dentro de /public/produtos
-            const imgSrc =
-              produto.imagem?.startsWith('http') || produto.imagem?.startsWith('/')
-                ? produto.imagem
-                : `/produtos/${produto.imagem}`;
-
-            return (
-              <div
-                key={produto.id}
-                className={`flex flex-col p-4 transition-transform shadow-2xl rounded-xl bg-gradient-to-br from-neutral-900 via-neutral-800 to-neutral-900 hover:scale-105 hover:shadow-yellow-400/20 ${
-                  esgotado ? 'opacity-70' : ''
-                }`}
-              >
-                <div className="relative flex items-center justify-center w-full mb-3 overflow-hidden rounded-md aspect-square bg-black/20">
-                  {esgotado && (
-                    <span className="absolute z-10 px-2 py-1 text-xs font-bold text-white bg-red-600 rounded">
-                      ESGOTADO
-                    </span>
-                  )}
-                  <img
-                    src={imgSrc}
-                    alt={produto.nome}
-                    className="object-contain max-w-full max-h-full"
-                  />
-                </div>
-
-                <div className="flex-1">
-                  <h2 className="text-lg font-bold text-yellow-400">{produto.nome}</h2>
-                  <p className="mb-3 text-xs italic text-gray-400">{produto.descrição}</p>
-
-                  {produto.disponivelPor && (
-                    <select
-                      value={tipoSelecionado[produto.id] || 'unidade'}
-                      onChange={(e) =>
-                        setTipoSelecionado((prev) => ({ ...prev, [produto.id]: e.target.value }))
-                      }
-                      disabled={esgotado}
-                      className={`w-full p-2 mb-2 text-sm text-white rounded shadow-inner ${
-                        esgotado ? 'bg-zinc-800/60 cursor-not-allowed' : 'bg-zinc-700 hover:bg-zinc-600'
+                  return (
+                    <div
+                      key={produto.id}
+                      className={`flex flex-col p-4 transition-transform shadow-2xl rounded-xl bg-gradient-to-br from-neutral-900 via-neutral-800 to-neutral-900 hover:scale-105 hover:shadow-yellow-400/20 ${
+                        esgotado ? 'opacity-70' : ''
                       }`}
                     >
-                      {produto.disponivelPor.map((t) => (
-                        <option key={t} value={t}>
-                          {t === 'caixa' ? 'Por Caixa' : 'Por Unidade'}
-                        </option>
-                      ))}
-                    </select>
-                  )}
+                      <div className="relative flex items-center justify-center w-full mb-3 overflow-hidden rounded-md aspect-square bg-black/20">
+                        {esgotado && (
+                          <span className="absolute z-10 px-2 py-1 text-xs font-bold text-white bg-red-600 rounded">
+                            ESGOTADO
+                          </span>
+                        )}
+                        <img src={imgSrc} alt={produto.nome} className="object-contain max-w-full max-h-full" />
+                      </div>
 
-                  <p
-                    className={`mb-2 text-lg font-semibold ${
-                      esgotado ? 'text-gray-400' : 'text-green-400'
-                    }`}
-                  >
-                    R$ {preco.toFixed(2)}
-                  </p>
+                      <div className="flex-1">
+                        <h3 className="text-lg font-bold text-yellow-400">{produto.nome}</h3>
+                        <p className="mb-3 text-xs italic text-gray-400">{produto.descrição}</p>
 
-                  <div className="flex items-center justify-center gap-3 mb-3">
-                    <button
-                      className="w-8 h-8 text-lg text-black bg-yellow-400 rounded-full hover:bg-yellow-500 disabled:opacity-40"
-                      onClick={() => alterarQuantidade(produto.id, -1)}
-                      disabled={esgotado}
-                    >
-                      −
-                    </button>
-                    <span className="text-lg font-semibold">{quantidade[produto.id] || 0}</span>
-                    <button
-                      className="w-8 h-8 text-lg text-black bg-yellow-400 rounded-full hover:bg-yellow-500 disabled:opacity-40"
-                      onClick={() => alterarQuantidade(produto.id, 1)}
-                      disabled={esgotado}
-                    >
-                      +
-                    </button>
-                  </div>
+                        {produto.disponivelPor && (
+                          <select
+                            value={tipoSelecionado[produto.id] || 'unidade'}
+                            onChange={(e) =>
+                              setTipoSelecionado((prev) => ({ ...prev, [produto.id]: e.target.value }))
+                            }
+                            disabled={esgotado}
+                            className={`w-full p-2 mb-2 text-sm text-white rounded shadow-inner ${
+                              esgotado
+                                ? 'bg-zinc-800/60 cursor-not-allowed'
+                                : 'bg-zinc-700 hover:bg-zinc-600'
+                            }`}
+                          >
+                            {produto.disponivelPor.map((t) => (
+                              <option key={t} value={t}>
+                                {t === 'caixa' ? 'Por Caixa' : 'Por Unidade'}
+                              </option>
+                            ))}
+                          </select>
+                        )}
 
-                  <button
-                    onClick={() => handleAdicionar(produto)}
-                    disabled={esgotado}
-                    className={`w-full py-2 text-sm font-bold text-white uppercase transition-colors rounded ${
-                      esgotado ? 'bg-zinc-700 cursor-not-allowed' : 'bg-yellow-600 hover:bg-yellow-700'
-                    }`}
-                  >
-                    {esgotado ? 'Produto indisponível' : 'Adicionar ao Carrinho'}
-                  </button>
-                </div>
+                        <p
+                          className={`mb-2 text-lg font-semibold ${
+                            esgotado ? 'text-gray-400' : 'text-green-400'
+                          }`}
+                        >
+                          R$ {preco.toFixed(2)}
+                        </p>
+
+                        <div className="flex items-center justify-center gap-3 mb-3">
+                          <button
+                            className="w-8 h-8 text-lg text-black bg-yellow-400 rounded-full hover:bg-yellow-500 disabled:opacity-40"
+                            onClick={() => alterarQuantidade(produto.id, -1)}
+                            disabled={esgotado}
+                          >
+                            −
+                          </button>
+                          <span className="text-lg font-semibold">{quantidade[produto.id] || 0}</span>
+                          <button
+                            className="w-8 h-8 text-lg text-black bg-yellow-400 rounded-full hover:bg-yellow-500 disabled:opacity-40"
+                            onClick={() => alterarQuantidade(produto.id, 1)}
+                            disabled={esgotado}
+                          >
+                            +
+                          </button>
+                        </div>
+
+                        <button
+                          onClick={() => handleAdicionar(produto)}
+                          disabled={esgotado}
+                          className={`w-full py-2 text-sm font-bold text-white uppercase transition-colors rounded ${
+                            esgotado ? 'bg-zinc-700 cursor-not-allowed' : 'bg-yellow-600 hover:bg-yellow-700'
+                          }`}
+                        >
+                          {esgotado ? 'Produto indisponível' : 'Adicionar ao Carrinho'}
+                        </button>
+                      </div>
+                    </div>
+                  );
+                })}
               </div>
-            );
-          })}
-        </div>
+            </section>
+          ))
+        )}
       </div>
     </main>
   );
