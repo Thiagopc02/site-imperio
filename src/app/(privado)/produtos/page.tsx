@@ -14,6 +14,7 @@ import {
   FaWineGlassAlt,
   FaTint,
   FaCandyCane,
+  FaShoppingCart,
 } from 'react-icons/fa';
 import { GiChocolateBar } from 'react-icons/gi';
 
@@ -184,6 +185,9 @@ export default function ProdutosPage() {
   const [queryMarcas, setQueryMarcas] = useState('');
   const popoverRef = useRef<HTMLDivElement | null>(null);
 
+  // FAB do carrinho (aparece após rolar)
+  const [showCartFab, setShowCartFab] = useState(false);
+
   const { adicionarAoCarrinho } = useCart();
 
   useEffect(() => {
@@ -204,6 +208,17 @@ export default function ProdutosPage() {
     document.addEventListener('mousedown', onDocClick);
     return () => document.removeEventListener('mousedown', onDocClick);
   }, [openMarcas]);
+
+  // mostra/oculta o botão flutuante conforme rolagem
+  useEffect(() => {
+    const handler = () => {
+      // Esconde quando perto do topo (<= 140px)
+      setShowCartFab(window.scrollY > 140);
+    };
+    handler();
+    window.addEventListener('scroll', handler, { passive: true });
+    return () => window.removeEventListener('scroll', handler);
+  }, []);
 
   const carregarProdutos = async () => {
     const qs = await getDocs(collection(db, 'produtos'));
@@ -465,7 +480,7 @@ export default function ProdutosPage() {
                 value={busca}
                 onChange={(e) => setBusca(e.target.value)}
                 placeholder="Buscar por nome ou marca…"
-                className="w-full py-3 pl-10 pr-4 outline-none rounded-xl bg-white/10 focus:bg_white/15"
+                className="w-full py-3 pl-10 pr-4 outline-none rounded-xl bg-white/10 focus:bg-white/15"
               />
             </div>
           </div>
@@ -520,11 +535,20 @@ export default function ProdutosPage() {
           </div>
         </div>
 
-        {/* Marcas (trigger + badges) */}
+        {/* Controle de Marcas (especial) */}
         <div className="relative mb-6">
           <div className="flex flex-wrap items-center gap-2">
             <MarcasTrigger />
 
+            {/* Hint: "O que você procura?" com seta vermelha apontando para o botão MARCAS */}
+            <div className="relative inline-flex items-center ml-3 animate-pulse">
+              <span className="absolute w-3 h-3 rotate-45 -translate-y-1/2 bg-red-500 border border-red-700 shadow -left-2 top-1/2" />
+              <span className="px-3 py-1 text-xs font-bold text-white bg-red-600 rounded-full shadow-lg">
+                O que você procura?
+              </span>
+            </div>
+
+            {/* badges selecionadas */}
             {badgesSelecionadas.head.map((m) => (
               <span
                 key={m}
@@ -561,7 +585,7 @@ export default function ProdutosPage() {
             )}
           </div>
 
-          {/* Popover marcas */}
+          {/* Popover de marcas */}
           {openMarcas && (
             <div
               ref={popoverRef}
@@ -743,6 +767,32 @@ export default function ProdutosPage() {
           ))
         )}
       </div>
+
+      {/* Botão flutuante do carrinho (esconde no topo) */}
+      {showCartFab && (
+        <button
+          onClick={() => router.push('/carrinho')}
+          title="Ir para o carrinho"
+          aria-label="Ir para o carrinho"
+          className={[
+            'fixed left-4 bottom-6 z-30',
+            'rounded-full p-3 md:p-3.5',
+            'bg-black text-white',
+            'transition transform',
+            'hover:scale-105 active:scale-95',
+            // brilho neon verde
+            'shadow-[0_0_14px_rgba(34,197,94,0.55),0_0_32px_rgba(34,197,94,0.35)]',
+            'hover:shadow-[0_0_22px_rgba(34,197,94,0.85),0_0_44px_rgba(34,197,94,0.55)]',
+            'border border-green-500/40 hover:border-green-400',
+          ].join(' ')}
+          style={{
+            boxShadow:
+              '0 0 14px rgba(34,197,94,.55), 0 0 32px rgba(34,197,94,.35), inset 0 0 10px rgba(34,197,94,.15)',
+          }}
+        >
+          <FaShoppingCart className="w-6 h-6 md:w-7 md:h-7" />
+        </button>
+      )}
     </main>
   );
 }
