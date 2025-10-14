@@ -6,6 +6,16 @@ import { onAuthStateChanged } from 'firebase/auth';
 import { collection, getDocs } from 'firebase/firestore';
 import { auth, db } from '@/firebase/config';
 import { useCart } from '@/context/CartContext';
+import {
+  FaSearch,
+  FaCocktail,
+  FaBeer,
+  FaGlassWhiskey,
+  FaWineGlassAlt,
+  FaTint,
+  FaCandyCane,
+} from 'react-icons/fa';
+import { GiChocolateBar } from 'react-icons/gi';
 
 type Produto = {
   id: string;
@@ -26,6 +36,7 @@ type Produto = {
 const NOV_KEY = '__novidades__';
 const COPAO_CAT = 'Copão de 770ml';
 
+/* -------------------- Botões especiais -------------------- */
 function NovidadeButton({ active, onClick }: { active: boolean; onClick: () => void }) {
   return (
     <button
@@ -33,30 +44,30 @@ function NovidadeButton({ active, onClick }: { active: boolean; onClick: () => v
       aria-label="Novidades"
       className={[
         'relative inline-flex items-center justify-center',
-        'px-4 py-2 rounded-lg text-sm font-bold text-white select-none',
+        'px-4 py-2 rounded-xl text-sm font-extrabold text-white select-none',
         'transition ring-2 focus:outline-none',
         active ? 'ring-yellow-400' : 'ring-transparent',
       ].join(' ')}
       style={{
-        width: 180,
-        height: 48,
+        width: 190,
+        height: 52,
         background: 'linear-gradient(135deg, #ff48b0 0%, #8c6cff 45%, #42a5ff 100%)',
         boxShadow:
           '0 0 14px rgba(66,165,255,.55), 0 0 28px rgba(255,72,176,.35), inset 0 0 10px rgba(255,255,255,.12)',
       }}
     >
       <span
-        className="px-3 py-1 font-extrabold tracking-wider text-black bg-white rounded-md drop-shadow"
+        className="px-3 py-1 text-black bg-white rounded-md drop-shadow"
         style={{ boxShadow: '0 1px 0 rgba(0,0,0,.15), 0 0 8px rgba(255,255,255,.45)' }}
       >
         NOVIDADE
       </span>
       <span
         aria-hidden
-        className="absolute inset-0 transition rounded-lg opacity-0 pointer-events-none hover:opacity-100"
+        className="absolute inset-0 transition opacity-0 pointer-events-none rounded-xl hover:opacity-100"
         style={{
-          background: 'radial-gradient(80% 60% at 50% 50%, rgba(66,165,255,.28), transparent 60%)',
-          filter: 'blur(10px)',
+          background: 'radial-gradient(70% 60% at 50% 45%, rgba(255,255,255,.18), transparent 60%)',
+          filter: 'blur(8px)',
         }}
       />
     </button>
@@ -74,7 +85,7 @@ function CopaoButton({ active, onClick }: { active: boolean; onClick: () => void
         active ? 'ring-yellow-400' : 'ring-transparent',
       ].join(' ')}
       style={{
-        width: 200,
+        width: 210,
         height: 52,
         background: 'linear-gradient(135deg, #0ea5e9 0%, #22c55e 55%, #f59e0b 100%)',
         boxShadow: '0 10px 26px rgba(14,165,233,.35), inset 0 0 12px rgba(255,255,255,.18)',
@@ -90,10 +101,7 @@ function CopaoButton({ active, onClick }: { active: boolean; onClick: () => void
         }}
       >
         🥤
-        <span
-          style={{ transform: 'translateY(-1px)', WebkitTextStroke: '0.5px rgba(255,255,255,.22)' }}
-          className="text-sm md:text-base"
-        >
+        <span style={{ transform: 'translateY(-1px)', WebkitTextStroke: '0.5px rgba(255,255,255,.22)' }}>
           COPÃO DE <span className="whitespace-nowrap">770ml</span>
         </span>
       </span>
@@ -109,7 +117,7 @@ function CopaoButton({ active, onClick }: { active: boolean; onClick: () => void
   );
 }
 
-/* ---------- utils ---------- */
+/* ---------------------- Utils ---------------------- */
 function getMarca(p: Produto): string {
   if (p.marca && p.marca.trim()) return p.marca.trim();
   return inferirMarca(p.nome);
@@ -157,6 +165,7 @@ function extrairVolumeMl(nome: string): number {
 
 type SortKey = 'mlDesc' | 'precoAsc' | 'precoDesc' | 'nomeAsc';
 
+/* ==================== Página ==================== */
 export default function ProdutosPage() {
   const router = useRouter();
   const [produtos, setProdutos] = useState<Produto[]>([]);
@@ -170,7 +179,7 @@ export default function ProdutosPage() {
   const [apenasCopao, setApenasCopao] = useState(false);
   const [sort, setSort] = useState<SortKey>('mlDesc');
 
-  // UI do popover de marcas
+  // Popover de marcas
   const [openMarcas, setOpenMarcas] = useState(false);
   const [queryMarcas, setQueryMarcas] = useState('');
   const popoverRef = useRef<HTMLDivElement | null>(null);
@@ -185,7 +194,6 @@ export default function ProdutosPage() {
     return () => unsub();
   }, [router]);
 
-  // fecha popover ao clicar fora
   useEffect(() => {
     function onDocClick(e: MouseEvent) {
       if (!openMarcas) return;
@@ -233,15 +241,16 @@ export default function ProdutosPage() {
     setQuantidade((prev) => ({ ...prev, [produto.id]: 0 }));
   };
 
+  // categorias com ícones “premium”
   const categorias = [
-    { nome: 'Refrescos e Sucos', emoji: '🧃' },
-    { nome: 'Fermentados', emoji: '🍺' },
-    { nome: 'Destilados', emoji: '🥃' },
-    { nome: 'Adega', emoji: '🍷' },
-    { nome: 'Águas', emoji: '💧' },
-    { nome: 'Balas e Gomas', emoji: '🍬' },
-    { nome: 'Chocolates', emoji: '🍫' },
-  ];
+    { nome: 'Refrescos e Sucos', Icon: FaCocktail },
+    { nome: 'Fermentados', Icon: FaBeer },
+    { nome: 'Destilados', Icon: FaGlassWhiskey },
+    { nome: 'Adega', Icon: FaWineGlassAlt },
+    { nome: 'Águas', Icon: FaTint },
+    { nome: 'Balas e Gomas', Icon: FaCandyCane },
+    { nome: 'Chocolates', Icon: GiChocolateBar },
+  ] as const;
 
   const baseFiltrada = useMemo(() => {
     let base = produtos.slice();
@@ -349,14 +358,12 @@ export default function ProdutosPage() {
     return `${prefix} ${marca}`.trim();
   }
 
-  // marcas filtradas dentro do popover pela busca interna
   const marcasFiltradasPopover = useMemo(() => {
     const q = queryMarcas.trim().toLowerCase();
     if (!q) return marcasDisponiveis;
     return marcasDisponiveis.filter((m) => m.toLowerCase().includes(q));
   }, [marcasDisponiveis, queryMarcas]);
 
-  // badges compactas com selecionadas (mostra no máx. 4 + "+N")
   const badgesSelecionadas = useMemo(() => {
     const max = 4;
     const head = marcasSelecionadas.slice(0, max);
@@ -364,6 +371,50 @@ export default function ProdutosPage() {
     return { head, rest };
   }, [marcasSelecionadas]);
 
+  /* --- UI auxiliares --- */
+  const CategoriaPill = ({
+    active,
+    onClick,
+    children,
+  }: {
+    active?: boolean;
+    onClick?: () => void;
+    children: React.ReactNode;
+  }) => (
+    <button
+      onClick={onClick}
+      className={[
+        'group relative overflow-hidden',
+        'px-4 py-2 rounded-2xl text-sm font-semibold',
+        'bg-zinc-900/80 border border-white/10',
+        'hover:border-white/30 hover:bg-zinc-900',
+        active ? 'ring-2 ring-yellow-400' : '',
+        'transition',
+      ].join(' ')}
+    >
+      <span className="relative z-10 flex items-center gap-2 text-white">{children}</span>
+      <span
+        aria-hidden
+        className="absolute inset-0 transition opacity-0 bg-gradient-to-r from-white/5 to-white/0 group-hover:opacity-100"
+      />
+    </button>
+  );
+
+  const MarcasTrigger = () => (
+    <button
+      onClick={() => setOpenMarcas((v) => !v)}
+      className="px-4 py-2 rounded-2xl text-sm font-bold tracking-wide bg-zinc-900/80 border border-transparent hover:border-yellow-300/50 text-white shadow-[0_0_0_1px_rgba(255,255,255,0.06)]"
+      style={{
+        backgroundImage:
+          'linear-gradient(180deg, rgba(255,255,255,0.06), rgba(0,0,0,0)), radial-gradient(100% 100% at 0% 0%, rgba(253,224,71,0.35), rgba(153,27,27,0) 60%)',
+      }}
+      aria-expanded={openMarcas}
+    >
+      MARCAS {marcasSelecionadas.length ? `(${marcasSelecionadas.length})` : ''}
+    </button>
+  );
+
+  /* ------------------ Render ------------------ */
   return (
     <main className="min-h-screen px-4 py-8 text-white bg-black">
       <div className="mx-auto max-w-7xl">
@@ -375,19 +426,17 @@ export default function ProdutosPage() {
           CATEGORIAS
         </h1>
 
-        {/* Categorias + botões especiais */}
-        <div className="flex flex-wrap justify-center gap-3 mb-4">
-          {categorias.map((cat) => (
-            <button
-              key={cat.nome}
-              className={`px-4 py-2 rounded-lg bg-gray-800 hover:bg-gray-700 transition text-white text-sm font-medium flex items-center gap-2 ${
-                categoriaSelecionada === cat.nome ? 'ring-2 ring-yellow-400' : ''
-              }`}
-              onClick={() => setCategoriaSelecionada(cat.nome)}
+        {/* Categorias + especiais */}
+        <div className="flex flex-wrap justify-center gap-3 mb-5">
+          {categorias.map(({ nome, Icon }) => (
+            <CategoriaPill
+              key={nome}
+              active={categoriaSelecionada === nome}
+              onClick={() => setCategoriaSelecionada(nome)}
             >
-              <span>{cat.emoji}</span>
-              {cat.nome}
-            </button>
+              <Icon className="opacity-90" />
+              {nome}
+            </CategoriaPill>
           ))}
           <CopaoButton
             active={apenasCopao || categoriaSelecionada === COPAO_CAT}
@@ -410,12 +459,15 @@ export default function ProdutosPage() {
         {/* Busca + filtros + ordenação */}
         <div className="grid grid-cols-1 gap-3 mb-3 lg:grid-cols-12">
           <div className="lg:col-span-5">
-            <input
-              value={busca}
-              onChange={(e) => setBusca(e.target.value)}
-              placeholder="Buscar por nome ou marca…"
-              className="w-full px-4 py-3 outline-none rounded-xl bg-white/10 focus:bg-white/15"
-            />
+            <div className="relative">
+              <FaSearch className="absolute -translate-y-1/2 left-3 top-1/2 opacity-70" />
+              <input
+                value={busca}
+                onChange={(e) => setBusca(e.target.value)}
+                placeholder="Buscar por nome ou marca…"
+                className="w-full py-3 pl-10 pr-4 outline-none rounded-xl bg-white/10 focus:bg_white/15"
+              />
+            </div>
           </div>
 
           <div className="flex items-center gap-2 lg:col-span-4">
@@ -468,28 +520,19 @@ export default function ProdutosPage() {
           </div>
         </div>
 
-        {/* Controle compacto de Marcas */}
+        {/* Marcas (trigger + badges) */}
         <div className="relative mb-6">
           <div className="flex flex-wrap items-center gap-2">
-            <button
-              onClick={() => setOpenMarcas((v) => !v)}
-              className="px-3 py-2 text-sm transition border rounded-lg bg-zinc-800 hover:bg-zinc-700 border-zinc-700"
-              aria-expanded={openMarcas}
-            >
-              Marcas {marcasSelecionadas.length ? `(${marcasSelecionadas.length})` : ''}
-            </button>
+            <MarcasTrigger />
 
-            {/* badges das selecionadas (compacto) */}
             {badgesSelecionadas.head.map((m) => (
               <span
                 key={m}
-                className="px-2 py-1 text-xs font-semibold text-black bg-yellow-400 rounded-full"
+                className="px-2 py-1 text-xs font-semibold text-black border rounded-full bg-gradient-to-r from-yellow-300 to-amber-400 border-yellow-500/50"
               >
                 {m}
                 <button
-                  onClick={() =>
-                    setMarcasSelecionadas((prev) => prev.filter((x) => x !== m))
-                  }
+                  onClick={() => setMarcasSelecionadas((prev) => prev.filter((x) => x !== m))}
                   className="ml-1 text-black/70 hover:text-black"
                   aria-label={`Remover ${m}`}
                 >
@@ -510,7 +553,7 @@ export default function ProdutosPage() {
               sort !== 'mlDesc') && (
               <button
                 onClick={limparFiltros}
-                className="px-3 py-2 ml-auto text-sm border rounded-lg bg-zinc-800 hover:bg-zinc-700 border-zinc-700"
+                className="px-3 py-2 ml-auto text-sm border rounded-lg bg-zinc-900/80 hover:bg-zinc-800 border-white/10"
                 title="Limpar filtros"
               >
                 Limpar filtros
@@ -518,19 +561,22 @@ export default function ProdutosPage() {
             )}
           </div>
 
-          {/* Popover */}
+          {/* Popover marcas */}
           {openMarcas && (
             <div
               ref={popoverRef}
-              className="absolute z-20 mt-2 w-full sm:w-[520px] max-w-[calc(100vw-2rem)] rounded-xl border border-white/10 bg-zinc-900 shadow-2xl"
+              className="absolute z-20 mt-2 w-full sm:w-[520px] max-w-[calc(100vw-2rem)] rounded-2xl border border-white/10 bg-zinc-950 shadow-2xl"
             >
               <div className="p-3 border-b border-white/10">
-                <input
-                  value={queryMarcas}
-                  onChange={(e) => setQueryMarcas(e.target.value)}
-                  placeholder="Buscar marca…"
-                  className="w-full px-3 py-2 rounded-lg outline-none bg-black/40"
-                />
+                <div className="relative">
+                  <FaSearch className="absolute -translate-y-1/2 left-3 top-1/2 opacity-70" />
+                  <input
+                    value={queryMarcas}
+                    onChange={(e) => setQueryMarcas(e.target.value)}
+                    placeholder="Buscar marca…"
+                    className="w-full py-2 pl-10 pr-3 rounded-lg outline-none bg-black/60"
+                  />
+                </div>
               </div>
 
               <div className="grid grid-cols-2 gap-1 p-2 overflow-auto max-h-72">
@@ -541,7 +587,7 @@ export default function ProdutosPage() {
                       key={m}
                       className={`flex items-center gap-2 px-2 py-1.5 rounded-md border cursor-pointer ${
                         checked
-                          ? 'bg-yellow-400/20 border-yellow-400/40'
+                          ? 'bg-yellow-400/15 border-yellow-400/40'
                           : 'bg-white/5 border-white/10 hover:bg-white/10'
                       }`}
                     >
@@ -569,7 +615,7 @@ export default function ProdutosPage() {
               <div className="flex items-center justify-end gap-2 p-3 border-t border-white/10">
                 <button
                   onClick={() => setMarcasSelecionadas([])}
-                  className="px-3 py-2 text-sm border rounded-lg bg-zinc-800 hover:bg-zinc-700 border-zinc-700"
+                  className="px-3 py-2 text-sm border rounded-lg bg-zinc-900/80 hover:bg-zinc-800 border-white/10"
                 >
                   Limpar
                 </button>
@@ -607,11 +653,11 @@ export default function ProdutosPage() {
                   return (
                     <div
                       key={produto.id}
-                      className={`flex flex-col p-4 transition-transform shadow-2xl rounded-xl bg-gradient-to-br from-neutral-900 via-neutral-800 to-neutral-900 hover:scale-105 hover:shadow-yellow-400/20 ${
+                      className={`flex flex-col p-4 transition-transform shadow-2xl rounded-2xl bg-gradient-to-br from-neutral-900 via-neutral-800 to-neutral-900 hover:scale-[1.02] hover:shadow-yellow-400/20 ${
                         esgotado ? 'opacity-70' : ''
                       }`}
                     >
-                      <div className="relative flex items-center justify-center w-full mb-3 overflow-hidden rounded-md aspect-square bg-black/20">
+                      <div className="relative flex items-center justify-center w-full mb-3 overflow-hidden rounded-xl aspect-square bg-black/20">
                         {esgotado && (
                           <span className="absolute z-10 px-2 py-1 text-xs font-bold text-white bg-red-600 rounded">
                             ESGOTADO
