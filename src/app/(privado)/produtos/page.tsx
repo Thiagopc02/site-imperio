@@ -20,7 +20,6 @@ import {
 } from 'react-icons/fa';
 import { GiChocolateBar } from 'react-icons/gi';
 
-/* -------------------- Tipos -------------------- */
 type Produto = {
   id: string;
   nome: string;
@@ -45,8 +44,6 @@ type CartItem = {
   preco: number;
   quantidade: number;
 };
-
-type SortKey = 'mlDesc' | 'precoAsc' | 'precoDesc' | 'nomeAsc';
 
 const NOV_KEY = '__novidades__';
 const COPAO_CAT = 'Copão de 770ml';
@@ -178,15 +175,13 @@ function extrairVolumeMl(nome: string): number {
   return 0;
 }
 
+type SortKey = 'mlDesc' | 'precoAsc' | 'precoDesc' | 'nomeAsc';
+
 /* ==================== Página ==================== */
 export default function ProdutosPage() {
   const router = useRouter();
-
-  // dados
   const [produtos, setProdutos] = useState<Produto[]>([]);
   const [quantidade, setQuantidade] = useState<Record<string, number>>({});
-
-  // filtros
   const [categoriaSelecionada, setCategoriaSelecionada] = useState<string>('');
   const [marcasSelecionadas, setMarcasSelecionadas] = useState<string[]>([]);
   const [tipoSelecionado, setTipoSelecionado] = useState<Record<string, string>>({});
@@ -196,16 +191,16 @@ export default function ProdutosPage() {
   const [apenasCopao, setApenasCopao] = useState(false);
   const [sort, setSort] = useState<SortKey>('mlDesc');
 
-  // popover de marcas
+  // Popover de marcas
   const [openMarcas, setOpenMarcas] = useState(false);
   const [queryMarcas, setQueryMarcas] = useState('');
   const popoverRef = useRef<HTMLDivElement | null>(null);
 
-  // botão flutuante e drawer
+  // FAB + Drawer do carrinho
+  const [showCartFab, setShowCartFab] = useState(false);
   const [openMiniCart, setOpenMiniCart] = useState(false);
-  const [scrolled, setScrolled] = useState(false);
 
-  // contexto do carrinho
+  // CartContext
   const {
     adicionarAoCarrinho,
     items: cartItems,
@@ -220,12 +215,12 @@ export default function ProdutosPage() {
     quantidadeTotal?: number;
   } = useCart() as any;
 
+  // total (fallback caso o contexto não exponha quantidadeTotal)
   const cartCount =
     typeof quantidadeTotal === 'number'
       ? quantidadeTotal
       : ((cartItems ?? []) as CartItem[]).reduce((acc, it) => acc + (it.quantidade ?? 0), 0);
 
-  /* ------------ efeitos ------------ */
   useEffect(() => {
     const unsub = onAuthStateChanged(auth, (user) => {
       if (!user) router.push('/login');
@@ -237,21 +232,22 @@ export default function ProdutosPage() {
   useEffect(() => {
     function onDocClick(e: MouseEvent) {
       if (!openMarcas) return;
-      if (popoverRef.current && !popoverRef.current.contains(e.target as Node)) setOpenMarcas(false);
+      if (popoverRef.current && !popoverRef.current.contains(e.target as Node)) {
+        setOpenMarcas(false);
+      }
     }
     document.addEventListener('mousedown', onDocClick);
     return () => document.removeEventListener('mousedown', onDocClick);
   }, [openMarcas]);
 
-  // apenas para trocar opacidade quando no topo
+  // mostra/oculta o botão flutuante conforme rolagem
   useEffect(() => {
-    const handler = () => setScrolled(window.scrollY > 20);
+    const handler = () => setShowCartFab(window.scrollY > 140);
     handler();
     window.addEventListener('scroll', handler, { passive: true });
     return () => window.removeEventListener('scroll', handler);
   }, []);
 
-  /* ------------ dados ------------ */
   const carregarProdutos = async () => {
     const qs = await getDocs(collection(db, 'produtos'));
     const lista: Produto[] = [];
@@ -288,7 +284,7 @@ export default function ProdutosPage() {
     setQuantidade((prev) => ({ ...prev, [produto.id]: 0 }));
   };
 
-  /* ------------ filtros/ordenacão ------------ */
+  // categorias com ícones
   const categorias = [
     { nome: 'Refrescos e Sucos', Icon: FaCocktail },
     { nome: 'Fermentados', Icon: FaBeer },
@@ -302,10 +298,13 @@ export default function ProdutosPage() {
   const baseFiltrada = useMemo(() => {
     let base = produtos.slice();
 
-    if (apenasNovidades || categoriaSelecionada === NOV_KEY) base = base.filter((p) => p.destaque);
-    else if (apenasCopao || categoriaSelecionada === COPAO_CAT)
+    if (apenasNovidades || categoriaSelecionada === NOV_KEY) {
+      base = base.filter((p) => p.destaque);
+    } else if (apenasCopao || categoriaSelecionada === COPAO_CAT) {
       base = base.filter((p) => p.categoria === COPAO_CAT);
-    else if (categoriaSelecionada) base = base.filter((p) => p.categoria === categoriaSelecionada);
+    } else if (categoriaSelecionada) {
+      base = base.filter((p) => p.categoria === categoriaSelecionada);
+    }
 
     if (apenasDisponiveis) base = base.filter((p) => !p.emFalta);
 
@@ -569,7 +568,7 @@ export default function ProdutosPage() {
           <div className="flex flex-wrap items-center gap-2">
             <MarcasTrigger />
 
-            {/* Hint: "O que você procura?" */}
+            {/* Hint: "O que você procura?" com seta vermelha */}
             <div className="relative inline-flex items-center ml-3 animate-pulse">
               <span className="absolute w-3 h-3 rotate-45 -translate-y-1/2 bg-red-500 border border-red-700 shadow -left-2 top-1/2" />
               <span className="px-3 py-1 text-xs font-bold text-white bg-red-600 rounded-full shadow-lg">
@@ -577,7 +576,7 @@ export default function ProdutosPage() {
               </span>
             </div>
 
-            {/* badges de marcas selecionadas */}
+            {/* badges selecionadas */}
             {badgesSelecionadas.head.map((m) => (
               <span
                 key={m}
@@ -593,7 +592,9 @@ export default function ProdutosPage() {
                 </button>
               </span>
             ))}
-            {badgesSelecionadas.rest > 0 && <span className="text-xs opacity-70">+{badgesSelecionadas.rest}</span>}
+            {badgesSelecionadas.rest > 0 && (
+              <span className="text-xs opacity-70">+{badgesSelecionadas.rest}</span>
+            )}
 
             {(marcasSelecionadas.length ||
               categoriaSelecionada ||
@@ -637,7 +638,9 @@ export default function ProdutosPage() {
                     <label
                       key={m}
                       className={`flex items-center gap-2 px-2 py-1.5 rounded-md border cursor-pointer ${
-                        checked ? 'bg-yellow-400/15 border-yellow-400/40' : 'bg-white/5 border-white/10 hover:bg-white/10'
+                        checked
+                          ? 'bg-yellow-400/15 border-yellow-400/40'
+                          : 'bg-white/5 border-white/10 hover:bg-white/10'
                       }`}
                     >
                       <input
@@ -655,7 +658,9 @@ export default function ProdutosPage() {
                   );
                 })}
                 {marcasFiltradasPopover.length === 0 && (
-                  <div className="col-span-2 py-6 text-sm text-center opacity-60">Nenhuma marca encontrada.</div>
+                  <div className="col-span-2 py-6 text-sm text-center opacity-60">
+                    Nenhuma marca encontrada.
+                  </div>
                 )}
               </div>
 
@@ -679,16 +684,21 @@ export default function ProdutosPage() {
 
         {/* Listagem agrupada */}
         {gruposPorMarca.length === 0 ? (
-          <p className="font-semibold text-center text-red-400">Nenhum produto encontrado com os filtros atuais.</p>
+          <p className="font-semibold text-center text-red-400">
+            Nenhum produto encontrado com os filtros atuais.
+          </p>
         ) : (
           gruposPorMarca.map(([marca, itens]) => (
             <section key={marca} className="mb-10">
-              <h2 className="mb-4 text-2xl font-extrabold text-yellow-400 md:text-3xl">{tituloSecao(marca)}</h2>
+              <h2 className="mb-4 text-2xl font-extrabold text-yellow-400 md:text-3xl">
+                {tituloSecao(marca)}
+              </h2>
 
               <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 md:grid-cols-3 xl:grid-cols-4">
                 {itens.map((produto) => {
                   const tipo = tipoSelecionado[produto.id] || 'unidade';
-                  const preco = tipo === 'caixa' ? produto.precoCaixa ?? 0 : produto.precoUnidade ?? 0;
+                  const preco =
+                    tipo === 'caixa' ? produto.precoCaixa ?? 0 : produto.precoUnidade ?? 0;
                   const esgotado = !!produto.emFalta;
                   const imgSrc = imgSrcFrom(produto);
 
@@ -706,7 +716,12 @@ export default function ProdutosPage() {
                           </span>
                         )}
                         {/* eslint-disable-next-line @next/next/no-img-element */}
-                        <img src={imgSrc} alt={produto.nome} className="object-contain max-w-full max-h-full" loading="lazy" />
+                        <img
+                          src={imgSrc}
+                          alt={produto.nome}
+                          className="object-contain max-w-full max-h-full"
+                          loading="lazy"
+                        />
                       </div>
 
                       <div className="flex-1">
@@ -716,10 +731,14 @@ export default function ProdutosPage() {
                         {produto.disponivelPor && (
                           <select
                             value={tipoSelecionado[produto.id] || 'unidade'}
-                            onChange={(e) => setTipoSelecionado((prev) => ({ ...prev, [produto.id]: e.target.value }))}
+                            onChange={(e) =>
+                              setTipoSelecionado((prev) => ({ ...prev, [produto.id]: e.target.value }))
+                            }
                             disabled={esgotado}
                             className={`w-full p-2 mb-2 text-sm text-white rounded shadow-inner ${
-                              esgotado ? 'bg-zinc-800/60 cursor-not-allowed' : 'bg-zinc-700 hover:bg-zinc-600'
+                              esgotado
+                                ? 'bg-zinc-800/60 cursor-not-allowed'
+                                : 'bg-zinc-700 hover:bg-zinc-600'
                             }`}
                           >
                             {produto.disponivelPor.map((t) => (
@@ -730,7 +749,11 @@ export default function ProdutosPage() {
                           </select>
                         )}
 
-                        <p className={`mb-2 text-lg font-semibold ${esgotado ? 'text-gray-400' : 'text-green-400'}`}>
+                        <p
+                          className={`mb-2 text-lg font-semibold ${
+                            esgotado ? 'text-gray-400' : 'text-green-400'
+                          }`}
+                        >
                           R$ {preco.toFixed(2)}
                         </p>
 
@@ -742,7 +765,9 @@ export default function ProdutosPage() {
                           >
                             −
                           </button>
-                          <span className="text-lg font-semibold">{quantidade[produto.id] || 0}</span>
+                          <span className="text-lg font-semibold">
+                            {quantidade[produto.id] || 0}
+                          </span>
                           <button
                             className="w-8 h-8 text-lg text-black bg-yellow-400 rounded-full hover:bg-yellow-500 disabled:opacity-40"
                             onClick={() => alterarQuantidade(produto.id, 1)}
@@ -771,46 +796,55 @@ export default function ProdutosPage() {
         )}
       </div>
 
-      {/* ===== Botão flutuante do carrinho (lado direito, meio da tela) ===== */}
-      <button
-        onClick={() => setOpenMiniCart(true)}
-        title="Abrir carrinho"
-        aria-label="Abrir carrinho"
-        className={[
-          'fixed right-4 md:right-6 top-1/2 -translate-y-1/2',
-          'z-50',
-          'rounded-full p-4 md:p-5 bg-black text-white',
-          'transition transform hover:scale-105 active:scale-95',
-          'shadow-[0_0_22px_rgba(34,197,94,0.75),0_0_48px_rgba(34,197,94,0.55)]',
-          'hover:shadow-[0_0_34px_rgba(34,197,94,0.95),0_0_68px_rgba(34,197,94,0.75)]',
-          'border border-green-400/60 hover:border-green-300 ring-1 ring-green-500/30 relative',
-          scrolled ? 'opacity-100' : 'opacity-85',
-        ].join(' ')}
-        style={{
-          boxShadow:
-            '0 0 22px rgba(34,197,94,.75), 0 0 48px rgba(34,197,94,.55), inset 0 0 14px rgba(34,197,94,.22)',
-        }}
-      >
-        <FaShoppingCart className="w-7 h-7 md:w-9 md:h-9" />
-        {cartCount > 0 && (
-          <span
-            className={[
-              'absolute -top-2 -right-2 min-w-[22px] h-[22px]',
-              'rounded-full text-[12px] font-bold',
-              'bg-green-500 text-black flex items-center justify-center',
-              'shadow-[0_0_12px_rgba(34,197,94,0.9)] ring-1 ring-green-900/30',
-            ].join(' ')}
-            aria-label={`${cartCount} itens no carrinho`}
-          >
-            {cartCount > 99 ? '99+' : cartCount}
-          </span>
-        )}
-      </button>
+      {/* Botão flutuante do carrinho com badge de itens */}
+      {showCartFab && (
+        <button
+          onClick={() => setOpenMiniCart(true)}
+          title="Abrir carrinho"
+          aria-label="Abrir carrinho"
+          className={[
+            'fixed right-4 md:right-6 top-1/2 -translate-y-1/2 z-30',
+            'rounded-full p-4 md:p-5',
+            'bg-black text-white',
+            'transition transform hover:scale-105 active:scale-95',
+            'shadow-[0_0_22px_rgba(34,197,94,0.75),0_0_48px_rgba(34,197,94,0.55)]',
+            'hover:shadow-[0_0_34px_rgba(34,197,94,0.95),0_0_68px_rgba(34,197,94,0.75)]',
+            'border border-green-400/60 hover:border-green-300',
+            'ring-1 ring-green-500/30',
+            'relative',
+          ].join(' ')}
+          style={{
+            boxShadow:
+              '0 0 22px rgba(34,197,94,.75), 0 0 48px rgba(34,197,94,.55), inset 0 0 14px rgba(34,197,94,.22)',
+          }}
+        >
+          <FaShoppingCart className="w-7 h-7 md:w-9 md:h-9" />
+          {/* badge */}
+          {cartCount > 0 && (
+            <span
+              className={[
+                'absolute -top-2 -right-2 min-w-[22px] h-[22px]',
+                'rounded-full text-[12px] font-bold',
+                'bg-green-500 text-black flex items-center justify-center',
+                'shadow-[0_0_12px_rgba(34,197,94,0.9)] ring-1 ring-green-900/30',
+              ].join(' ')}
+              aria-label={`${cartCount} itens no carrinho`}
+            >
+              {cartCount > 99 ? '99+' : cartCount}
+            </span>
+          )}
+        </button>
+      )}
 
-      {/* ===== Overlay + Drawer Mini-Carrinho ===== */}
+      {/* Overlay + Drawer Mini-Carrinho */}
       {openMiniCart && (
         <>
-          <div className="fixed inset-0 z-40 bg-black/60 backdrop-blur-sm" onClick={() => setOpenMiniCart(false)} />
+          {/* overlay */}
+          <div
+            className="fixed inset-0 z-40 bg-black/60 backdrop-blur-sm"
+            onClick={() => setOpenMiniCart(false)}
+          />
+          {/* drawer */}
           <aside
             className="fixed right-0 top-0 z-50 h-full w-[92%] sm:w-[420px] bg-zinc-950 border-l border-white/10 shadow-2xl flex flex-col"
             role="dialog"
@@ -845,7 +879,7 @@ export default function ProdutosPage() {
 
                   return (
                     <div key={`${item.id}-${item.tipo}`} className="flex gap-3 p-3">
-                      <div className="flex items-center justify-center w-16 h-16 overflow-hidden rounded-lg bg-white/5">
+                      <div className="flex items-center justify-center w-16 h-16 overflow-hidden rounded-lg bg:white/5 bg-white/5">
                         {/* eslint-disable-next-line @next/next/no-img-element */}
                         <img
                           src={
@@ -857,7 +891,6 @@ export default function ProdutosPage() {
                           className="object-contain max-w-full max-h-full"
                         />
                       </div>
-
                       <div className="flex-1 min-w-0">
                         <p className="text-sm font-semibold truncate">{item.nome}</p>
                         <p className="text-xs opacity-70">Tipo: {item.tipo || 'unidade'}</p>
@@ -899,7 +932,9 @@ export default function ProdutosPage() {
                         </div>
                       </div>
 
-                      <div className="text-sm font-semibold text-right whitespace-nowrap">R$ {totalItem.toFixed(2)}</div>
+                      <div className="text-sm font-semibold text-right whitespace-nowrap">
+                        R$ {totalItem.toFixed(2)}
+                      </div>
                     </div>
                   );
                 })
