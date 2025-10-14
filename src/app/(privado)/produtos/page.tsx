@@ -206,12 +206,20 @@ export default function ProdutosPage() {
     items: cartItems,
     removerDoCarrinho,
     atualizarQuantidade,
+    quantidadeTotal,
   }: {
     adicionarAoCarrinho: (p: any) => void;
     items?: CartItem[];
     removerDoCarrinho?: (id: string, tipo?: string) => void;
     atualizarQuantidade?: (id: string, tipo: string, qtd: number) => void;
+    quantidadeTotal?: number;
   } = useCart() as any;
+
+  // total (fallback caso o contexto não exponha quantidadeTotal)
+  const cartCount =
+    typeof quantidadeTotal === 'number'
+      ? quantidadeTotal
+      : ((cartItems ?? []) as CartItem[]).reduce((acc, it) => acc + (it.quantidade ?? 0), 0);
 
   useEffect(() => {
     const unsub = onAuthStateChanged(auth, (user) => {
@@ -788,7 +796,7 @@ export default function ProdutosPage() {
         )}
       </div>
 
-      {/* Botão flutuante do carrinho (lado direito, centro vertical, maior) */}
+      {/* Botão flutuante do carrinho com badge de itens */}
       {showCartFab && (
         <button
           onClick={() => setOpenMiniCart(true)}
@@ -803,6 +811,7 @@ export default function ProdutosPage() {
             'hover:shadow-[0_0_34px_rgba(34,197,94,0.95),0_0_68px_rgba(34,197,94,0.75)]',
             'border border-green-400/60 hover:border-green-300',
             'ring-1 ring-green-500/30',
+            'relative',
           ].join(' ')}
           style={{
             boxShadow:
@@ -810,6 +819,20 @@ export default function ProdutosPage() {
           }}
         >
           <FaShoppingCart className="w-7 h-7 md:w-9 md:h-9" />
+          {/* badge */}
+          {cartCount > 0 && (
+            <span
+              className={[
+                'absolute -top-2 -right-2 min-w-[22px] h-[22px]',
+                'rounded-full text-[12px] font-bold',
+                'bg-green-500 text-black flex items-center justify-center',
+                'shadow-[0_0_12px_rgba(34,197,94,0.9)] ring-1 ring-green-900/30',
+              ].join(' ')}
+              aria-label={`${cartCount} itens no carrinho`}
+            >
+              {cartCount > 99 ? '99+' : cartCount}
+            </span>
+          )}
         </button>
       )}
 
@@ -856,7 +879,7 @@ export default function ProdutosPage() {
 
                   return (
                     <div key={`${item.id}-${item.tipo}`} className="flex gap-3 p-3">
-                      <div className="flex items-center justify-center w-16 h-16 overflow-hidden rounded-lg bg-white/5">
+                      <div className="flex items-center justify-center w-16 h-16 overflow-hidden rounded-lg bg:white/5 bg-white/5">
                         {/* eslint-disable-next-line @next/next/no-img-element */}
                         <img
                           src={
@@ -939,7 +962,8 @@ export default function ProdutosPage() {
                 </button>
                 <button
                   onClick={() => router.push('/carrinho')}
-                  className="flex-1 py-2 rounded-lg bg-yellow-500 hover:bg-yellow-400 text-black font-bold shadow-[0_0_18px_rgba(234,179,8,0.35)]"
+                  className="flex-1 py-2 rounded-lg bg-yellow-500 hover:bg-yellow-400 text-black font-bold shadow-[0_0_18px_rgba(234,179,8,0.35)] disabled:opacity-40"
+                  disabled={cartCount === 0}
                 >
                   Finalizar compra
                 </button>
