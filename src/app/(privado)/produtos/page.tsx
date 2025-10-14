@@ -212,7 +212,6 @@ export default function ProdutosPage() {
   // mostra/oculta o botão flutuante conforme rolagem
   useEffect(() => {
     const handler = () => {
-      // Esconde quando perto do topo (<= 140px)
       setShowCartFab(window.scrollY > 140);
     };
     handler();
@@ -768,29 +767,28 @@ export default function ProdutosPage() {
         )}
       </div>
 
-      {/* Botão flutuante do carrinho (esconde no topo) */}
+      {/* Botão flutuante do carrinho (lado direito, centro vertical, maior) */}
       {showCartFab && (
         <button
           onClick={() => router.push('/carrinho')}
           title="Ir para o carrinho"
           aria-label="Ir para o carrinho"
           className={[
-            'fixed left-4 bottom-6 z-30',
-            'rounded-full p-3 md:p-3.5',
+            'fixed right-4 md:right-6 top-1/2 -translate-y-1/2 z-30',
+            'rounded-full p-4 md:p-5',
             'bg-black text-white',
-            'transition transform',
-            'hover:scale-105 active:scale-95',
-            // brilho neon verde
-            'shadow-[0_0_14px_rgba(34,197,94,0.55),0_0_32px_rgba(34,197,94,0.35)]',
-            'hover:shadow-[0_0_22px_rgba(34,197,94,0.85),0_0_44px_rgba(34,197,94,0.55)]',
-            'border border-green-500/40 hover:border-green-400',
+            'transition transform hover:scale-105 active:scale-95',
+            'shadow-[0_0_22px_rgba(34,197,94,0.75),0_0_48px_rgba(34,197,94,0.55)]',
+            'hover:shadow-[0_0_34px_rgba(34,197,94,0.95),0_0_68px_rgba(34,197,94,0.75)]',
+            'border border-green-400/60 hover:border-green-300',
+            'ring-1 ring-green-500/30',
           ].join(' ')}
           style={{
             boxShadow:
-              '0 0 14px rgba(34,197,94,.55), 0 0 32px rgba(34,197,94,.35), inset 0 0 10px rgba(34,197,94,.15)',
+              '0 0 22px rgba(34,197,94,.75), 0 0 48px rgba(34,197,94,.55), inset 0 0 14px rgba(34,197,94,.22)',
           }}
         >
-          <FaShoppingCart className="w-6 h-6 md:w-7 md:h-7" />
+          <FaShoppingCart className="w-7 h-7 md:w-9 md:h-9" />
         </button>
       )}
     </main>
