@@ -2,7 +2,6 @@
 
 import { useRouter } from 'next/navigation';
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { createPortal } from 'react-dom';
 import { onAuthStateChanged } from 'firebase/auth';
 import { collection, getDocs } from 'firebase/firestore';
 import { auth, db } from '@/firebase/config';
@@ -21,7 +20,6 @@ import {
 } from 'react-icons/fa';
 import { GiChocolateBar } from 'react-icons/gi';
 
-/* -------------------- Tipos -------------------- */
 type Produto = {
   id: string;
   nome: string;
@@ -46,8 +44,6 @@ type CartItem = {
   preco: number;
   quantidade: number;
 };
-
-type SortKey = 'mlDesc' | 'precoAsc' | 'precoDesc' | 'nomeAsc';
 
 const NOV_KEY = '__novidades__';
 const COPAO_CAT = 'Copão de 770ml';
@@ -134,12 +130,18 @@ function CopaoButton({ active, onClick }: { active: boolean; onClick: () => void
 }
 
 /* ---------------------- Utils ---------------------- */
+
+/** Normaliza string para comparações seguras (evita toLowerCase em undefined) */
+function s(v: unknown): string {
+  return String(v ?? '').toLowerCase();
+}
+
 function getMarca(p: Produto): string {
   if (p.marca && p.marca.trim()) return p.marca.trim();
   return inferirMarca(p.nome);
 }
 function inferirMarca(nome: string): string {
-  const n = (nome || '').toLowerCase();
+  const n = s(nome);
   const regras: [string, RegExp][] = [
     ['Coca Cola', /\b(coca[\s-]?cola|coca)\b/],
     ['Guaraná Antarctica', /\b(guaran[aá][\s-]?antarctica|guaran[aá])\b/],
@@ -151,7 +153,7 @@ function inferirMarca(nome: string): string {
     ['Água Crystal', /\b(crystal|cristal)\b/],
   ];
   for (const [marca, regex] of regras) if (regex.test(n)) return marca;
-  const primeira = (nome || '').trim().split(/\s+/)[0];
+  const primeira = (String(nome ?? '')).trim().split(/\s+/)[0];
   return primeira ? primeira.charAt(0).toUpperCase() + primeira.slice(1) : 'Outras';
 }
 function getMl(p: Produto): number {
@@ -159,7 +161,7 @@ function getMl(p: Produto): number {
   return extrairVolumeMl(p.nome);
 }
 function extrairVolumeMl(nome: string): number {
-  const n = (nome || '').toLowerCase().replace(',', '.').replace(/\s+/g, '');
+  const n = String(nome ?? '').toLowerCase().replace(',', '.').replace(/\s+/g, '');
   const litro = n.match(/(\d+(?:\.\d+)?)l/);
   const ml = n.match(/(\d+)\s?ml/);
   if (litro) {
@@ -179,15 +181,13 @@ function extrairVolumeMl(nome: string): number {
   return 0;
 }
 
+type SortKey = 'mlDesc' | 'precoAsc' | 'precoDesc' | 'nomeAsc';
+
 /* ==================== Página ==================== */
 export default function ProdutosPage() {
   const router = useRouter();
-
-  // dados
   const [produtos, setProdutos] = useState<Produto[]>([]);
   const [quantidade, setQuantidade] = useState<Record<string, number>>({});
-
-  // filtros
   const [categoriaSelecionada, setCategoriaSelecionada] = useState<string>('');
   const [marcasSelecionadas, setMarcasSelecionadas] = useState<string[]>([]);
   const [tipoSelecionado, setTipoSelecionado] = useState<Record<string, string>>({});
@@ -197,16 +197,16 @@ export default function ProdutosPage() {
   const [apenasCopao, setApenasCopao] = useState(false);
   const [sort, setSort] = useState<SortKey>('mlDesc');
 
-  // popover de marcas
+  // Popover de marcas
   const [openMarcas, setOpenMarcas] = useState(false);
   const [queryMarcas, setQueryMarcas] = useState('');
   const popoverRef = useRef<HTMLDivElement | null>(null);
 
-  // drawer e FAB via portal
+  // FAB + Drawer do carrinho
+  const [showCartFab, setShowCartFab] = useState(false);
   const [openMiniCart, setOpenMiniCart] = useState(false);
-  const [mounted, setMounted] = useState(false);
 
-  // contexto do carrinho
+  // CartContext
   const {
     adicionarAoCarrinho,
     items: cartItems,
@@ -226,11 +226,6 @@ export default function ProdutosPage() {
       ? quantidadeTotal
       : ((cartItems ?? []) as CartItem[]).reduce((acc, it) => acc + (it.quantidade ?? 0), 0);
 
-  /* ------------ efeitos ------------ */
-  useEffect(() => {
-    setMounted(true);
-  }, []);
-
   useEffect(() => {
     const unsub = onAuthStateChanged(auth, (user) => {
       if (!user) router.push('/login');
@@ -242,13 +237,22 @@ export default function ProdutosPage() {
   useEffect(() => {
     function onDocClick(e: MouseEvent) {
       if (!openMarcas) return;
-      if (popoverRef.current && !popoverRef.current.contains(e.target as Node)) setOpenMarcas(false);
+      if (popoverRef.current && !popoverRef.current.contains(e.target as Node)) {
+        setOpenMarcas(false);
+      }
     }
     document.addEventListener('mousedown', onDocClick);
     return () => document.removeEventListener('mousedown', onDocClick);
   }, [openMarcas]);
 
-  /* ------------ dados ------------ */
+  // mostra/oculta o botão flutuante conforme rolagem
+  useEffect(() => {
+    const handler = () => setShowCartFab(window.scrollY > 140);
+    handler();
+    window.addEventListener('scroll', handler, { passive: true });
+    return () => window.removeEventListener('scroll', handler);
+  }, []);
+
   const carregarProdutos = async () => {
     const qs = await getDocs(collection(db, 'produtos'));
     const lista: Produto[] = [];
@@ -256,7 +260,7 @@ export default function ProdutosPage() {
       const data = docx.data() as any;
       lista.push({
         id: docx.id,
-        nome: data.nome,
+        nome: typeof data.nome === 'string' ? data.nome : '',
         precoUnidade: data.precoUnidade,
         precoCaixa: data.precoCaixa,
         itensPorCaixa: data.itensPorCaixa,
@@ -285,7 +289,7 @@ export default function ProdutosPage() {
     setQuantidade((prev) => ({ ...prev, [produto.id]: 0 }));
   };
 
-  /* ------------ filtros/ordenação ------------ */
+  // categorias com ícones
   const categorias = [
     { nome: 'Refrescos e Sucos', Icon: FaCocktail },
     { nome: 'Fermentados', Icon: FaBeer },
@@ -299,22 +303,24 @@ export default function ProdutosPage() {
   const baseFiltrada = useMemo(() => {
     let base = produtos.slice();
 
-    if (apenasNovidades || categoriaSelecionada === NOV_KEY) base = base.filter((p) => p.destaque);
-    else if (apenasCopao || categoriaSelecionada === COPAO_CAT)
+    if (apenasNovidades || categoriaSelecionada === NOV_KEY) {
+      base = base.filter((p) => p.destaque);
+    } else if (apenasCopao || categoriaSelecionada === COPAO_CAT) {
       base = base.filter((p) => p.categoria === COPAO_CAT);
-    else if (categoriaSelecionada) base = base.filter((p) => p.categoria === categoriaSelecionada);
+    } else if (categoriaSelecionada) {
+      base = base.filter((p) => p.categoria === categoriaSelecionada);
+    }
 
     if (apenasDisponiveis) base = base.filter((p) => !p.emFalta);
 
+    // >>> BUSCA com blindagem
     if (busca.trim()) {
-      const q = busca.trim().toLowerCase();
+      const q = s(busca.trim());
       base = base.filter((p) => {
-        const marca = getMarca(p).toLowerCase();
-        return (
-          p.nome.toLowerCase().includes(q) ||
-          marca.includes(q) ||
-          (p.descrição || '').toLowerCase().includes(q)
-        );
+        const nome = s(p.nome);
+        const marca = s(getMarca(p));
+        const desc = s(p.descrição);
+        return nome.includes(q) || marca.includes(q) || desc.includes(q);
       });
     }
 
@@ -334,7 +340,7 @@ export default function ProdutosPage() {
         base.sort((a, b) => (b.precoUnidade ?? 0) - (a.precoUnidade ?? 0));
         break;
       case 'nomeAsc':
-        base.sort((a, b) => a.nome.localeCompare(b.nome));
+        base.sort((a, b) => s(a.nome).localeCompare(s(b.nome)));
         break;
     }
 
@@ -368,7 +374,7 @@ export default function ProdutosPage() {
         const vb = getMl(b);
         const va = getMl(a);
         if (vb !== va) return vb - va;
-        return a.nome.localeCompare(b.nome);
+        return s(a.nome).localeCompare(s(b.nome));
       });
     }
     return Array.from(mapa.entries()).sort(([a], [b]) => a.localeCompare(b));
@@ -400,9 +406,9 @@ export default function ProdutosPage() {
   }
 
   const marcasFiltradasPopover = useMemo(() => {
-    const q = queryMarcas.trim().toLowerCase();
+    const q = s(queryMarcas.trim());
     if (!q) return marcasDisponiveis;
-    return marcasDisponiveis.filter((m) => m.toLowerCase().includes(q));
+    return marcasDisponiveis.filter((m) => s(m).includes(q));
   }, [marcasDisponiveis, queryMarcas]);
 
   const badgesSelecionadas = useMemo(() => {
@@ -561,12 +567,12 @@ export default function ProdutosPage() {
           </div>
         </div>
 
-        {/* Controle de Marcas */}
+        {/* Controle de Marcas (especial) */}
         <div className="relative mb-6">
           <div className="flex flex-wrap items-center gap-2">
             <MarcasTrigger />
 
-            {/* Hint: "O que você procura?" */}
+            {/* Hint: "O que você procura?" com seta vermelha */}
             <div className="relative inline-flex items-center ml-3 animate-pulse">
               <span className="absolute w-3 h-3 rotate-45 -translate-y-1/2 bg-red-500 border border-red-700 shadow -left-2 top-1/2" />
               <span className="px-3 py-1 text-xs font-bold text-white bg-red-600 rounded-full shadow-lg">
@@ -574,7 +580,7 @@ export default function ProdutosPage() {
               </span>
             </div>
 
-            {/* badges */}
+            {/* badges selecionadas */}
             {badgesSelecionadas.head.map((m) => (
               <span
                 key={m}
@@ -642,9 +648,7 @@ export default function ProdutosPage() {
                         className="accent-yellow-400"
                         checked={checked}
                         onChange={(e) =>
-                          setMarcasSelecionadas((prev) =>
-                            e.target.checked ? [...prev, m] : prev.filter((x) => x !== m)
-                          )
+                          setMarcasSelecionadas((prev) => (e.target.checked ? [...prev, m] : prev.filter((x) => x !== m)))
                         }
                       />
                       <span className="text-sm">{m}</span>
@@ -657,16 +661,10 @@ export default function ProdutosPage() {
               </div>
 
               <div className="flex items-center justify-end gap-2 p-3 border-t border-white/10">
-                <button
-                  onClick={() => setMarcasSelecionadas([])}
-                  className="px-3 py-2 text-sm border rounded-lg bg-zinc-900/80 hover:bg-zinc-800 border-white/10"
-                >
+                <button onClick={() => setMarcasSelecionadas([])} className="px-3 py-2 text-sm border rounded-lg bg-zinc-900/80 hover:bg-zinc-800 border-white/10">
                   Limpar
                 </button>
-                <button
-                  onClick={() => setOpenMarcas(false)}
-                  className="px-3 py-2 text-sm font-semibold text-black bg-yellow-500 rounded-lg hover:bg-yellow-400"
-                >
+                <button onClick={() => setOpenMarcas(false)} className="px-3 py-2 text-sm font-semibold text-black bg-yellow-500 rounded-lg hover:bg-yellow-400">
                   Aplicar
                 </button>
               </div>
@@ -768,204 +766,158 @@ export default function ProdutosPage() {
         )}
       </div>
 
-      {/* ===== FAB + Drawer no PORTAL (posição 100% garantida) ===== */}
-      {mounted &&
-        createPortal(
-          <>
-            {/* Botão flutuante – FORÇAMOS posição via style inline */}
-            <button
-              onClick={() => setOpenMiniCart(true)}
-              title="Abrir carrinho"
-              aria-label="Abrir carrinho"
-              className="text-white transition transform border rounded-full hover:scale-105 active:scale-95 border-green-400/60 hover:border-green-300 ring-1 ring-green-500/30"
-              style={{
-                position: 'fixed',
-                right: '24px',
-                top: '50vh',
-                transform: 'translateY(-50%)',
-                zIndex: 2147483647, // bem alto
-                padding: '18px',
-                background: '#000',
-                boxShadow:
-                  '0 0 22px rgba(34,197,94,.75), 0 0 48px rgba(34,197,94,.55), inset 0 0 14px rgba(34,197,94,.22)',
-                // reset absoluto (caso exista CSS global com !important)
-                left: 'auto',
-                bottom: 'auto',
-              }}
+      {/* Botão flutuante do carrinho com badge de itens */}
+      {showCartFab && (
+        <button
+          onClick={() => setOpenMiniCart(true)}
+          title="Abrir carrinho"
+          aria-label="Abrir carrinho"
+          className={[
+            'fixed right-4 md:right-6 top-1/2 -translate-y-1/2 z-30',
+            'rounded-full p-4 md:p-5',
+            'bg-black text-white',
+            'transition transform hover:scale-105 active:scale-95',
+            'shadow-[0_0_22px_rgba(34,197,94,0.75),0_0_48px_rgba(34,197,94,0.55)]',
+            'hover:shadow-[0_0_34px_rgba(34,197,94,0.95),0_0_68px_rgba(34,197,94,0.75)]',
+            'border border-green-400/60 hover:border-green-300',
+            'ring-1 ring-green-500/30',
+            'relative',
+          ].join(' ')}
+          style={{
+            boxShadow: '0 0 22px rgba(34,197,94,.75), 0 0 48px rgba(34,197,94,.55), inset 0 0 14px rgba(34,197,94,.22)',
+          }}
+        >
+          <FaShoppingCart className="w-7 h-7 md:w-9 md:h-9" />
+          {cartCount > 0 && (
+            <span
+              className={[
+                'absolute -top-2 -right-2 min-w-[22px] h-[22px]',
+                'rounded-full text-[12px] font-bold',
+                'bg-green-500 text-black flex items-center justify-center',
+                'shadow-[0_0_12px_rgba(34,197,94,0.9)] ring-1 ring-green-900/30',
+              ].join(' ')}
+              aria-label={`${cartCount} itens no carrinho`}
             >
-              <FaShoppingCart style={{ width: 32, height: 32 }} />
-              {cartCount > 0 && (
-                <span
-                  style={{
-                    position: 'absolute',
-                    top: -8,
-                    right: -8,
-                    minWidth: 22,
-                    height: 22,
-                    borderRadius: 22,
-                    fontSize: 12,
-                    fontWeight: 800,
-                    background: 'rgb(34 197 94)',
-                    color: '#000',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    boxShadow: '0 0 12px rgba(34,197,94,0.9)',
-                  }}
-                  aria-label={`${cartCount} itens no carrinho`}
-                >
-                  {cartCount > 99 ? '99+' : cartCount}
-                </span>
-              )}
-            </button>
+              {cartCount > 99 ? '99+' : cartCount}
+            </span>
+          )}
+        </button>
+      )}
 
-            {/* Drawer + overlay */}
-            {openMiniCart && (
-              <>
-                <div
-                  className="fixed inset-0 bg-black/60 backdrop-blur-sm"
-                  style={{ zIndex: 2147483646 }}
-                  onClick={() => setOpenMiniCart(false)}
-                />
-                <aside
-                  className="flex flex-col border-l shadow-2xl border-white/10 bg-zinc-950"
-                  role="dialog"
-                  aria-label="Mini carrinho"
-                  style={{
-                    position: 'fixed',
-                    right: 0,
-                    top: 0,
-                    height: '100vh',
-                    width: 'min(420px, 92vw)',
-                    zIndex: 2147483647,
-                  }}
-                >
-                  {/* header */}
-                  <div className="flex items-center justify-between px-4 py-3 border-b border-white/10">
-                    <div className="flex items-center gap-2">
-                      <FaShoppingCart />
-                      <h3 className="text-lg font-bold">Seu carrinho</h3>
-                    </div>
-                    <button
-                      onClick={() => setOpenMiniCart(false)}
-                      className="p-2 rounded-md bg-white/5 hover:bg-white/10"
-                      aria-label="Fechar mini carrinho"
-                    >
-                      <FaTimes />
-                    </button>
-                  </div>
+      {/* Overlay + Drawer Mini-Carrinho */}
+      {openMiniCart && (
+        <>
+          <div className="fixed inset-0 z-40 bg-black/60 backdrop-blur-sm" onClick={() => setOpenMiniCart(false)} />
+          <aside
+            className="fixed right-0 top-0 z-50 h-full w-[92%] sm:w-[420px] bg-zinc-950 border-l border-white/10 shadow-2xl flex flex-col"
+            role="dialog"
+            aria-label="Mini carrinho"
+          >
+            <div className="flex items-center justify-between px-4 py-3 border-b border-white/10">
+              <div className="flex items-center gap-2">
+                <FaShoppingCart />
+                <h3 className="text-lg font-bold">Seu carrinho</h3>
+              </div>
+              <button onClick={() => setOpenMiniCart(false)} className="p-2 rounded-md bg-white/5 hover:bg-white/10" aria-label="Fechar mini carrinho">
+                <FaTimes />
+              </button>
+            </div>
 
-                  {/* items */}
-                  <div className="flex-1 overflow-auto divide-y divide-white/5">
-                    {(cartItems ?? []).length === 0 ? (
-                      <div className="flex items-center justify-center h-full px-6 text-sm text-center opacity-70">
-                        Seu carrinho está vazio. Adicione produtos para visualizar aqui.
+            <div className="flex-1 overflow-auto divide-y divide-white/5">
+              {(cartItems ?? []).length === 0 ? (
+                <div className="flex items-center justify-center h-full px-6 text-sm text-center opacity-70">
+                  Seu carrinho está vazio. Adicione produtos para visualizar aqui.
+                </div>
+              ) : (
+                (cartItems as CartItem[]).map((item) => {
+                  const totalItem = (item.preco ?? 0) * (item.quantidade ?? 0);
+                  const canUpdate = typeof atualizarQuantidade === 'function';
+                  const canRemove = typeof removerDoCarrinho === 'function';
+
+                  return (
+                    <div key={`${item.id}-${item.tipo}`} className="flex gap-3 p-3">
+                      <div className="flex items-center justify-center w-16 h-16 overflow-hidden rounded-lg bg-white/5">
+                        {/* eslint-disable-next-line @next/next/no-img-element */}
+                        <img
+                          src={
+                            item.imagem?.startsWith('http') || item.imagem?.startsWith('/')
+                              ? item.imagem
+                              : `/produtos/${item.imagem}`
+                          }
+                          alt={item.nome}
+                          className="object-contain max-w-full max-h-full"
+                        />
                       </div>
-                    ) : (
-                      (cartItems as CartItem[]).map((item) => {
-                        const totalItem = (item.preco ?? 0) * (item.quantidade ?? 0);
-                        const canUpdate = typeof atualizarQuantidade === 'function';
-                        const canRemove = typeof removerDoCarrinho === 'function';
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-semibold truncate">{item.nome}</p>
+                        <p className="text-xs opacity-70">Tipo: {item.tipo || 'unidade'}</p>
+                        <p className="mt-1 text-sm text-green-400">
+                          R$ {(item.preco ?? 0).toFixed(2)} <span className="text-xs opacity-60">/ {item.tipo || 'unidade'}</span>
+                        </p>
 
-                        return (
-                          <div key={`${item.id}-${item.tipo}`} className="flex gap-3 p-3">
-                            <div className="flex items-center justify-center w-16 h-16 overflow-hidden rounded-lg bg-white/5">
-                              {/* eslint-disable-next-line @next/next/no-img-element */}
-                              <img
-                                src={
-                                  item.imagem?.startsWith('http') || item.imagem?.startsWith('/')
-                                    ? item.imagem
-                                    : `/produtos/${item.imagem}`
-                                }
-                                alt={item.nome}
-                                className="object-contain max-w-full max-h-full"
-                              />
-                            </div>
+                        <div className="flex items-center gap-2 mt-2">
+                          <button
+                            className="font-bold text-black bg-yellow-400 rounded-full w-7 h-7 disabled:opacity-40"
+                            onClick={() => atualizarQuantidade?.(item.id, item.tipo, Math.max((item.quantidade ?? 1) - 1, 0))}
+                            disabled={!canUpdate}
+                          >
+                            −
+                          </button>
+                          <span className="min-w-[1.5rem] text-center text-sm font-semibold">{item.quantidade ?? 0}</span>
+                          <button
+                            className="font-bold text-black bg-yellow-400 rounded-full w-7 h-7 disabled:opacity-40"
+                            onClick={() => atualizarQuantidade?.(item.id, item.tipo, (item.quantidade ?? 0) + 1)}
+                            disabled={!canUpdate}
+                          >
+                            +
+                          </button>
 
-                            <div className="flex-1 min-w-0">
-                              <p className="text-sm font-semibold truncate">{item.nome}</p>
-                              <p className="text-xs opacity-70">Tipo: {item.tipo || 'unidade'}</p>
-                              <p className="mt-1 text-sm text-green-400">
-                                R$ {(item.preco ?? 0).toFixed(2)}{' '}
-                                <span className="text-xs opacity-60">/ {item.tipo || 'unidade'}</span>
-                              </p>
+                          <button
+                            className="px-2 py-1 ml-auto text-xs text-white rounded-md bg-red-600/80 hover:bg-red-600 disabled:opacity-40"
+                            onClick={() => removerDoCarrinho?.(item.id, item.tipo)}
+                            disabled={!canRemove}
+                          >
+                            <span className="inline-flex items-center gap-1">
+                              <FaTrashAlt /> Remover
+                            </span>
+                          </button>
+                        </div>
+                      </div>
 
-                              <div className="flex items-center gap-2 mt-2">
-                                <button
-                                  className="font-bold text-black bg-yellow-400 rounded-full w-7 h-7 disabled:opacity-40"
-                                  onClick={() =>
-                                    atualizarQuantidade?.(item.id, item.tipo, Math.max((item.quantidade ?? 1) - 1, 0))
-                                  }
-                                  disabled={!canUpdate}
-                                >
-                                  −
-                                </button>
-                                <span className="min-w-[1.5rem] text-center text-sm font-semibold">
-                                  {item.quantidade ?? 0}
-                                </span>
-                                <button
-                                  className="font-bold text-black bg-yellow-400 rounded-full w-7 h-7 disabled:opacity-40"
-                                  onClick={() => atualizarQuantidade?.(item.id, item.tipo, (item.quantidade ?? 0) + 1)}
-                                  disabled={!canUpdate}
-                                >
-                                  +
-                                </button>
-
-                                <button
-                                  className="px-2 py-1 ml-auto text-xs text-white rounded-md bg-red-600/80 hover:bg-red-600 disabled:opacity-40"
-                                  onClick={() => removerDoCarrinho?.(item.id, item.tipo)}
-                                  disabled={!canRemove}
-                                >
-                                  <span className="inline-flex items-center gap-1">
-                                    <FaTrashAlt /> Remover
-                                  </span>
-                                </button>
-                              </div>
-                            </div>
-
-                            <div className="text-sm font-semibold text-right whitespace-nowrap">
-                              R$ {totalItem.toFixed(2)}
-                            </div>
-                          </div>
-                        );
-                      })
-                    )}
-                  </div>
-
-                  {/* footer */}
-                  <div className="p-4 border-t border-white/10">
-                    <div className="flex items-center justify-between mb-3">
-                      <span className="text-sm opacity-80">Subtotal</span>
-                      <strong className="text-lg text-green-400">
-                        R${' '}
-                        {((cartItems ?? []) as CartItem[])
-                          .reduce((acc, it) => acc + (it.preco ?? 0) * (it.quantidade ?? 0), 0)
-                          .toFixed(2)}
-                      </strong>
+                      <div className="text-sm font-semibold text-right whitespace-nowrap">R$ {totalItem.toFixed(2)}</div>
                     </div>
+                  );
+                })
+              )}
+            </div>
 
-                    <div className="flex gap-2">
-                      <button
-                        onClick={() => setOpenMiniCart(false)}
-                        className="flex-1 py-2 border rounded-lg border-white/15 bg-white/5 hover:bg-white/10"
-                      >
-                        Continuar comprando
-                      </button>
-                      <button
-                        onClick={() => router.push('/carrinho')}
-                        className="flex-1 py-2 rounded-lg bg-yellow-500 hover:bg-yellow-400 text-black font-bold shadow-[0_0_18px_rgba(234,179,8,0.35)] disabled:opacity-40"
-                        disabled={cartCount === 0}
-                      >
-                        Finalizar compra
-                      </button>
-                    </div>
-                  </div>
-                </aside>
-              </>
-            )}
-          </>,
-          document.body
-        )}
+            <div className="p-4 border-t border-white/10">
+              <div className="flex items-center justify-between mb-3">
+                <span className="text-sm opacity-80">Subtotal</span>
+                <strong className="text-lg text-green-400">
+                  R${' '}
+                  {((cartItems ?? []) as CartItem[])
+                    .reduce((acc, it) => acc + (it.preco ?? 0) * (it.quantidade ?? 0), 0)
+                    .toFixed(2)}
+                </strong>
+              </div>
+
+              <div className="flex gap-2">
+                <button onClick={() => setOpenMiniCart(false)} className="flex-1 py-2 border rounded-lg border-white/15 bg-white/5 hover:bg-white/10">
+                  Continuar comprando
+                </button>
+                <button
+                  onClick={() => router.push('/carrinho')}
+                  className="flex-1 py-2 rounded-lg bg-yellow-500 hover:bg-yellow-400 text-black font-bold shadow-[0_0_18px_rgba(234,179,8,0.35)] disabled:opacity-40"
+                  disabled={cartCount === 0}
+                >
+                  Finalizar compra
+                </button>
+              </div>
+            </div>
+          </aside>
+        </>
+      )}
     </main>
   );
 }
