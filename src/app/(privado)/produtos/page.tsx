@@ -1,7 +1,7 @@
 'use client';
 
 import { useRouter } from 'next/navigation';
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { onAuthStateChanged } from 'firebase/auth';
 import { collection, getDocs } from 'firebase/firestore';
 import { auth, db } from '@/firebase/config';
@@ -14,13 +14,11 @@ type Produto = {
   precoCaixa?: number;
   itensPorCaixa?: number;
   descrição: string;
-  imagem: string;       // "coca-zero-2l.png" ou "/produtos/coca-zero-2l.png"
-  categoria: string;    // "Refrescos e Sucos", etc.
+  imagem: string;
+  categoria: string;
   destaque: boolean;
   disponivelPor?: string[];
   emFalta?: boolean;
-
-  // (opcionais, caso passe a salvar no Firestore)
   marca?: string;
   ml?: number;
 };
@@ -28,7 +26,6 @@ type Produto = {
 const NOV_KEY = '__novidades__';
 const COPAO_CAT = 'Copão de 770ml';
 
-/** Botão NOVIDADE — degradê rosa→azul com brilho */
 function NovidadeButton({ active, onClick }: { active: boolean; onClick: () => void }) {
   return (
     <button
@@ -66,7 +63,6 @@ function NovidadeButton({ active, onClick }: { active: boolean; onClick: () => v
   );
 }
 
-/** Botão especial “Copão de 770ml” */
 function CopaoButton({ active, onClick }: { active: boolean; onClick: () => void }) {
   return (
     <button
@@ -113,15 +109,11 @@ function CopaoButton({ active, onClick }: { active: boolean; onClick: () => void
   );
 }
 
-/* ---------- utils: marca e volume ---------- */
-
-// usa `produto.marca` se existir; senão, tenta deduzir do nome
+/* ---------- utils ---------- */
 function getMarca(p: Produto): string {
   if (p.marca && p.marca.trim()) return p.marca.trim();
   return inferirMarca(p.nome);
 }
-
-/** Deduz a “marca” a partir do nome (flexível) */
 function inferirMarca(nome: string): string {
   const n = (nome || '').toLowerCase();
   const regras: [string, RegExp][] = [
@@ -138,14 +130,10 @@ function inferirMarca(nome: string): string {
   const primeira = (nome || '').trim().split(/\s+/)[0];
   return primeira ? primeira.charAt(0).toUpperCase() + primeira.slice(1) : 'Outras';
 }
-
-// usa `produto.ml` se existir; senão, tenta extrair do nome
 function getMl(p: Produto): number {
   if (typeof p.ml === 'number') return p.ml;
   return extrairVolumeMl(p.nome);
 }
-
-/** Extrai um volume aproximado em ML a partir do nome (2L, 1,5L, 310ml, 500 ML, etc.) */
 function extrairVolumeMl(nome: string): number {
   const n = (nome || '').toLowerCase().replace(',', '.').replace(/\s+/g, '');
   const litro = n.match(/(\d+(?:\.\d+)?)l/);
@@ -161,13 +149,11 @@ function extrairVolumeMl(nome: string): number {
   const qualquer = n.match(/(\d+(?:\.\d+)?)/);
   if (qualquer) {
     const v = parseFloat(qualquer[1]);
-    if (v > 10) return Math.round(v);       // ex.: 600 -> 600 ml
-    if (v > 0) return Math.round(v * 1000); // ex.: 2 -> 2000 ml
+    if (v > 10) return Math.round(v);
+    if (v > 0) return Math.round(v * 1000);
   }
   return 0;
 }
-
-/* ------------------------------------------ */
 
 type SortKey = 'mlDesc' | 'precoAsc' | 'precoDesc' | 'nomeAsc';
 
@@ -175,14 +161,19 @@ export default function ProdutosPage() {
   const router = useRouter();
   const [produtos, setProdutos] = useState<Produto[]>([]);
   const [quantidade, setQuantidade] = useState<Record<string, number>>({});
-  const [categoriaSelecionada, setCategoriaSelecionada] = useState<string>(''); // pode ficar vazia
-  const [marcasSelecionadas, setMarcasSelecionadas] = useState<string[]>([]);   // multi-marca
+  const [categoriaSelecionada, setCategoriaSelecionada] = useState<string>('');
+  const [marcasSelecionadas, setMarcasSelecionadas] = useState<string[]>([]);
   const [tipoSelecionado, setTipoSelecionado] = useState<Record<string, string>>({});
   const [busca, setBusca] = useState('');
   const [apenasDisponiveis, setApenasDisponiveis] = useState(false);
   const [apenasNovidades, setApenasNovidades] = useState(false);
   const [apenasCopao, setApenasCopao] = useState(false);
   const [sort, setSort] = useState<SortKey>('mlDesc');
+
+  // UI do popover de marcas
+  const [openMarcas, setOpenMarcas] = useState(false);
+  const [queryMarcas, setQueryMarcas] = useState('');
+  const popoverRef = useRef<HTMLDivElement | null>(null);
 
   const { adicionarAoCarrinho } = useCart();
 
@@ -193,6 +184,18 @@ export default function ProdutosPage() {
     });
     return () => unsub();
   }, [router]);
+
+  // fecha popover ao clicar fora
+  useEffect(() => {
+    function onDocClick(e: MouseEvent) {
+      if (!openMarcas) return;
+      if (popoverRef.current && !popoverRef.current.contains(e.target as Node)) {
+        setOpenMarcas(false);
+      }
+    }
+    document.addEventListener('mousedown', onDocClick);
+    return () => document.removeEventListener('mousedown', onDocClick);
+  }, [openMarcas]);
 
   const carregarProdutos = async () => {
     const qs = await getDocs(collection(db, 'produtos'));
@@ -211,8 +214,6 @@ export default function ProdutosPage() {
         destaque: !!data.destaque,
         disponivelPor: data.disponivelPor || ['unidade'],
         emFalta: !!data.emFalta,
-
-        // caso já exista na base
         marca: typeof data.marca === 'string' ? data.marca : undefined,
         ml: typeof data.ml === 'number' ? data.ml : undefined,
       });
@@ -232,7 +233,6 @@ export default function ProdutosPage() {
     setQuantidade((prev) => ({ ...prev, [produto.id]: 0 }));
   };
 
-  // Categorias (Copão & Novidade continuam funcionando)
   const categorias = [
     { nome: 'Refrescos e Sucos', emoji: '🧃' },
     { nome: 'Fermentados', emoji: '🍺' },
@@ -243,11 +243,9 @@ export default function ProdutosPage() {
     { nome: 'Chocolates', emoji: '🍫' },
   ];
 
-  // Base filtrada por categoria/novidade/copão — se nenhuma selecionada, usa TODOS
   const baseFiltrada = useMemo(() => {
     let base = produtos.slice();
 
-    // categoria "botões especiais"
     if (apenasNovidades || categoriaSelecionada === NOV_KEY) {
       base = base.filter((p) => p.destaque);
     } else if (apenasCopao || categoriaSelecionada === COPAO_CAT) {
@@ -270,13 +268,11 @@ export default function ProdutosPage() {
       });
     }
 
-    // filtro de marcas (multi)
     if (marcasSelecionadas.length) {
       const set = new Set(marcasSelecionadas);
       base = base.filter((p) => set.has(getMarca(p)));
     }
 
-    // ordenação global
     switch (sort) {
       case 'mlDesc':
         base.sort((a, b) => getMl(b) - getMl(a));
@@ -304,14 +300,12 @@ export default function ProdutosPage() {
     sort,
   ]);
 
-  // chips de marcas dinamicamente (a partir da base filtrada)
   const marcasDisponiveis = useMemo(() => {
     const set = new Set<string>();
     baseFiltrada.forEach((p) => set.add(getMarca(p)));
     return Array.from(set).sort((a, b) => a.localeCompare(b));
   }, [baseFiltrada]);
 
-  // agrupa por marca e garante ml ↓ dentro de cada grupo
   const gruposPorMarca = useMemo(() => {
     const mapa = new Map<string, Produto[]>();
     for (const p of baseFiltrada) {
@@ -327,8 +321,7 @@ export default function ProdutosPage() {
         return a.nome.localeCompare(b.nome);
       });
     }
-    const ordenadas = Array.from(mapa.entries()).sort(([a], [b]) => a.localeCompare(b));
-    return ordenadas;
+    return Array.from(mapa.entries()).sort(([a], [b]) => a.localeCompare(b));
   }, [baseFiltrada]);
 
   const limparFiltros = () => {
@@ -347,7 +340,6 @@ export default function ProdutosPage() {
       : `/produtos/${produto.imagem}`;
 
   function tituloSecao(marca: string) {
-    // exemplo desejado: "Refrigerantes Coca Cola"
     const prefix =
       categoriaSelecionada === 'Refrescos e Sucos'
         ? 'Refrigerantes'
@@ -357,10 +349,24 @@ export default function ProdutosPage() {
     return `${prefix} ${marca}`.trim();
   }
 
+  // marcas filtradas dentro do popover pela busca interna
+  const marcasFiltradasPopover = useMemo(() => {
+    const q = queryMarcas.trim().toLowerCase();
+    if (!q) return marcasDisponiveis;
+    return marcasDisponiveis.filter((m) => m.toLowerCase().includes(q));
+  }, [marcasDisponiveis, queryMarcas]);
+
+  // badges compactas com selecionadas (mostra no máx. 4 + "+N")
+  const badgesSelecionadas = useMemo(() => {
+    const max = 4;
+    const head = marcasSelecionadas.slice(0, max);
+    const rest = marcasSelecionadas.length - head.length;
+    return { head, rest };
+  }, [marcasSelecionadas]);
+
   return (
     <main className="min-h-screen px-4 py-8 text-white bg-black">
       <div className="mx-auto max-w-7xl">
-        {/* Info topo */}
         <p className="mb-2 text-sm text-center text-zinc-300">
           Produtos organizados por <b>marca</b> — do <b>MAIOR</b> para o <b>MENOR</b> volume (ml).
         </p>
@@ -369,7 +375,7 @@ export default function ProdutosPage() {
           CATEGORIAS
         </h1>
 
-        {/* Barra de categorias */}
+        {/* Categorias + botões especiais */}
         <div className="flex flex-wrap justify-center gap-3 mb-4">
           {categorias.map((cat) => (
             <button
@@ -401,8 +407,8 @@ export default function ProdutosPage() {
           />
         </div>
 
-        {/* Barra de busca + filtros + ordenação */}
-        <div className="grid grid-cols-1 gap-3 mb-4 lg:grid-cols-12">
+        {/* Busca + filtros + ordenação */}
+        <div className="grid grid-cols-1 gap-3 mb-3 lg:grid-cols-12">
           <div className="lg:col-span-5">
             <input
               value={busca}
@@ -411,6 +417,7 @@ export default function ProdutosPage() {
               className="w-full px-4 py-3 outline-none rounded-xl bg-white/10 focus:bg-white/15"
             />
           </div>
+
           <div className="flex items-center gap-2 lg:col-span-4">
             <label className="inline-flex items-center gap-2 px-3 py-2 rounded-lg bg-white/10">
               <input
@@ -446,11 +453,12 @@ export default function ProdutosPage() {
               <span className="text-sm">Copão 770ml</span>
             </label>
           </div>
+
           <div className="lg:col-span-3">
             <select
               value={sort}
               onChange={(e) => setSort(e.target.value as SortKey)}
-              className="w-full px-4 py-3 outline-none rounded-xl bg-white/10 focus:bg-white/15"
+              className="w-full px-4 py-3 text-white bg-black border outline-none rounded-xl border-white/20"
             >
               <option value="mlDesc">Ordenar: maior volume (ml) ↓</option>
               <option value="precoAsc">Preço: menor → maior</option>
@@ -460,48 +468,123 @@ export default function ProdutosPage() {
           </div>
         </div>
 
-        {/* Chips de marcas (multi seleção) */}
-        <div className="flex flex-wrap justify-center gap-2 mb-6">
-          {marcasDisponiveis.map((m) => {
-            const active = marcasSelecionadas.includes(m);
-            return (
-              <button
+        {/* Controle compacto de Marcas */}
+        <div className="relative mb-6">
+          <div className="flex flex-wrap items-center gap-2">
+            <button
+              onClick={() => setOpenMarcas((v) => !v)}
+              className="px-3 py-2 text-sm transition border rounded-lg bg-zinc-800 hover:bg-zinc-700 border-zinc-700"
+              aria-expanded={openMarcas}
+            >
+              Marcas {marcasSelecionadas.length ? `(${marcasSelecionadas.length})` : ''}
+            </button>
+
+            {/* badges das selecionadas (compacto) */}
+            {badgesSelecionadas.head.map((m) => (
+              <span
                 key={m}
-                className={`px-3 py-1.5 rounded-full text-sm border transition ${
-                  active
-                    ? 'bg-yellow-400 text-black border-yellow-400'
-                    : 'bg-zinc-800 text-white border-zinc-700 hover:bg-zinc-700'
-                }`}
-                onClick={() =>
-                  setMarcasSelecionadas((prev) =>
-                    prev.includes(m) ? prev.filter((x) => x !== m) : [...prev, m]
-                  )
-                }
-                aria-pressed={active}
+                className="px-2 py-1 text-xs font-semibold text-black bg-yellow-400 rounded-full"
               >
                 {m}
-              </button>
-            );
-          })}
+                <button
+                  onClick={() =>
+                    setMarcasSelecionadas((prev) => prev.filter((x) => x !== m))
+                  }
+                  className="ml-1 text-black/70 hover:text-black"
+                  aria-label={`Remover ${m}`}
+                >
+                  ×
+                </button>
+              </span>
+            ))}
+            {badgesSelecionadas.rest > 0 && (
+              <span className="text-xs opacity-70">+{badgesSelecionadas.rest}</span>
+            )}
 
-          {(marcasSelecionadas.length ||
-            categoriaSelecionada ||
-            busca ||
-            apenasDisponiveis ||
-            apenasNovidades ||
-            apenasCopao ||
-            sort !== 'mlDesc') && (
-            <button
-              onClick={limparFiltros}
-              className="px-3 py-1.5 rounded-full text-sm bg-zinc-700 hover:bg-zinc-600 text-white border border-zinc-600"
-              title="Limpar filtros"
+            {(marcasSelecionadas.length ||
+              categoriaSelecionada ||
+              busca ||
+              apenasDisponiveis ||
+              apenasNovidades ||
+              apenasCopao ||
+              sort !== 'mlDesc') && (
+              <button
+                onClick={limparFiltros}
+                className="px-3 py-2 ml-auto text-sm border rounded-lg bg-zinc-800 hover:bg-zinc-700 border-zinc-700"
+                title="Limpar filtros"
+              >
+                Limpar filtros
+              </button>
+            )}
+          </div>
+
+          {/* Popover */}
+          {openMarcas && (
+            <div
+              ref={popoverRef}
+              className="absolute z-20 mt-2 w-full sm:w-[520px] max-w-[calc(100vw-2rem)] rounded-xl border border-white/10 bg-zinc-900 shadow-2xl"
             >
-              Limpar filtros
-            </button>
+              <div className="p-3 border-b border-white/10">
+                <input
+                  value={queryMarcas}
+                  onChange={(e) => setQueryMarcas(e.target.value)}
+                  placeholder="Buscar marca…"
+                  className="w-full px-3 py-2 rounded-lg outline-none bg-black/40"
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-1 p-2 overflow-auto max-h-72">
+                {marcasFiltradasPopover.map((m) => {
+                  const checked = marcasSelecionadas.includes(m);
+                  return (
+                    <label
+                      key={m}
+                      className={`flex items-center gap-2 px-2 py-1.5 rounded-md border cursor-pointer ${
+                        checked
+                          ? 'bg-yellow-400/20 border-yellow-400/40'
+                          : 'bg-white/5 border-white/10 hover:bg-white/10'
+                      }`}
+                    >
+                      <input
+                        type="checkbox"
+                        className="accent-yellow-400"
+                        checked={checked}
+                        onChange={(e) =>
+                          setMarcasSelecionadas((prev) =>
+                            e.target.checked ? [...prev, m] : prev.filter((x) => x !== m)
+                          )
+                        }
+                      />
+                      <span className="text-sm">{m}</span>
+                    </label>
+                  );
+                })}
+                {marcasFiltradasPopover.length === 0 && (
+                  <div className="col-span-2 py-6 text-sm text-center opacity-60">
+                    Nenhuma marca encontrada.
+                  </div>
+                )}
+              </div>
+
+              <div className="flex items-center justify-end gap-2 p-3 border-t border-white/10">
+                <button
+                  onClick={() => setMarcasSelecionadas([])}
+                  className="px-3 py-2 text-sm border rounded-lg bg-zinc-800 hover:bg-zinc-700 border-zinc-700"
+                >
+                  Limpar
+                </button>
+                <button
+                  onClick={() => setOpenMarcas(false)}
+                  className="px-3 py-2 text-sm font-semibold text-black bg-yellow-500 rounded-lg hover:bg-yellow-400"
+                >
+                  Aplicar
+                </button>
+              </div>
+            </div>
           )}
         </div>
 
-        {/* AGRUPAMENTOS */}
+        {/* Listagem agrupada */}
         {gruposPorMarca.length === 0 ? (
           <p className="font-semibold text-center text-red-400">
             Nenhum produto encontrado com os filtros atuais.
