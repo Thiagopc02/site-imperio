@@ -19,6 +19,10 @@ type Produto = {
   destaque: boolean;
   disponivelPor?: string[];
   emFalta?: boolean;
+
+  // (opcionais, caso passe a salvar no Firestore)
+  marca?: string;
+  ml?: number;
 };
 
 const NOV_KEY = '__novidades__';
@@ -111,6 +115,12 @@ function CopaoButton({ active, onClick }: { active: boolean; onClick: () => void
 
 /* ---------- utils: marca e volume ---------- */
 
+// usa `produto.marca` se existir; senão, tenta deduzir do nome
+function getMarca(p: Produto): string {
+  if (p.marca && p.marca.trim()) return p.marca.trim();
+  return inferirMarca(p.nome);
+}
+
 /** Deduz a “marca” a partir do nome (flexível) */
 function inferirMarca(nome: string): string {
   const n = (nome || '').toLowerCase();
@@ -129,6 +139,12 @@ function inferirMarca(nome: string): string {
   return primeira ? primeira.charAt(0).toUpperCase() + primeira.slice(1) : 'Outras';
 }
 
+// usa `produto.ml` se existir; senão, tenta extrair do nome
+function getMl(p: Produto): number {
+  if (typeof p.ml === 'number') return p.ml;
+  return extrairVolumeMl(p.nome);
+}
+
 /** Extrai um volume aproximado em ML a partir do nome (2L, 1,5L, 310ml, 500 ML, etc.) */
 function extrairVolumeMl(nome: string): number {
   const n = (nome || '').toLowerCase().replace(',', '.').replace(/\s+/g, '');
@@ -145,21 +161,29 @@ function extrairVolumeMl(nome: string): number {
   const qualquer = n.match(/(\d+(?:\.\d+)?)/);
   if (qualquer) {
     const v = parseFloat(qualquer[1]);
-    if (v > 10) return Math.round(v);      // supõe ml (ex.: 600 -> 600 ml)
-    if (v > 0) return Math.round(v * 1000); // supõe L (ex.: 2 -> 2000 ml)
+    if (v > 10) return Math.round(v);       // ex.: 600 -> 600 ml
+    if (v > 0) return Math.round(v * 1000); // ex.: 2 -> 2000 ml
   }
   return 0;
 }
 
 /* ------------------------------------------ */
 
+type SortKey = 'mlDesc' | 'precoAsc' | 'precoDesc' | 'nomeAsc';
+
 export default function ProdutosPage() {
   const router = useRouter();
   const [produtos, setProdutos] = useState<Produto[]>([]);
   const [quantidade, setQuantidade] = useState<Record<string, number>>({});
   const [categoriaSelecionada, setCategoriaSelecionada] = useState<string>(''); // pode ficar vazia
-  const [marcaSelecionada, setMarcaSelecionada] = useState<string>('');        // idem
+  const [marcasSelecionadas, setMarcasSelecionadas] = useState<string[]>([]);   // multi-marca
   const [tipoSelecionado, setTipoSelecionado] = useState<Record<string, string>>({});
+  const [busca, setBusca] = useState('');
+  const [apenasDisponiveis, setApenasDisponiveis] = useState(false);
+  const [apenasNovidades, setApenasNovidades] = useState(false);
+  const [apenasCopao, setApenasCopao] = useState(false);
+  const [sort, setSort] = useState<SortKey>('mlDesc');
+
   const { adicionarAoCarrinho } = useCart();
 
   useEffect(() => {
@@ -187,6 +211,10 @@ export default function ProdutosPage() {
         destaque: !!data.destaque,
         disponivelPor: data.disponivelPor || ['unidade'],
         emFalta: !!data.emFalta,
+
+        // caso já exista na base
+        marca: typeof data.marca === 'string' ? data.marca : undefined,
+        ml: typeof data.ml === 'number' ? data.ml : undefined,
       });
     });
     setProdutos(lista);
@@ -215,66 +243,126 @@ export default function ProdutosPage() {
     { nome: 'Chocolates', emoji: '🍫' },
   ];
 
-  // Base filtrada por categoria/novidade — se nenhuma selecionada, usa TODOS
+  // Base filtrada por categoria/novidade/copão — se nenhuma selecionada, usa TODOS
   const baseFiltrada = useMemo(() => {
-    let base = produtos;
-    if (categoriaSelecionada === NOV_KEY) base = base.filter((p) => p.destaque);
-    else if (categoriaSelecionada === COPAO_CAT) base = base.filter((p) => p.categoria === COPAO_CAT);
-    else if (categoriaSelecionada) base = base.filter((p) => p.categoria === categoriaSelecionada);
-    return base;
-  }, [produtos, categoriaSelecionada]);
+    let base = produtos.slice();
 
-  // Grupos por marca, ordenados por volume desc; se marcaSelecionada setada, mostra só ela
-  const gruposPorMarca = useMemo(() => {
-    const lista = marcaSelecionada
-      ? baseFiltrada.filter((p) => inferirMarca(p.nome) === marcaSelecionada)
-      : baseFiltrada;
-
-    const mapa = new Map<string, Produto[]>();
-    for (const p of lista) {
-      const marca = inferirMarca(p.nome);
-      if (!mapa.has(marca)) mapa.set(marca, []);
-      mapa.get(marca)!.push(p);
+    // categoria "botões especiais"
+    if (apenasNovidades || categoriaSelecionada === NOV_KEY) {
+      base = base.filter((p) => p.destaque);
+    } else if (apenasCopao || categoriaSelecionada === COPAO_CAT) {
+      base = base.filter((p) => p.categoria === COPAO_CAT);
+    } else if (categoriaSelecionada) {
+      base = base.filter((p) => p.categoria === categoriaSelecionada);
     }
 
-    for (const [_, arr] of mapa) {
-      arr.sort((a, b) => {
-        const va = extrairVolumeMl(a.nome);
-        const vb = extrairVolumeMl(b.nome);
-        if (vb !== va) return vb - va; // maior ml primeiro
-        return a.nome.localeCompare(b.nome);
+    if (apenasDisponiveis) base = base.filter((p) => !p.emFalta);
+
+    if (busca.trim()) {
+      const q = busca.trim().toLowerCase();
+      base = base.filter((p) => {
+        const marca = getMarca(p).toLowerCase();
+        return (
+          p.nome.toLowerCase().includes(q) ||
+          marca.includes(q) ||
+          (p.descrição || '').toLowerCase().includes(q)
+        );
       });
     }
 
-    // ordem das marcas: alfabética
-    return Array.from(mapa.entries()).sort(([a], [b]) => a.localeCompare(b));
-  }, [baseFiltrada, marcaSelecionada]);
+    // filtro de marcas (multi)
+    if (marcasSelecionadas.length) {
+      const set = new Set(marcasSelecionadas);
+      base = base.filter((p) => set.has(getMarca(p)));
+    }
+
+    // ordenação global
+    switch (sort) {
+      case 'mlDesc':
+        base.sort((a, b) => getMl(b) - getMl(a));
+        break;
+      case 'precoAsc':
+        base.sort((a, b) => (a.precoUnidade ?? 0) - (b.precoUnidade ?? 0));
+        break;
+      case 'precoDesc':
+        base.sort((a, b) => (b.precoUnidade ?? 0) - (a.precoUnidade ?? 0));
+        break;
+      case 'nomeAsc':
+        base.sort((a, b) => a.nome.localeCompare(b.nome));
+        break;
+    }
+
+    return base;
+  }, [
+    produtos,
+    categoriaSelecionada,
+    apenasNovidades,
+    apenasCopao,
+    apenasDisponiveis,
+    marcasSelecionadas,
+    busca,
+    sort,
+  ]);
+
+  // chips de marcas dinamicamente (a partir da base filtrada)
+  const marcasDisponiveis = useMemo(() => {
+    const set = new Set<string>();
+    baseFiltrada.forEach((p) => set.add(getMarca(p)));
+    return Array.from(set).sort((a, b) => a.localeCompare(b));
+  }, [baseFiltrada]);
+
+  // agrupa por marca e garante ml ↓ dentro de cada grupo
+  const gruposPorMarca = useMemo(() => {
+    const mapa = new Map<string, Produto[]>();
+    for (const p of baseFiltrada) {
+      const marca = getMarca(p);
+      if (!mapa.has(marca)) mapa.set(marca, []);
+      mapa.get(marca)!.push(p);
+    }
+    for (const arr of mapa.values()) {
+      arr.sort((a, b) => {
+        const vb = getMl(b);
+        const va = getMl(a);
+        if (vb !== va) return vb - va;
+        return a.nome.localeCompare(b.nome);
+      });
+    }
+    const ordenadas = Array.from(mapa.entries()).sort(([a], [b]) => a.localeCompare(b));
+    return ordenadas;
+  }, [baseFiltrada]);
 
   const limparFiltros = () => {
     setCategoriaSelecionada('');
-    setMarcaSelecionada('');
+    setMarcasSelecionadas([]);
+    setBusca('');
+    setApenasDisponiveis(false);
+    setApenasNovidades(false);
+    setApenasCopao(false);
+    setSort('mlDesc');
   };
-
-  // chips de marcas para filtrar rapidamente
-  const marcasDisponiveis = useMemo(() => {
-    const set = new Set<string>();
-    baseFiltrada.forEach((p) => set.add(inferirMarca(p.nome)));
-    return Array.from(set).sort((a, b) => a.localeCompare(b));
-  }, [baseFiltrada]);
 
   const imgSrcFrom = (produto: Produto) =>
     produto.imagem?.startsWith('http') || produto.imagem?.startsWith('/')
       ? produto.imagem
       : `/produtos/${produto.imagem}`;
 
-  const tituloSecao = (marca: string) => `Refrigerantes ${marca}`;
+  function tituloSecao(marca: string) {
+    // exemplo desejado: "Refrigerantes Coca Cola"
+    const prefix =
+      categoriaSelecionada === 'Refrescos e Sucos'
+        ? 'Refrigerantes'
+        : categoriaSelecionada && categoriaSelecionada !== NOV_KEY && categoriaSelecionada !== COPAO_CAT
+        ? categoriaSelecionada
+        : 'Produtos';
+    return `${prefix} ${marca}`.trim();
+  }
 
   return (
     <main className="min-h-screen px-4 py-8 text-white bg-black">
-      <div className="max-w-6xl mx-auto">
-        {/* Frase acima de CATEGORIAS */}
+      <div className="mx-auto max-w-7xl">
+        {/* Info topo */}
         <p className="mb-2 text-sm text-center text-zinc-300">
-          Produtos já organizados por marca — do MAIOR para o MENOR volume (ml).
+          Produtos organizados por <b>marca</b> — do <b>MAIOR</b> para o <b>MENOR</b> volume (ml).
         </p>
 
         <h1 className="text-4xl sm:text-5xl md:text-6xl text-center font-extrabold bg-clip-text text-transparent bg-gradient-to-r from-yellow-500 via-orange-600 to-red-600 mb-6 drop-shadow-[2px_2px_2px_#ff0000]">
@@ -296,33 +384,113 @@ export default function ProdutosPage() {
             </button>
           ))}
           <CopaoButton
-            active={categoriaSelecionada === COPAO_CAT}
-            onClick={() => setCategoriaSelecionada(COPAO_CAT)}
+            active={apenasCopao || categoriaSelecionada === COPAO_CAT}
+            onClick={() => {
+              setCategoriaSelecionada(COPAO_CAT);
+              setApenasCopao(true);
+              setApenasNovidades(false);
+            }}
           />
           <NovidadeButton
-            active={categoriaSelecionada === NOV_KEY}
-            onClick={() => setCategoriaSelecionada(NOV_KEY)}
+            active={apenasNovidades || categoriaSelecionada === NOV_KEY}
+            onClick={() => {
+              setCategoriaSelecionada(NOV_KEY);
+              setApenasNovidades(true);
+              setApenasCopao(false);
+            }}
           />
         </div>
 
-        {/* Barra de marcas (funciona para QUALQUER categoria escolhida) */}
-        <div className="flex flex-wrap justify-center gap-2 mb-6">
-          {marcasDisponiveis.map((m) => (
-            <button
-              key={m}
-              className={`px-3 py-1.5 rounded-full text-sm border transition ${
-                marcaSelecionada === m
-                  ? 'bg-yellow-400 text-black border-yellow-400'
-                  : 'bg-zinc-800 text-white border-zinc-700 hover:bg-zinc-700'
-              }`}
-              onClick={() => setMarcaSelecionada(m)}
-              aria-pressed={marcaSelecionada === m}
+        {/* Barra de busca + filtros + ordenação */}
+        <div className="grid grid-cols-1 gap-3 mb-4 lg:grid-cols-12">
+          <div className="lg:col-span-5">
+            <input
+              value={busca}
+              onChange={(e) => setBusca(e.target.value)}
+              placeholder="Buscar por nome ou marca…"
+              className="w-full px-4 py-3 outline-none rounded-xl bg-white/10 focus:bg-white/15"
+            />
+          </div>
+          <div className="flex items-center gap-2 lg:col-span-4">
+            <label className="inline-flex items-center gap-2 px-3 py-2 rounded-lg bg-white/10">
+              <input
+                type="checkbox"
+                className="accent-yellow-400"
+                checked={apenasDisponiveis}
+                onChange={(e) => setApenasDisponiveis(e.target.checked)}
+              />
+              <span className="text-sm">Somente disponíveis</span>
+            </label>
+            <label className="inline-flex items-center gap-2 px-3 py-2 rounded-lg bg-white/10">
+              <input
+                type="checkbox"
+                className="accent-yellow-400"
+                checked={apenasNovidades}
+                onChange={(e) => {
+                  setApenasNovidades(e.target.checked);
+                  if (e.target.checked) setApenasCopao(false);
+                }}
+              />
+              <span className="text-sm">Novidades</span>
+            </label>
+            <label className="inline-flex items-center gap-2 px-3 py-2 rounded-lg bg-white/10">
+              <input
+                type="checkbox"
+                className="accent-yellow-400"
+                checked={apenasCopao}
+                onChange={(e) => {
+                  setApenasCopao(e.target.checked);
+                  if (e.target.checked) setApenasNovidades(false);
+                }}
+              />
+              <span className="text-sm">Copão 770ml</span>
+            </label>
+          </div>
+          <div className="lg:col-span-3">
+            <select
+              value={sort}
+              onChange={(e) => setSort(e.target.value as SortKey)}
+              className="w-full px-4 py-3 outline-none rounded-xl bg-white/10 focus:bg-white/15"
             >
-              {m}
-            </button>
-          ))}
+              <option value="mlDesc">Ordenar: maior volume (ml) ↓</option>
+              <option value="precoAsc">Preço: menor → maior</option>
+              <option value="precoDesc">Preço: maior → menor</option>
+              <option value="nomeAsc">Nome: A → Z</option>
+            </select>
+          </div>
+        </div>
 
-          {(marcaSelecionada || categoriaSelecionada) && (
+        {/* Chips de marcas (multi seleção) */}
+        <div className="flex flex-wrap justify-center gap-2 mb-6">
+          {marcasDisponiveis.map((m) => {
+            const active = marcasSelecionadas.includes(m);
+            return (
+              <button
+                key={m}
+                className={`px-3 py-1.5 rounded-full text-sm border transition ${
+                  active
+                    ? 'bg-yellow-400 text-black border-yellow-400'
+                    : 'bg-zinc-800 text-white border-zinc-700 hover:bg-zinc-700'
+                }`}
+                onClick={() =>
+                  setMarcasSelecionadas((prev) =>
+                    prev.includes(m) ? prev.filter((x) => x !== m) : [...prev, m]
+                  )
+                }
+                aria-pressed={active}
+              >
+                {m}
+              </button>
+            );
+          })}
+
+          {(marcasSelecionadas.length ||
+            categoriaSelecionada ||
+            busca ||
+            apenasDisponiveis ||
+            apenasNovidades ||
+            apenasCopao ||
+            sort !== 'mlDesc') && (
             <button
               onClick={limparFiltros}
               className="px-3 py-1.5 rounded-full text-sm bg-zinc-700 hover:bg-zinc-600 text-white border border-zinc-600"
@@ -333,9 +501,11 @@ export default function ProdutosPage() {
           )}
         </div>
 
-        {/* AGRUPAMENTOS — já aparecem assim na ABERTURA da página */}
+        {/* AGRUPAMENTOS */}
         {gruposPorMarca.length === 0 ? (
-          <p className="font-semibold text-center text-red-400">Nenhum produto encontrado.</p>
+          <p className="font-semibold text-center text-red-400">
+            Nenhum produto encontrado com os filtros atuais.
+          </p>
         ) : (
           gruposPorMarca.map(([marca, itens]) => (
             <section key={marca} className="mb-10">
@@ -343,10 +513,11 @@ export default function ProdutosPage() {
                 {tituloSecao(marca)}
               </h2>
 
-              <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 md:grid-cols-3">
+              <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 md:grid-cols-3 xl:grid-cols-4">
                 {itens.map((produto) => {
                   const tipo = tipoSelecionado[produto.id] || 'unidade';
-                  const preco = tipo === 'caixa' ? produto.precoCaixa ?? 0 : produto.precoUnidade ?? 0;
+                  const preco =
+                    tipo === 'caixa' ? produto.precoCaixa ?? 0 : produto.precoUnidade ?? 0;
                   const esgotado = !!produto.emFalta;
                   const imgSrc = imgSrcFrom(produto);
 
@@ -363,7 +534,13 @@ export default function ProdutosPage() {
                             ESGOTADO
                           </span>
                         )}
-                        <img src={imgSrc} alt={produto.nome} className="object-contain max-w-full max-h-full" />
+                        {/* eslint-disable-next-line @next/next/no-img-element */}
+                        <img
+                          src={imgSrc}
+                          alt={produto.nome}
+                          className="object-contain max-w-full max-h-full"
+                          loading="lazy"
+                        />
                       </div>
 
                       <div className="flex-1">
@@ -407,7 +584,9 @@ export default function ProdutosPage() {
                           >
                             −
                           </button>
-                          <span className="text-lg font-semibold">{quantidade[produto.id] || 0}</span>
+                          <span className="text-lg font-semibold">
+                            {quantidade[produto.id] || 0}
+                          </span>
                           <button
                             className="w-8 h-8 text-lg text-black bg-yellow-400 rounded-full hover:bg-yellow-500 disabled:opacity-40"
                             onClick={() => alterarQuantidade(produto.id, 1)}
