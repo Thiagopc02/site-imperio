@@ -20,7 +20,7 @@ import {
 } from 'react-icons/fa';
 import { GiChocolateBar } from 'react-icons/gi';
 
-/* ================== Tipos ================== */
+/* ======================= Tipos ======================= */
 type Produto = {
   id: string;
   nome: string;
@@ -51,7 +51,7 @@ type SortKey = 'mlDesc' | 'precoAsc' | 'precoDesc' | 'nomeAsc';
 const NOV_KEY = '__novidades__';
 const COPAO_CAT = 'Copão de 770ml';
 
-/* ============== Botões especiais ============== */
+/* =============== Botões especiais (UI) =============== */
 function NovidadeButton({ active, onClick }: { active: boolean; onClick: () => void }) {
   return (
     <button
@@ -132,13 +132,12 @@ function CopaoButton({ active, onClick }: { active: boolean; onClick: () => void
   );
 }
 
-/* ================== Utils ================== */
-const safe = (v: any) => (typeof v === 'string' ? v : '') as string;
-
+/* ======================= Utils ======================= */
 function getMarca(p: Produto): string {
   if (p.marca && p.marca.trim()) return p.marca.trim();
   return inferirMarca(p.nome);
 }
+
 function inferirMarca(nome: string): string {
   const n = (nome || '').toLowerCase();
   const regras: [string, RegExp][] = [
@@ -155,10 +154,12 @@ function inferirMarca(nome: string): string {
   const primeira = (nome || '').trim().split(/\s+/)[0];
   return primeira ? primeira.charAt(0).toUpperCase() + primeira.slice(1) : 'Outras';
 }
+
 function getMl(p: Produto): number {
   if (typeof p.ml === 'number') return p.ml;
   return extrairVolumeMl(p.nome);
 }
+
 function extrairVolumeMl(nome: string): number {
   const n = (nome || '').toLowerCase().replace(',', '.').replace(/\s+/g, '');
   const litro = n.match(/(\d+(?:\.\d+)?)l/);
@@ -180,11 +181,11 @@ function extrairVolumeMl(nome: string): number {
   return 0;
 }
 
-/* ================== Página ================== */
+/* ======================= Página ======================= */
 export default function ProdutosPage() {
   const router = useRouter();
 
-  // dados e filtros
+  // dados / filtros
   const [produtos, setProdutos] = useState<Produto[]>([]);
   const [quantidade, setQuantidade] = useState<Record<string, number>>({});
   const [categoriaSelecionada, setCategoriaSelecionada] = useState<string>('');
@@ -201,8 +202,8 @@ export default function ProdutosPage() {
   const [queryMarcas, setQueryMarcas] = useState('');
   const popoverRef = useRef<HTMLDivElement | null>(null);
 
-  // FAB + Drawer carrinho
-  const [showCartFab, setShowCartFab] = useState(false);
+  // FAB + Drawer
+  const [showFab, setShowFab] = useState(false);
   const [openMiniCart, setOpenMiniCart] = useState(false);
 
   // CartContext
@@ -220,13 +221,12 @@ export default function ProdutosPage() {
     quantidadeTotal?: number;
   } = useCart() as any;
 
-  // fallback caso contexto não traga quantidadeTotal
   const cartCount =
     typeof quantidadeTotal === 'number'
       ? quantidadeTotal
       : ((cartItems ?? []) as CartItem[]).reduce((acc, it) => acc + (it.quantidade ?? 0), 0);
 
-  /* --------- Auth + carregamento --------- */
+  /* ---------- efeitos ---------- */
   useEffect(() => {
     const unsub = onAuthStateChanged(auth, (user) => {
       if (!user) router.push('/login');
@@ -235,7 +235,6 @@ export default function ProdutosPage() {
     return () => unsub();
   }, [router]);
 
-  /* --------- Fechar popover ao clicar fora --------- */
   useEffect(() => {
     function onDocClick(e: MouseEvent) {
       if (!openMarcas) return;
@@ -247,15 +246,15 @@ export default function ProdutosPage() {
     return () => document.removeEventListener('mousedown', onDocClick);
   }, [openMarcas]);
 
-  /* --------- Mostrar FAB ao rolar --------- */
+  // controla a visibilidade do FAB (mostra ao rolar)
   useEffect(() => {
-    const handler = () => setShowCartFab(window.scrollY > 140);
+    const handler = () => setShowFab(window.scrollY > 140);
     handler();
     window.addEventListener('scroll', handler, { passive: true });
     return () => window.removeEventListener('scroll', handler);
   }, []);
 
-  /* --------- Firestore --------- */
+  /* ---------- loaders ---------- */
   const carregarProdutos = async () => {
     const qs = await getDocs(collection(db, 'produtos'));
     const lista: Produto[] = [];
@@ -263,26 +262,24 @@ export default function ProdutosPage() {
       const data = docx.data() as any;
       lista.push({
         id: docx.id,
-        nome: data?.nome ?? '',
-        precoUnidade: Number(data?.precoUnidade) || 0,
-        precoCaixa: Number(data?.precoCaixa) || 0,
-        itensPorCaixa: Number(data?.itensPorCaixa) || undefined,
-        descrição: safe(data?.descrição),
-        imagem: safe(data?.imagem),
-        categoria: safe(data?.categoria),
-        destaque: !!data?.destaque,
-        disponivelPor: Array.isArray(data?.disponivelPor) && data.disponivelPor.length
-          ? data.disponivelPor
-          : ['unidade'],
-        emFalta: !!data?.emFalta,
-        marca: typeof data?.marca === 'string' ? data.marca : undefined,
-        ml: typeof data?.ml === 'number' ? data.ml : undefined,
+        nome: data.nome,
+        precoUnidade: data.precoUnidade,
+        precoCaixa: data.precoCaixa,
+        itensPorCaixa: data.itensPorCaixa,
+        descrição: data.descrição,
+        imagem: data.imagem,
+        categoria: data.categoria,
+        destaque: !!data.destaque,
+        disponivelPor: data.disponivelPor || ['unidade'],
+        emFalta: !!data.emFalta,
+        marca: typeof data.marca === 'string' ? data.marca : undefined,
+        ml: typeof data.ml === 'number' ? data.ml : undefined,
       });
     });
     setProdutos(lista);
   };
 
-  /* --------- Carrinho (card) --------- */
+  /* ---------- helpers ---------- */
   const alterarQuantidade = (id: string, delta: number) => {
     setQuantidade((prev) => ({ ...prev, [id]: Math.max((prev[id] || 0) + delta, 0) }));
   };
@@ -295,7 +292,7 @@ export default function ProdutosPage() {
     setQuantidade((prev) => ({ ...prev, [produto.id]: 0 }));
   };
 
-  /* --------- Categorias --------- */
+  /* ---------- categorias ---------- */
   const categorias = [
     { nome: 'Refrescos e Sucos', Icon: FaCocktail },
     { nome: 'Fermentados', Icon: FaBeer },
@@ -306,40 +303,37 @@ export default function ProdutosPage() {
     { nome: 'Chocolates', Icon: GiChocolateBar },
   ] as const;
 
-  /* --------- Filtragem + ordenação --------- */
+  /* ---------- filtros / ordenação ---------- */
   const baseFiltrada = useMemo(() => {
     let base = produtos.slice();
 
-    // categoria
     if (apenasNovidades || categoriaSelecionada === NOV_KEY) {
       base = base.filter((p) => p.destaque);
     } else if (apenasCopao || categoriaSelecionada === COPAO_CAT) {
-      base = base.filter((p) => safe(p.categoria) === COPAO_CAT);
+      base = base.filter((p) => p.categoria === COPAO_CAT);
     } else if (categoriaSelecionada) {
-      base = base.filter((p) => safe(p.categoria) === categoriaSelecionada);
+      base = base.filter((p) => p.categoria === categoriaSelecionada);
     }
 
-    // estoque
     if (apenasDisponiveis) base = base.filter((p) => !p.emFalta);
 
-    // busca
-    const q = busca.trim().toLowerCase();
-    if (q) {
+    if (busca.trim()) {
+      const q = busca.trim().toLowerCase();
       base = base.filter((p) => {
-        const nome = safe(p.nome).toLowerCase();
-        const desc = safe(p.descrição).toLowerCase();
-        const marca = safe(getMarca(p)).toLowerCase();
-        return nome.includes(q) || desc.includes(q) || marca.includes(q);
+        const marca = getMarca(p).toLowerCase();
+        return (
+          (p.nome || '').toLowerCase().includes(q) ||
+          marca.includes(q) ||
+          (p.descrição || '').toLowerCase().includes(q)
+        );
       });
     }
 
-    // marcas selecionadas
     if (marcasSelecionadas.length) {
       const set = new Set(marcasSelecionadas);
       base = base.filter((p) => set.has(getMarca(p)));
     }
 
-    // ordenação
     switch (sort) {
       case 'mlDesc':
         base.sort((a, b) => getMl(b) - getMl(a));
@@ -351,7 +345,7 @@ export default function ProdutosPage() {
         base.sort((a, b) => (b.precoUnidade ?? 0) - (a.precoUnidade ?? 0));
         break;
       case 'nomeAsc':
-        base.sort((a, b) => safe(a.nome).localeCompare(safe(b.nome)));
+        base.sort((a, b) => a.nome.localeCompare(b.nome));
         break;
     }
 
@@ -385,7 +379,7 @@ export default function ProdutosPage() {
         const vb = getMl(b);
         const va = getMl(a);
         if (vb !== va) return vb - va;
-        return safe(a.nome).localeCompare(safe(b.nome));
+        return a.nome.localeCompare(b.nome);
       });
     }
     return Array.from(mapa.entries()).sort(([a], [b]) => a.localeCompare(b));
@@ -410,9 +404,7 @@ export default function ProdutosPage() {
     const prefix =
       categoriaSelecionada === 'Refrescos e Sucos'
         ? 'Refrigerantes'
-        : categoriaSelecionada &&
-          categoriaSelecionada !== NOV_KEY &&
-          categoriaSelecionada !== COPAO_CAT
+        : categoriaSelecionada && categoriaSelecionada !== NOV_KEY && categoriaSelecionada !== COPAO_CAT
         ? categoriaSelecionada
         : 'Produtos';
     return `${prefix} ${marca}`.trim();
@@ -431,7 +423,7 @@ export default function ProdutosPage() {
     return { head, rest };
   }, [marcasSelecionadas]);
 
-  /* ------------ UI auxiliares ------------ */
+  /* ---------- componentes UI auxiliares ---------- */
   const CategoriaPill = ({
     active,
     onClick,
@@ -474,7 +466,7 @@ export default function ProdutosPage() {
     </button>
   );
 
-  /* ================== Render ================== */
+  /* ======================= Render ======================= */
   return (
     <main className="min-h-screen px-4 py-8 text-white bg-black">
       <div className="mx-auto max-w-7xl">
@@ -580,12 +572,12 @@ export default function ProdutosPage() {
           </div>
         </div>
 
-        {/* Controle de marcas */}
+        {/* Controle de Marcas + dica */}
         <div className="relative mb-6">
           <div className="flex flex-wrap items-center gap-2">
             <MarcasTrigger />
 
-            {/* Hint: "O que você procura?" com seta em vermelho */}
+            {/* Hint em vermelho */}
             <div className="relative inline-flex items-center ml-3 animate-pulse">
               <span className="absolute w-3 h-3 rotate-45 -translate-y-1/2 bg-red-500 border border-red-700 shadow -left-2 top-1/2" />
               <span className="px-3 py-1 text-xs font-bold text-white bg-red-600 rounded-full shadow-lg">
@@ -593,7 +585,7 @@ export default function ProdutosPage() {
               </span>
             </div>
 
-            {/* badges marcas selecionadas */}
+            {/* marcas selecionadas */}
             {badgesSelecionadas.head.map((m) => (
               <span
                 key={m}
@@ -609,9 +601,7 @@ export default function ProdutosPage() {
                 </button>
               </span>
             ))}
-            {badgesSelecionadas.rest > 0 && (
-              <span className="text-xs opacity-70">+{badgesSelecionadas.rest}</span>
-            )}
+            {badgesSelecionadas.rest > 0 && <span className="text-xs opacity-70">+{badgesSelecionadas.rest}</span>}
 
             {(marcasSelecionadas.length ||
               categoriaSelecionada ||
@@ -675,9 +665,7 @@ export default function ProdutosPage() {
                   );
                 })}
                 {marcasFiltradasPopover.length === 0 && (
-                  <div className="col-span-2 py-6 text-sm text-center opacity-60">
-                    Nenhuma marca encontrada.
-                  </div>
+                  <div className="col-span-2 py-6 text-sm text-center opacity-60">Nenhuma marca encontrada.</div>
                 )}
               </div>
 
@@ -701,15 +689,11 @@ export default function ProdutosPage() {
 
         {/* Listagem agrupada */}
         {gruposPorMarca.length === 0 ? (
-          <p className="font-semibold text-center text-red-400">
-            Nenhum produto encontrado com os filtros atuais.
-          </p>
+          <p className="font-semibold text-center text-red-400">Nenhum produto encontrado com os filtros atuais.</p>
         ) : (
           gruposPorMarca.map(([marca, itens]) => (
             <section key={marca} className="mb-10">
-              <h2 className="mb-4 text-2xl font-extrabold text-yellow-400 md:text-3xl">
-                {tituloSecao(marca)}
-              </h2>
+              <h2 className="mb-4 text-2xl font-extrabold text-yellow-400 md:text-3xl">{tituloSecao(marca)}</h2>
 
               <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 md:grid-cols-3 xl:grid-cols-4">
                 {itens.map((produto) => {
@@ -732,12 +716,7 @@ export default function ProdutosPage() {
                           </span>
                         )}
                         {/* eslint-disable-next-line @next/next/no-img-element */}
-                        <img
-                          src={imgSrc}
-                          alt={produto.nome}
-                          className="object-contain max-w-full max-h-full"
-                          loading="lazy"
-                        />
+                        <img src={imgSrc} alt={produto.nome} className="object-contain max-w-full max-h-full" loading="lazy" />
                       </div>
 
                       <div className="flex-1">
@@ -747,14 +726,10 @@ export default function ProdutosPage() {
                         {produto.disponivelPor && (
                           <select
                             value={tipoSelecionado[produto.id] || 'unidade'}
-                            onChange={(e) =>
-                              setTipoSelecionado((prev) => ({ ...prev, [produto.id]: e.target.value }))
-                            }
+                            onChange={(e) => setTipoSelecionado((prev) => ({ ...prev, [produto.id]: e.target.value }))}
                             disabled={esgotado}
                             className={`w-full p-2 mb-2 text-sm text-white rounded shadow-inner ${
-                              esgotado
-                                ? 'bg-zinc-800/60 cursor-not-allowed'
-                                : 'bg-zinc-700 hover:bg-zinc-600'
+                              esgotado ? 'bg-zinc-800/60 cursor-not-allowed' : 'bg-zinc-700 hover:bg-zinc-600'
                             }`}
                           >
                             {produto.disponivelPor.map((t) => (
@@ -765,11 +740,7 @@ export default function ProdutosPage() {
                           </select>
                         )}
 
-                        <p
-                          className={`mb-2 text-lg font-semibold ${
-                            esgotado ? 'text-gray-400' : 'text-green-400'
-                          }`}
-                        >
+                        <p className={`mb-2 text-lg font-semibold ${esgotado ? 'text-gray-400' : 'text-green-400'}`}>
                           R$ {preco.toFixed(2)}
                         </p>
 
@@ -810,57 +781,60 @@ export default function ProdutosPage() {
         )}
       </div>
 
-      {/* ===== Botão flutuante do carrinho (lado direito, meio) com badge ===== */}
-      {showCartFab && (
-        <button
-          onClick={() => setOpenMiniCart(true)}
-          title="Abrir carrinho"
-          aria-label="Abrir carrinho"
-          className={[
-            'fixed right-4 md:right-6 top-1/2 -translate-y-1/2 z-[9999]',
-            'rounded-full p-4 md:p-5',
-            'bg-black text-white',
-            'transition transform hover:scale-105 active:scale-95',
-            'shadow-[0_0_22px_rgba(34,197,94,0.75),0_0_48px_rgba(34,197,94,0.55)]',
-            'hover:shadow-[0_0_34px_rgba(34,197,94,0.95),0_0_68px_rgba(34,197,94,0.75)]',
-            'border border-green-400/60 hover:border-green-300',
-            'ring-1 ring-green-500/30',
-            'relative',
-          ].join(' ')}
-          style={{
-            boxShadow:
-              '0 0 22px rgba(34,197,94,.75), 0 0 48px rgba(34,197,94,.55), inset 0 0 14px rgba(34,197,94,.22)',
-          }}
-        >
-          <FaShoppingCart className="w-7 h-7 md:w-9 md:h-9" />
-          {cartCount > 0 && (
-            <span
-              className={[
-                'absolute -top-2 -right-2 min-w-[22px] h-[22px]',
-                'rounded-full text-[12px] font-bold',
-                'bg-green-500 text-black flex items-center justify-center',
-                'shadow-[0_0_12px_rgba(34,197,94,0.9)] ring-1 ring-green-900/30',
-              ].join(' ')}
-              aria-label={`${cartCount} itens no carrinho`}
-            >
-              {cartCount > 99 ? '99+' : cartCount}
-            </span>
-          )}
-        </button>
-      )}
+      {/* -------- FAB do carrinho (ESQUERDA) com badge e “slide” -------- */}
+      <div
+        className={[
+          'fixed left-4 md:left-6 top-1/2 -translate-y-1/2 z-30',
+          showFab ? 'translate-x-0 opacity-100' : '-translate-x-6 opacity-0',
+          'transition-all duration-300',
+        ].join(' ')}
+      >
+        {showFab && (
+          <button
+            onClick={() => setOpenMiniCart(true)}
+            title="Abrir carrinho"
+            aria-label="Abrir carrinho"
+            className={[
+              'rounded-full p-4 md:p-5 bg-black text-white',
+              'hover:scale-105 active:scale-95',
+              'border border-green-400/60 hover:border-green-300 ring-1 ring-green-500/30',
+              'shadow-[0_0_22px_rgba(34,197,94,0.75),0_0_48px_rgba(34,197,94,0.55)]',
+              'hover:shadow-[0_0_34px_rgba(34,197,94,0.95),0_0_68px_rgba(34,197,94,0.75)]',
+              'relative',
+            ].join(' ')}
+            style={{
+              boxShadow:
+                '0 0 22px rgba(34,197,94,.75), 0 0 48px rgba(34,197,94,.55), inset 0 0 14px rgba(34,197,94,.22)',
+            }}
+          >
+            <FaShoppingCart className="w-7 h-7 md:w-9 md:h-9" />
+            {cartCount > 0 && (
+              <span
+                className={[
+                  'absolute -top-2 -right-2 min-w-[22px] h-[22px]',
+                  'rounded-full text-[12px] font-bold',
+                  'bg-green-500 text-black flex items-center justify-center',
+                  'shadow-[0_0_12px_rgba(34,197,94,0.9)] ring-1 ring-green-900/30',
+                ].join(' ')}
+                aria-label={`${cartCount} itens no carrinho`}
+              >
+                {cartCount > 99 ? '99+' : cartCount}
+              </span>
+            )}
+          </button>
+        )}
+      </div>
 
-      {/* ===== Overlay + Drawer do mini-carrinho ===== */}
+      {/* -------- Overlay + Drawer Mini-Carrinho -------- */}
       {openMiniCart && (
         <>
-          <div
-            className="fixed inset-0 z-40 bg-black/60 backdrop-blur-sm"
-            onClick={() => setOpenMiniCart(false)}
-          />
+          <div className="fixed inset-0 z-40 bg-black/60 backdrop-blur-sm" onClick={() => setOpenMiniCart(false)} />
           <aside
             className="fixed right-0 top-0 z-50 h-full w-[92%] sm:w-[420px] bg-zinc-950 border-l border-white/10 shadow-2xl flex flex-col"
             role="dialog"
             aria-label="Mini carrinho"
           >
+            {/* header */}
             <div className="flex items-center justify-between px-4 py-3 border-b border-white/10">
               <div className="flex items-center gap-2">
                 <FaShoppingCart />
@@ -875,6 +849,7 @@ export default function ProdutosPage() {
               </button>
             </div>
 
+            {/* items */}
             <div className="flex-1 overflow-auto divide-y divide-white/5">
               {(cartItems ?? []).length === 0 ? (
                 <div className="flex items-center justify-center h-full px-6 text-sm text-center opacity-70">
@@ -912,11 +887,7 @@ export default function ProdutosPage() {
                           <button
                             className="font-bold text-black bg-yellow-400 rounded-full w-7 h-7 disabled:opacity-40"
                             onClick={() =>
-                              atualizarQuantidade?.(
-                                item.id,
-                                item.tipo,
-                                Math.max((item.quantidade ?? 1) - 1, 0)
-                              )
+                              atualizarQuantidade?.(item.id, item.tipo, Math.max((item.quantidade ?? 1) - 1, 0))
                             }
                             disabled={!canUpdate}
                           >
@@ -927,9 +898,7 @@ export default function ProdutosPage() {
                           </span>
                           <button
                             className="font-bold text-black bg-yellow-400 rounded-full w-7 h-7 disabled:opacity-40"
-                            onClick={() =>
-                              atualizarQuantidade?.(item.id, item.tipo, (item.quantidade ?? 0) + 1)
-                            }
+                            onClick={() => atualizarQuantidade?.(item.id, item.tipo, (item.quantidade ?? 0) + 1)}
                             disabled={!canUpdate}
                           >
                             +
@@ -947,20 +916,19 @@ export default function ProdutosPage() {
                         </div>
                       </div>
 
-                      <div className="text-sm font-semibold text-right whitespace-nowrap">
-                        R$ {totalItem.toFixed(2)}
-                      </div>
+                      <div className="text-sm font-semibold text-right whitespace-nowrap">R$ {totalItem.toFixed(2)}</div>
                     </div>
                   );
                 })
               )}
             </div>
 
+            {/* footer */}
             <div className="p-4 border-t border-white/10">
               <div className="flex items-center justify-between mb-3">
                 <span className="text-sm opacity-80">Subtotal</span>
                 <strong className="text-lg text-green-400">
-                  R{'$ '}
+                  R${' '}
                   {((cartItems ?? []) as CartItem[])
                     .reduce((acc, it) => acc + (it.preco ?? 0) * (it.quantidade ?? 0), 0)
                     .toFixed(2)}
