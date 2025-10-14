@@ -15,6 +15,8 @@ import {
   FaTint,
   FaCandyCane,
   FaShoppingCart,
+  FaTrashAlt,
+  FaTimes,
 } from 'react-icons/fa';
 import { GiChocolateBar } from 'react-icons/gi';
 
@@ -32,6 +34,15 @@ type Produto = {
   emFalta?: boolean;
   marca?: string;
   ml?: number;
+};
+
+type CartItem = {
+  id: string;
+  nome: string;
+  imagem: string;
+  tipo: 'unidade' | 'caixa' | string;
+  preco: number;
+  quantidade: number;
 };
 
 const NOV_KEY = '__novidades__';
@@ -185,10 +196,22 @@ export default function ProdutosPage() {
   const [queryMarcas, setQueryMarcas] = useState('');
   const popoverRef = useRef<HTMLDivElement | null>(null);
 
-  // FAB do carrinho (aparece após rolar)
+  // FAB + Drawer do carrinho
   const [showCartFab, setShowCartFab] = useState(false);
+  const [openMiniCart, setOpenMiniCart] = useState(false);
 
-  const { adicionarAoCarrinho } = useCart();
+  // CartContext
+  const {
+    adicionarAoCarrinho,
+    items: cartItems,
+    removerDoCarrinho,
+    atualizarQuantidade,
+  }: {
+    adicionarAoCarrinho: (p: any) => void;
+    items?: CartItem[];
+    removerDoCarrinho?: (id: string, tipo?: string) => void;
+    atualizarQuantidade?: (id: string, tipo: string, qtd: number) => void;
+  } = useCart() as any;
 
   useEffect(() => {
     const unsub = onAuthStateChanged(auth, (user) => {
@@ -211,9 +234,7 @@ export default function ProdutosPage() {
 
   // mostra/oculta o botão flutuante conforme rolagem
   useEffect(() => {
-    const handler = () => {
-      setShowCartFab(window.scrollY > 140);
-    };
+    const handler = () => setShowCartFab(window.scrollY > 140);
     handler();
     window.addEventListener('scroll', handler, { passive: true });
     return () => window.removeEventListener('scroll', handler);
@@ -255,7 +276,7 @@ export default function ProdutosPage() {
     setQuantidade((prev) => ({ ...prev, [produto.id]: 0 }));
   };
 
-  // categorias com ícones “premium”
+  // categorias com ícones
   const categorias = [
     { nome: 'Refrescos e Sucos', Icon: FaCocktail },
     { nome: 'Fermentados', Icon: FaBeer },
@@ -539,7 +560,7 @@ export default function ProdutosPage() {
           <div className="flex flex-wrap items-center gap-2">
             <MarcasTrigger />
 
-            {/* Hint: "O que você procura?" com seta vermelha apontando para o botão MARCAS */}
+            {/* Hint: "O que você procura?" com seta vermelha */}
             <div className="relative inline-flex items-center ml-3 animate-pulse">
               <span className="absolute w-3 h-3 rotate-45 -translate-y-1/2 bg-red-500 border border-red-700 shadow -left-2 top-1/2" />
               <span className="px-3 py-1 text-xs font-bold text-white bg-red-600 rounded-full shadow-lg">
@@ -770,9 +791,9 @@ export default function ProdutosPage() {
       {/* Botão flutuante do carrinho (lado direito, centro vertical, maior) */}
       {showCartFab && (
         <button
-          onClick={() => router.push('/carrinho')}
-          title="Ir para o carrinho"
-          aria-label="Ir para o carrinho"
+          onClick={() => setOpenMiniCart(true)}
+          title="Abrir carrinho"
+          aria-label="Abrir carrinho"
           className={[
             'fixed right-4 md:right-6 top-1/2 -translate-y-1/2 z-30',
             'rounded-full p-4 md:p-5',
@@ -790,6 +811,142 @@ export default function ProdutosPage() {
         >
           <FaShoppingCart className="w-7 h-7 md:w-9 md:h-9" />
         </button>
+      )}
+
+      {/* Overlay + Drawer Mini-Carrinho */}
+      {openMiniCart && (
+        <>
+          {/* overlay */}
+          <div
+            className="fixed inset-0 z-40 bg-black/60 backdrop-blur-sm"
+            onClick={() => setOpenMiniCart(false)}
+          />
+          {/* drawer */}
+          <aside
+            className="fixed right-0 top-0 z-50 h-full w-[92%] sm:w-[420px] bg-zinc-950 border-l border-white/10 shadow-2xl flex flex-col"
+            role="dialog"
+            aria-label="Mini carrinho"
+          >
+            {/* header */}
+            <div className="flex items-center justify-between px-4 py-3 border-b border-white/10">
+              <div className="flex items-center gap-2">
+                <FaShoppingCart />
+                <h3 className="text-lg font-bold">Seu carrinho</h3>
+              </div>
+              <button
+                onClick={() => setOpenMiniCart(false)}
+                className="p-2 rounded-md bg-white/5 hover:bg-white/10"
+                aria-label="Fechar mini carrinho"
+              >
+                <FaTimes />
+              </button>
+            </div>
+
+            {/* items */}
+            <div className="flex-1 overflow-auto divide-y divide-white/5">
+              {(cartItems ?? []).length === 0 ? (
+                <div className="flex items-center justify-center h-full px-6 text-sm text-center opacity-70">
+                  Seu carrinho está vazio. Adicione produtos para visualizar aqui.
+                </div>
+              ) : (
+                (cartItems as CartItem[]).map((item) => {
+                  const totalItem = (item.preco ?? 0) * (item.quantidade ?? 0);
+                  const canUpdate = typeof atualizarQuantidade === 'function';
+                  const canRemove = typeof removerDoCarrinho === 'function';
+
+                  return (
+                    <div key={`${item.id}-${item.tipo}`} className="flex gap-3 p-3">
+                      <div className="flex items-center justify-center w-16 h-16 overflow-hidden rounded-lg bg-white/5">
+                        {/* eslint-disable-next-line @next/next/no-img-element */}
+                        <img
+                          src={
+                            item.imagem?.startsWith('http') || item.imagem?.startsWith('/')
+                              ? item.imagem
+                              : `/produtos/${item.imagem}`
+                          }
+                          alt={item.nome}
+                          className="object-contain max-w-full max-h-full"
+                        />
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-semibold truncate">{item.nome}</p>
+                        <p className="text-xs opacity-70">Tipo: {item.tipo || 'unidade'}</p>
+                        <p className="mt-1 text-sm text-green-400">
+                          R$ {(item.preco ?? 0).toFixed(2)}{' '}
+                          <span className="text-xs opacity-60">/ {item.tipo || 'unidade'}</span>
+                        </p>
+
+                        <div className="flex items-center gap-2 mt-2">
+                          <button
+                            className="font-bold text-black bg-yellow-400 rounded-full w-7 h-7 disabled:opacity-40"
+                            onClick={() =>
+                              atualizarQuantidade?.(item.id, item.tipo, Math.max((item.quantidade ?? 1) - 1, 0))
+                            }
+                            disabled={!canUpdate}
+                          >
+                            −
+                          </button>
+                          <span className="min-w-[1.5rem] text-center text-sm font-semibold">
+                            {item.quantidade ?? 0}
+                          </span>
+                          <button
+                            className="font-bold text-black bg-yellow-400 rounded-full w-7 h-7 disabled:opacity-40"
+                            onClick={() => atualizarQuantidade?.(item.id, item.tipo, (item.quantidade ?? 0) + 1)}
+                            disabled={!canUpdate}
+                          >
+                            +
+                          </button>
+
+                          <button
+                            className="px-2 py-1 ml-auto text-xs text-white rounded-md bg-red-600/80 hover:bg-red-600 disabled:opacity-40"
+                            onClick={() => removerDoCarrinho?.(item.id, item.tipo)}
+                            disabled={!canRemove}
+                          >
+                            <span className="inline-flex items-center gap-1">
+                              <FaTrashAlt /> Remover
+                            </span>
+                          </button>
+                        </div>
+                      </div>
+
+                      <div className="text-sm font-semibold text-right whitespace-nowrap">
+                        R$ {totalItem.toFixed(2)}
+                      </div>
+                    </div>
+                  );
+                })
+              )}
+            </div>
+
+            {/* footer */}
+            <div className="p-4 border-t border-white/10">
+              <div className="flex items-center justify-between mb-3">
+                <span className="text-sm opacity-80">Subtotal</span>
+                <strong className="text-lg text-green-400">
+                  R${' '}
+                  {((cartItems ?? []) as CartItem[])
+                    .reduce((acc, it) => acc + (it.preco ?? 0) * (it.quantidade ?? 0), 0)
+                    .toFixed(2)}
+                </strong>
+              </div>
+
+              <div className="flex gap-2">
+                <button
+                  onClick={() => setOpenMiniCart(false)}
+                  className="flex-1 py-2 border rounded-lg border-white/15 bg-white/5 hover:bg-white/10"
+                >
+                  Continuar comprando
+                </button>
+                <button
+                  onClick={() => router.push('/carrinho')}
+                  className="flex-1 py-2 rounded-lg bg-yellow-500 hover:bg-yellow-400 text-black font-bold shadow-[0_0_18px_rgba(234,179,8,0.35)]"
+                >
+                  Finalizar compra
+                </button>
+              </div>
+            </div>
+          </aside>
+        </>
       )}
     </main>
   );
