@@ -5,7 +5,6 @@ import {
   FaPhoneAlt,
   FaBoxes,
   FaShoppingCart,
-  FaSearch,
 } from 'react-icons/fa';
 import { GiCastle } from 'react-icons/gi';
 import { useRouter } from 'next/navigation';
@@ -33,6 +32,7 @@ export default function Home() {
     <>
       {/* Header */}
       <header className="flex flex-col gap-4 px-6 py-4 text-black bg-yellow-400 shadow-md md:flex-row md:items-center md:justify-between">
+        {/* Logo */}
         <div className="flex items-center justify-between w-full md:w-auto">
           <a href="/" aria-label="Página inicial">
             <img
@@ -43,16 +43,19 @@ export default function Home() {
           </a>
         </div>
 
-        {/* Busca */}
-        <div className="relative w-full md:max-w-2xl">
-          <div className="absolute text-2xl text-black transform -translate-y-1/2 left-4 top-1/2">
-            <FaSearch />
-          </div>
-          <input
-            type="text"
-            placeholder="Buscar produtos..."
-            className="w-full py-2 pl-12 pr-4 text-black bg-white border border-black rounded-full shadow-md focus:outline-none focus:ring-2 focus:ring-yellow-600"
-          />
+        {/* Slogan no lugar da busca */}
+        <div className="flex items-center justify-center w-full md:max-w-2xl">
+          <span
+            className="text-xl italic tracking-tight text-center text-black select-none md:text-2xl font-extralight"
+            style={{
+              fontFamily:
+                "'Segoe Script','Brush Script MT','Dancing Script',cursive",
+            }}
+            aria-label="Slogan"
+            title="Império a um gole de você"
+          >
+            Império a um gole de você
+          </span>
         </div>
 
         {/* Ações */}
@@ -84,7 +87,11 @@ export default function Home() {
       </header>
 
       {/* Botão flutuante → HISTÓRIA (castelo maior) */}
-      <div className="castle-fab animate-bounce" title="História das marcas" aria-label="História das marcas">
+      <div
+        className="castle-fab animate-bounce"
+        title="História das marcas"
+        aria-label="História das marcas"
+      >
         <a href="/historia" className="grid w-full h-full place-items-center">
           <GiCastle className="w-10 h-10 drop-shadow-[0_0_8px_rgba(0,0,0,.45)]" />
         </a>
