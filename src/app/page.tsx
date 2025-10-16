@@ -113,9 +113,22 @@ export default function Home() {
           <p className="mt-4 text-lg md:text-xl text-white drop-shadow-[0_2px_6px_rgba(0,0,0,0.5)]">
             Qualidade e exclusividade direto para sua casa
           </p>
+
+          {/* BOTÃO MAIS VISÍVEL */}
           <a
             href="/produtos"
-            className="inline-block px-6 py-3 mt-6 font-semibold text-white transition duration-300 bg-white rounded-full shadow-md hover:bg-gray-200"
+            className="
+              inline-block mt-8 px-8 md:px-10 py-3.5 md:py-4
+              rounded-full font-bold text-black text-base md:text-lg
+              bg-yellow-400 ring-4 ring-yellow-300/70
+              shadow-[0_12px_30px_rgba(0,0,0,0.45)]
+              hover:bg-yellow-300 hover:-translate-y-0.5
+              hover:shadow-[0_18px_40px_rgba(0,0,0,0.55)]
+              focus:outline-none focus:ring-4 focus:ring-white/70
+              active:translate-y-[1px]
+              transition-all duration-200
+            "
+            aria-label="Ver produtos"
           >
             Ver produtos
           </a>
