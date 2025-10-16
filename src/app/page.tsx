@@ -8,18 +8,112 @@ import {
 } from 'react-icons/fa';
 import { GiCastle } from 'react-icons/gi';
 import { useRouter } from 'next/navigation';
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { onAuthStateChanged, User } from 'firebase/auth';
-import { auth } from '@/firebase/config';
+import { auth, db } from '@/firebase/config';
+import { collection, getDocs } from 'firebase/firestore';
 import Footer from '@/components/Footer';
+
+/* -------------------------- Componente: Marquee -------------------------- */
+type MarqueeItem = { src: string; alt?: string };
+
+function MarqueeStrip({ items, speed = 35 }: { items: MarqueeItem[]; speed?: number }) {
+  // Duplicamos o array para o loop infinito ficar contínuo
+  const track = useMemo(() => [...items, ...items], [items]);
+
+  return (
+    <div className="relative w-full py-4 overflow-hidden bg-black">
+      {/* fade nas laterais (sutil) */}
+      <div className="absolute inset-y-0 left-0 w-16 pointer-events-none bg-gradient-to-r from-black to-transparent"></div>
+      <div className="absolute inset-y-0 right-0 w-16 pointer-events-none bg-gradient-to-l from-black to-transparent"></div>
+
+      <div
+        className="flex items-center gap-8 marquee-track will-change-transform"
+        style={
+          {
+            // velocidade controlada por variável CSS
+            ['--marquee-speed' as any]: `${speed}s`,
+          } as React.CSSProperties
+        }
+      >
+        {track.map((item, i) => (
+          <div key={i} className="shrink-0">
+            <img
+              src={item.src}
+              alt={item.alt ?? 'Produto'}
+              className="h-28 md:h-36 lg:h-40 w-auto object-contain rounded-lg bg-white/5 p-2 shadow-[0_6px_20px_rgba(0,0,0,.35)]"
+              loading="lazy"
+            />
+          </div>
+        ))}
+      </div>
+
+      {/* Estilos do marquee */}
+      <style jsx>{`
+        .marquee-track {
+          animation: marquee var(--marquee-speed) linear infinite;
+        }
+        @keyframes marquee {
+          0% {
+            transform: translateX(0);
+          }
+          100% {
+            transform: translateX(-50%);
+          }
+        }
+      `}</style>
+    </div>
+  );
+}
+
+/* ------------------------------------------------------------------------ */
 
 export default function Home() {
   const router = useRouter();
   const [user, setUser] = useState<User | null>(null);
+  const [items, setItems] = useState<MarqueeItem[]>([]);
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, setUser);
     return () => unsubscribe();
+  }, []);
+
+  // Busca das imagens dos produtos no Firestore
+  useEffect(() => {
+    (async () => {
+      try {
+        const snap = await getDocs(collection(db, 'produtos'));
+        const list: MarqueeItem[] = [];
+        snap.forEach((doc) => {
+          const data = doc.data() as { imagem?: string; nome?: string };
+          if (data?.imagem) {
+            list.push({ src: data.imagem, alt: data.nome ?? 'Produto' });
+          }
+        });
+
+        if (list.length === 0) {
+          // Fallback se a coleção estiver vazia
+          setItems([
+            { src: '/produtos/Brahma-chopp-cx.jpg', alt: 'Brahma Chopp' },
+            { src: '/produtos/royal-salute.jpg', alt: 'Royal Salute 21' },
+            { src: '/produtos/Smirnoff-1L-uni00.jpg', alt: 'Smirnoff 1L' },
+            { src: '/produtos/blue-label.jpg', alt: 'Blue Label' },
+            { src: '/produtos/jack-daniels.jpg', alt: 'Jack Daniels' },
+          ]);
+        } else {
+          setItems(list);
+        }
+      } catch {
+        // Qualquer erro: usa fallback
+        setItems([
+          { src: '/produtos/Brahma-chopp-cx.jpg', alt: 'Brahma Chopp' },
+          { src: '/produtos/royal-salute.jpg', alt: 'Royal Salute 21' },
+          { src: '/produtos/Smirnoff-1L-uni00.jpg', alt: 'Smirnoff 1L' },
+          { src: '/produtos/blue-label.jpg', alt: 'Blue Label' },
+          { src: '/produtos/jack-daniels.jpg', alt: 'Jack Daniels' },
+        ]);
+      }
+    })();
   }, []);
 
   const handleCarrinhoClick = () => {
@@ -114,7 +208,7 @@ export default function Home() {
             Qualidade e exclusividade direto para sua casa
           </p>
 
-          {/* BOTÃO MAIS VISÍVEL */}
+          {/* Botão visível */}
           <a
             href="/produtos"
             className="
@@ -134,6 +228,9 @@ export default function Home() {
           </a>
         </div>
       </section>
+
+      {/* ===== Carrossel 1 — entre o Hero e os Destaques ===== */}
+      {items.length > 0 && <MarqueeStrip items={items} speed={35} />}
 
       {/* Destaques da Semana */}
       <section className="px-4 py-16 text-white bg-black">
@@ -193,6 +290,9 @@ export default function Home() {
           ))}
         </div>
       </section>
+
+      {/* ===== Carrossel 2 — entre os Destaques e o Rodapé ===== */}
+      {items.length > 0 && <MarqueeStrip items={items} speed={38} />}
 
       {/* Rodapé */}
       <Footer />
