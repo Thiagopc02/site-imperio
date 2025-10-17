@@ -9,31 +9,62 @@ import { auth, db } from '@/firebase/config';
 import { collection, getDocs } from 'firebase/firestore';
 import Footer from '@/components/Footer';
 
-/* =========================================================================
-   Componente: MarqueePro (carrossel infinito, moderno e uniforme)
-   - Cards tamanho fixo, bordas arredondadas, sombra, gradiente lateral
-   - Loop contínuo suave (duplica os itens), pausa no hover
-   - `speed` controla o tempo de uma volta de 50% da faixa
-   ========================================================================= */
+/* ===================== NORMALIZAÇÃO DE CAMINHOS DE IMAGENS ===================== */
+/** Remove acentos, caracteres estranhos, troca espaços por hifens, força minúsculas,
+ * corrige ".png1" → ".png" e garante caminho /produtos/<arquivo> quando vier só o nome.
+ */
+function normalizeImagePath(input?: string): string | null {
+  if (!input) return null;
+
+  // Se já é URL absoluta ou caminho absoluto (começa com "/"), apenas corrige ".png1"
+  if (/^https?:\/\//i.test(input) || input.startsWith('/')) {
+    return input.replace(/\.png1$/i, '.png').replace(/\.jpg1$/i, '.jpg');
+  }
+
+  // Pega só o nome do arquivo
+  let name = input.split('/').pop() || input;
+
+  // Corrige extensões digitadas com "1"
+  name = name.replace(/\.png1$/i, '.png').replace(/\.jpg1$/i, '.jpg').replace(/\.jpeg1$/i, '.jpeg');
+
+  // Remove extensão desconhecida extra "1" caso ainda exista algo assim no final
+  name = name.replace(/(\.(png|jpg|jpeg|webp))\d+$/i, '$1');
+
+  // Normaliza: sem acento, sem caracteres especiais, espaços/hífens ok, minúsculo
+  name = name
+    .normalize('NFD').replace(/[\u0300-\u036f]/g, '') // sem acentos
+    .replace(/[^a-zA-Z0-9._ -]/g, '')                 // remove !, %, etc
+    .replace(/\s+/g, '-')                              // espaços -> hifens
+    .replace(/-+/g, '-')                               // hifens duplos
+    .toLowerCase();
+
+  // Se não veio extensão, por segurança tente .png
+  if (!/\.(png|jpg|jpeg|webp)$/i.test(name)) {
+    name = name + '.png';
+  }
+
+  // Garante caminho em /produtos
+  return `/produtos/${name}`;
+}
+
+/* ========================= Carrossel (Marquee) ========================= */
 type MarqueeItem = { src: string; alt?: string };
 
 function MarqueePro({
   items,
   speed = 40,          // maior = mais lento
-  cardW = 170,         // largura fixa do card
-  cardH = 170,         // altura fixa do card
-  topPadding = true,
+  cardW = 170,
+  cardH = 170,
 }: {
   items: MarqueeItem[];
   speed?: number;
   cardW?: number;
   cardH?: number;
-  topPadding?: boolean;
 }) {
   const track = useMemo(() => [...items, ...items], [items]);
 
   return (
-    <div className={`relative w-full overflow-hidden bg-black ${topPadding ? 'py-6 md:py-8' : ''}`}>
+    <div className="relative w-full py-6 overflow-hidden bg-black md:py-8">
       {/* fades laterais */}
       <div className="absolute inset-y-0 left-0 w-20 pointer-events-none bg-gradient-to-r from-black via-black/70 to-transparent" />
       <div className="absolute inset-y-0 right-0 w-20 pointer-events-none bg-gradient-to-l from-black via-black/70 to-transparent" />
@@ -70,7 +101,7 @@ function MarqueePro({
                   loading="lazy"
                   onError={(e) => {
                     const el = e.currentTarget;
-                    el.src = '/placeholder-product.png'; // (opcional) adicione esse arquivo em /public
+                    el.src = '/placeholder-product.png'; // opcional: crie /public/placeholder-product.png
                     el.classList.add('opacity-70');
                   }}
                 />
@@ -81,7 +112,7 @@ function MarqueePro({
 
         <style jsx>{`
           .marquee-track { animation: marquee var(--marquee-speed) linear infinite; }
-          .group:hover .marquee-track { animation-play-state: paused; } /* pausa no hover */
+          .group:hover .marquee-track { animation-play-state: paused; }
           @keyframes marquee {
             0% { transform: translateX(0); }
             100% { transform: translateX(-50%); }
@@ -92,16 +123,14 @@ function MarqueePro({
   );
 }
 
-/* ========================= Imagens locais (pasta /public/publi) ========== */
-/* Coloque seus arquivos dentro de /public/publi e liste aqui:
-   Ex.: 'corona-269ml.png', 'antarctica-269ml.jpg', 'coca-zero-2l.png'
+/* ========================= Lista local opcional (/public/produtos) =========================
+   Se quiser, você pode listar aqui alguns nomes crus como eles estão no Firestore.
+   A função normalizeImagePath vai padronizar e apontar para /produtos/<slug>.ext
 */
-const PUBLI: string[] = [
-  // 'corona-269ml.png',
-  // 'antarctica-original-269ml.jpg',
-  // 'coca-cola-zero-2l.png',
-  // 'aurora-100-500ml.jpg',
-  // 'licor-43.png',
+const LOCAL_NAMES: string[] = [
+  // 'CocaColaZero2L.PNG1',
+  // 'H2OH! Limoneto 500ML.png',
+  // 'Heineken 6x330ml.PNG',
 ];
 
 /* ======================================================================== */
@@ -116,7 +145,7 @@ export default function Home() {
     return () => unsubscribe();
   }, []);
 
-  // Busca imagens do Firestore e concatena com /public/publi
+  // Busca imagens do Firestore e concatena com lista local; normaliza tudo
   useEffect(() => {
     (async () => {
       try {
@@ -124,17 +153,14 @@ export default function Home() {
         const fromDb: MarqueeItem[] = [];
         snap.forEach((doc) => {
           const data = doc.data() as { imagem?: string; nome?: string };
-          if (!data) return;
-
-          // Caminhos locais devem começar com "/" (ex.: "/produtos/arquivo.jpg" ou "/publi/arquivo.png")
-          const src = data.imagem?.startsWith('/') ? data.imagem : data.imagem;
-          if (src) fromDb.push({ src, alt: data.nome ?? 'Produto' });
+          const normalized = normalizeImagePath(data?.imagem);
+          if (normalized) fromDb.push({ src: normalized, alt: data?.nome ?? 'Produto' });
         });
 
-        const fromLocal: MarqueeItem[] = PUBLI.map((name) => ({
-          src: `/publi/${name}`,
-          alt: name.replace(/\.[^/.]+$/, '').replace(/[-_]/g, ' '),
-        }));
+        const fromLocal: MarqueeItem[] = LOCAL_NAMES.map((raw) => {
+          const normalized = normalizeImagePath(raw)!;
+          return { src: normalized, alt: raw.replace(/\.[^/.]+$/, '') };
+        });
 
         // Remove duplicatas
         const uniq = new Map<string, MarqueeItem>();
@@ -144,7 +170,7 @@ export default function Home() {
 
         let final = Array.from(uniq.values());
 
-        // Fallback mínimo para não ficar vazio
+        // Fallback mínimo
         if (final.length === 0) {
           final = [
             { src: '/produtos/Brahma-chopp-cx.jpg', alt: 'Brahma Chopp' },
@@ -186,12 +212,7 @@ export default function Home() {
         <div className="flex items-center justify-center w-full md:max-w-2xl">
           <span
             className="text-xl italic tracking-tight text-center text-black select-none md:text-2xl font-extralight"
-            style={{
-              fontFamily:
-                "'Segoe Script','Brush Script MT','Dancing Script',cursive",
-            }}
-            aria-label="Slogan"
-            title="Império a um gole de você"
+            style={{ fontFamily: "'Segoe Script','Brush Script MT','Dancing Script',cursive" }}
           >
             Império a um gole de você
           </span>
@@ -266,14 +287,12 @@ export default function Home() {
         </div>
       </section>
 
-      {/* ===== Carrossel 1 — entre o Hero e os Destaques ===== */}
+      {/* Carrossel 1 — entre o Hero e os Destaques */}
       {items.length > 0 && <MarqueePro items={items} speed={36} cardW={170} cardH={170} />}
 
       {/* Destaques da Semana */}
       <section className="px-4 py-16 text-white bg-black">
-        <h2 className="mb-10 text-3xl font-bold text-center md:text-4xl">
-          Destaques da Semana
-        </h2>
+        <h2 className="mb-10 text-3xl font-bold text-center md:text-4xl">Destaques da Semana</h2>
 
         <div className="grid max-w-6xl grid-cols-1 gap-8 mx-auto sm:grid-cols-2 md:grid-cols-3">
           {[
@@ -299,11 +318,7 @@ export default function Home() {
             },
           ].map((produto, idx) => (
             <div key={idx} className="product-card">
-              <img
-                src={produto.img}
-                alt={produto.nome}
-                className="object-contain w-full bg-white h-60"
-              />
+              <img src={produto.img} alt={produto.nome} className="object-contain w-full bg-white h-60" />
               <div className="p-5">
                 <h3 className="product-title">{produto.nome}</h3>
                 <p className="product-desc">{produto.descricao}</p>
@@ -321,7 +336,7 @@ export default function Home() {
         </div>
       </section>
 
-      {/* ===== Carrossel 2 — entre os Destaques e o Rodapé ===== */}
+      {/* Carrossel 2 — entre os Destaques e o Rodapé */}
       {items.length > 0 && <MarqueePro items={items} speed={40} cardW={170} cardH={170} />}
 
       {/* Rodapé */}
