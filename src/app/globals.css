@@ -8,6 +8,10 @@
 :root {
   --background: #ffffff;
   --foreground: #111111;
+
+  /* Carrossel / UI */
+  --accent: #facc15; /* amarelo imperial */
+  --card-r: 20px;
 }
 
 @media (prefers-color-scheme: dark) {
@@ -15,6 +19,12 @@
     --background: #0a0a0a;
     --foreground: #f1f1f1;
   }
+}
+
+/* iOS – melhora renderização de texto e evita zoom/ajuste estranho */
+html {
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
 }
 
 body {
@@ -55,15 +65,12 @@ body {
 /* =========================
    Destaques da semana
    ========================= */
-
-/* Selo OFERTA que vai ENTRE a descrição e o cartão de preço */
 .oferta-pill {
   @apply inline-block self-start mt-3 mb-3 px-3 py-1 rounded-full text-[11px] md:text-xs font-bold tracking-wider
          text-white bg-gradient-to-b from-red-500 to-red-700 ring-1 ring-red-400/60
          shadow-[0_0_10px_rgba(255,0,0,0.55)];
 }
 
-/* Cartão cinza do preço */
 .price-card {
   @apply relative mt-1 w-full max-w-[520px]
          rounded-2xl bg-gradient-to-b from-zinc-700 to-zinc-900
@@ -72,24 +79,21 @@ body {
          px-6 py-5;
 }
 
-/* “parafuso/led” da esquerda */
 .price-dot {
   @apply absolute left-4 top-1/2 -translate-y-1/2 size-3 rounded-full
          bg-gradient-to-b from-zinc-200 to-zinc-400
          shadow-[0_0_10px_rgba(255,255,255,0.45)];
 }
 
-/* texto “R$” à esquerda do valor */
 .price-currency {
   @apply pl-6 pr-2 text-sm md:text-base font-semibold tracking-wider text-gray-300;
 }
 
-/* Número agora BRANCO, mais grosso (negrito) e com neon vermelho */
 .neon-price {
-  color: #ffffff;              /* preenchimento branco */
-  font-weight: 900;            /* bem grosso */
+  color: #ffffff;
+  font-weight: 900;
   letter-spacing: 0.5px;
-  -webkit-text-stroke: 0.6px rgba(0, 0, 0, 0.35); /* contorno sutil p/ nitidez */
+  -webkit-text-stroke: 0.6px rgba(0, 0, 0, 0.35);
   text-shadow:
     0 0 6px rgba(255, 0, 0, .65),
     0 0 14px rgba(255, 0, 0, .60),
@@ -97,34 +101,25 @@ body {
     0 0 46px rgba(255, 0, 0, .50);
 }
 
-/* Cartão do produto (corpo preto, cantos arredondados, sombra) */
 .product-card {
   @apply bg-neutral-900 rounded-2xl overflow-hidden shadow-xl transition
          hover:scale-[1.01] hover:shadow-2xl;
 }
 
-/* Título e descrição dentro do card */
-.product-title {
-  @apply text-lg md:text-xl font-semibold;
-}
-
-.product-desc {
-  @apply mt-1 text-sm md:text-[15px] text-gray-300;
-}
+.product-title { @apply text-lg md:text-xl font-semibold; }
+.product-desc  { @apply mt-1 text-sm md:text-[15px] text-gray-300; }
 
 /* =========================
    FAB do Castelo (História)
    ========================= */
 .castle-fab {
   position: fixed;
-  right: 1.5rem;  /* right-6 */
-  bottom: 1.5rem; /* bottom-6 */
+  right: 1.5rem;
+  bottom: 1.5rem;
   z-index: 50;
-  width: 84px;
-  height: 84px;
+  width: 84px; height: 84px;
   border-radius: 9999px;
-  display: grid;
-  place-items: center;
+  display: grid; place-items: center;
   color: #ffffff;
   background:
     radial-gradient(120% 120% at 30% 30%, #ff6a8b 0%, #ff004c 38%, #1a1a1a 42%) padding-box,
@@ -137,38 +132,20 @@ body {
   transition: transform .18s ease;
   animation: neonPulse 2.2s infinite;
 }
-
-.castle-fab:hover {
-  transform: scale(1.06);
-}
-
+.castle-fab:hover { transform: scale(1.06); }
 .castle-fab::after {
-  content: "";
-  position: absolute;
-  top: 8px;
-  right: 12px;
-  width: 10px;
-  height: 10px;
-  border-radius: 9999px;
-  background: #fff;
-  opacity: .9;
+  content: ""; position: absolute; top: 8px; right: 12px;
+  width: 10px; height: 10px; border-radius: 9999px; background: #fff; opacity: .9;
   box-shadow: 0 0 8px #fff, 0 0 16px #ff004c;
 }
-
 .castle-fab-tip {
   position: fixed;
-  right: 92px;
-  bottom: 1.9rem;
-  background: rgba(17,17,17,.9);
-  color: #fff;
-  padding: .4rem .6rem;
-  border-radius: .5rem;
-  font-size: .8rem;
-  box-shadow: 0 8px 20px rgba(0,0,0,.35);
-  backdrop-filter: blur(6px);
+  right: 92px; bottom: 1.9rem;
+  background: rgba(17,17,17,.9); color: #fff;
+  padding: .4rem .6rem; border-radius: .5rem; font-size: .8rem;
+  box-shadow: 0 8px 20px rgba(0,0,0,.35); backdrop-filter: blur(6px);
   border: 1px solid rgba(255,255,255,.08);
 }
-
 @keyframes neonPulse {
   0%,100% { box-shadow: 0 10px 28px rgba(0,0,0,.45), 0 0 18px rgba(255,0,76,.35), inset 0 0 14px rgba(255,255,255,.10);}
   50%     { box-shadow: 0 10px 28px rgba(0,0,0,.45), 0 0 36px rgba(255,0,76,.55), inset 0 0 20px rgba(255,255,255,.14);}
@@ -177,37 +154,24 @@ body {
 /* =========================
    Carrossel Premium (global)
    ========================= */
-
-:root {
-  --accent: #facc15; /* amarelo imperial */
-  --card-r: 20px;
-}
-
-@keyframes marqueeSlide {
-  0%   { transform: translateX(0); }
-  100% { transform: translateX(-50%); }
-}
-@keyframes floaty {
-  0%,100% { transform: translateY(0) rotateX(0deg) rotateY(0deg); }
-  50%     { transform: translateY(-4px) rotateX(0.3deg) rotateY(-0.3deg); }
-}
-@keyframes glowPulse {
-  0%,100% { opacity: .25; filter: blur(18px); }
-  50%     { opacity: .45; filter: blur(24px); }
-}
-@keyframes spin { to { transform: rotate(360deg); } }
+@keyframes marqueeSlide { 0%{transform:translateX(0)} 100%{transform:translateX(-50%)} }
+@keyframes floaty { 0%,100%{ transform:translateY(0) rotateX(0) rotateY(0)} 50%{ transform:translateY(-4px) rotateX(.3deg) rotateY(-.3deg)} }
+@keyframes glowPulse { 0%,100%{ opacity:.25; filter:blur(18px)} 50%{ opacity:.45; filter:blur(24px)} }
+@keyframes spin { to { transform: rotate(360deg) } }
 
 .marquee-wrap { position: relative; width: 100%; overflow: hidden; }
 .marquee-track {
-  display: flex;
-  align-items: center;
-  gap: 1.75rem; /* mais respiro entre cards */
+  display: flex; align-items: center;
+  gap: 1.25rem; /* mobile */
   will-change: transform;
   animation: marqueeSlide var(--speed, 36s) linear infinite;
 }
+/* mais respiro no desktop */
+@media (min-width: 768px) {
+  .marquee-track { gap: 1.75rem; }
+}
 .marquee-wrap:hover .marquee-track { animation-play-state: paused; }
 
-/* brilho/gradiente na faixa */
 .marquee-bg {
   position:absolute; inset:0;
   background:
@@ -216,20 +180,16 @@ body {
   pointer-events:none;
 }
 
-/* card com glassmorphism + borda gradiente animada */
 .fancy-card {
   position: relative;
   border-radius: var(--card-r);
   background: rgba(255,255,255,.04);
   border: 1px solid rgba(255,255,255,.12);
-  box-shadow:
-    0 12px 28px rgba(0,0,0,.45),
-    inset 0 1px 0 rgba(255,255,255,.08);
+  box-shadow: 0 12px 28px rgba(0,0,0,.45), inset 0 1px 0 rgba(255,255,255,.08);
   transition: transform .25s ease, box-shadow .25s ease, border-color .25s ease;
 }
 .fancy-card::before {
-  content:"";
-  position:absolute; inset:-1px;
+  content:""; position:absolute; inset:-1px;
   border-radius: calc(var(--card-r) + 1px);
   background: conic-gradient(
     from 180deg,
@@ -246,25 +206,28 @@ body {
   opacity: .9; pointer-events:none;
 }
 .fancy-card::after {
-  content:"";
-  position:absolute; inset:12% 10% auto 10%;
-  height: 40%;
-  border-radius: 9999px;
+  content:""; position:absolute; inset:12% 10% auto 10%;
+  height: 40%; border-radius: 9999px;
   background: radial-gradient(60% 100% at 50% 0%, var(--accent), transparent 70%);
   opacity: .25; animation: glowPulse 3.6s ease-in-out infinite;
   filter: blur(18px); pointer-events:none;
 }
 .fancy-card:hover {
   transform: translateY(-4px) scale(1.02) rotateX(.4deg) rotateY(-.4deg);
-  box-shadow:
-    0 16px 36px rgba(0,0,0,.55),
-    inset 0 1px 0 rgba(255,255,255,.12);
+  box-shadow: 0 16px 36px rgba(0,0,0,.55), inset 0 1px 0 rgba(255,255,255,.12);
   border-color: rgba(250,204,21,.35);
 }
 
 /* leve parallax/float alternado */
 .marquee-track > li:nth-child(odd)  .float { animation: floaty 5.5s ease-in-out infinite .2s; }
 .marquee-track > li:nth-child(even) .float { animation: floaty 6.2s ease-in-out infinite; }
+
+/* Respeita acessibilidade – reduz animação */
+@media (prefers-reduced-motion: reduce) {
+  .marquee-track { animation-duration: 120s; }
+  .fancy-card::before, .fancy-card::after,
+  .marquee-track > li .float { animation: none !important; }
+}
 
 /* =========================
    Moldura elegante da imagem
@@ -273,47 +236,25 @@ body {
   position: relative;
   border-radius: 16px;
   background:
-    radial-gradient(120% 140% at 50% 0%,
-      rgba(250, 204, 21, .06) 0%,
-      rgba(255, 255, 255, .02) 40%,
-      transparent 70%),
-    linear-gradient(180deg,
-      rgba(255,255,255,.06), rgba(255,255,255,.02));
-  box-shadow:
-    inset 0 1px 0 rgba(255,255,255,.25),
-    inset 0 0 18px rgba(255,255,255,.05);
+    radial-gradient(120% 140% at 50% 0%, rgba(250, 204, 21, .06) 0%, rgba(255, 255, 255, .02) 40%, transparent 70%),
+    linear-gradient(180deg, rgba(255,255,255,.06), rgba(255,255,255,.02));
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.25), inset 0 0 18px rgba(255,255,255,.05);
 }
-
 .img-frame::before{
-  content:"";
-  position:absolute; inset:0;
-  border-radius: 16px;
-  padding: 1px; /* espessura da moldura */
-  background: conic-gradient(
-    from 220deg,
-    rgba(250,204,21,.55),
-    rgba(255,255,255,.15),
-    rgba(250,204,21,.35),
-    rgba(255,255,255,.10),
-    rgba(250,204,21,.55)
-  );
+  content:""; position:absolute; inset:0; border-radius:16px; padding:1px;
+  background: conic-gradient(from 220deg, rgba(250,204,21,.55), rgba(255,255,255,.15), rgba(250,204,21,.35), rgba(255,255,255,.10), rgba(250,204,21,.55));
   -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
   -webkit-mask-composite: xor; mask-composite: exclude;
-  pointer-events: none;
-  filter: saturate(110%);
-  animation: frameSpin 14s linear infinite;
-  opacity: .9;
+  pointer-events:none; filter:saturate(110%); animation: frameSpin 14s linear infinite; opacity:.9;
 }
-
 .img-frame::after{
-  content:"";
-  position:absolute; inset:6% 6% auto 6%;
-  height: 18%;
-  border-radius: 9999px;
-  background: radial-gradient(60% 100% at 50% 0%, rgba(250,204,21,.35), transparent 70%);
-  filter: blur(14px);
-  opacity: .18;
-  pointer-events:none;
+  content:""; position:absolute; inset:6% 6% auto 6%; height:18%;
+  border-radius:9999px; background: radial-gradient(60% 100% at 50% 0%, rgba(250,204,21,.35), transparent 70%);
+  filter: blur(14px); opacity:.18; pointer-events:none;
 }
-
 @keyframes frameSpin { to { transform: rotate(360deg); } }
+
+/* Mobile – sombras mais leves pra performance no iPhone */
+@media (max-width: 480px) {
+  .fancy-card { box-shadow: 0 8px 18px rgba(0,0,0,.45), inset 0 1px 0 rgba(255,255,255,.06); }
+}
