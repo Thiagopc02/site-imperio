@@ -58,7 +58,7 @@ function NovidadeButton({ active, onClick }: { active: boolean; onClick: () => v
       onClick={onClick}
       aria-label="Novidades"
       className={[
-        'relative inline-flex items-center justify-center touch-target',
+        'relative inline-flex items-center justify-center',
         'px-4 py-2 rounded-xl text-sm font-extrabold text-white select-none',
         'transition ring-2 focus:outline-none',
         active ? 'ring-yellow-400' : 'ring-transparent',
@@ -95,7 +95,7 @@ function CopaoButton({ active, onClick }: { active: boolean; onClick: () => void
       onClick={onClick}
       aria-label="Copão de 770ml"
       className={[
-        'relative inline-flex items-center justify-center touch-target',
+        'relative inline-flex items-center justify-center',
         'px-4 py-2 rounded-xl select-none transition ring-2 focus:outline-none',
         active ? 'ring-yellow-400' : 'ring-transparent',
       ].join(' ')}
@@ -137,6 +137,7 @@ function getMarca(p: Produto): string {
   if (p.marca && p.marca.trim()) return p.marca.trim();
   return inferirMarca(p.nome);
 }
+
 function inferirMarca(nome: string): string {
   const n = (nome || '').toLowerCase();
   const regras: [string, RegExp][] = [
@@ -153,10 +154,12 @@ function inferirMarca(nome: string): string {
   const primeira = (nome || '').trim().split(/\s+/)[0];
   return primeira ? primeira.charAt(0).toUpperCase() + primeira.slice(1) : 'Outras';
 }
+
 function getMl(p: Produto): number {
   if (typeof p.ml === 'number') return p.ml;
   return extrairVolumeMl(p.nome);
 }
+
 function extrairVolumeMl(nome: string): number {
   const n = (nome || '').toLowerCase().replace(',', '.').replace(/\s+/g, '');
   const litro = n.match(/(\d+(?:\.\d+)?)l/);
@@ -286,7 +289,7 @@ export default function ProdutosPage() {
     const tipo = tipoSelecionado[produto.id] || 'unidade';
     const preco = tipo === 'caixa' ? produto.precoCaixa ?? 0 : produto.precoUnidade ?? 0;
     adicionarAoCarrinho({ ...produto, tipo, preco, quantidade: quantidade[produto.id] || 1 });
-    setQuantidade((prev) => ({ ...prev, [produto.id]: 0 })); // zera contador local
+    setQuantidade((prev) => ({ ...prev, [produto.id]: 0 }));
   };
 
   /* ---------- categorias ---------- */
@@ -433,7 +436,7 @@ export default function ProdutosPage() {
     <button
       onClick={onClick}
       className={[
-        'group relative overflow-hidden touch-target',
+        'group relative overflow-hidden',
         'px-4 py-2 rounded-2xl text-sm font-semibold',
         'bg-zinc-900/80 border border-white/10',
         'hover:border-white/30 hover:bg-zinc-900',
@@ -452,7 +455,7 @@ export default function ProdutosPage() {
   const MarcasTrigger = () => (
     <button
       onClick={() => setOpenMarcas((v) => !v)}
-      className="px-4 py-2 rounded-2xl text-sm font-bold tracking-wide bg-zinc-900/80 border border-transparent hover:border-yellow-300/50 text-white shadow-[0_0_0_1px_rgba(255,255,255,0.06)] touch-target"
+      className="px-4 py-2 rounded-2xl text-sm font-bold tracking-wide bg-zinc-900/80 border border-transparent hover:border-yellow-300/50 text-white shadow-[0_0_0_1px_rgba(255,255,255,0.06)]"
       style={{
         backgroundImage:
           'linear-gradient(180deg, rgba(255,255,255,0.06), rgba(0,0,0,0)), radial-gradient(100% 100% at 0% 0%, rgba(253,224,71,0.35), rgba(153,27,27,0) 60%)',
@@ -465,14 +468,13 @@ export default function ProdutosPage() {
 
   /* ======================= Render ======================= */
   return (
-    <main className="min-h-[100svh] pb-safe px-4 py-6 md:py-8 text-white bg-black overflow-x-hidden">
+    <main className="min-h-screen px-4 py-8 text-white bg-black">
       <div className="mx-auto max-w-7xl">
         <p className="mb-2 text-sm text-center text-zinc-300">
           Produtos organizados por <b>marca</b> — do <b>MAIOR</b> para o <b>MENOR</b> volume (ml).
         </p>
 
-        <h1 className="mb-6 text-center font-extrabold bg-clip-text text-transparent bg-gradient-to-r from-yellow-500 via-orange-600 to-red-600 drop-shadow-[2px_2px_2px_#ff0000]"
-            style={{ fontSize: 'clamp(28px, 6vw, 56px)', lineHeight: 1.05 }}>
+        <h1 className="text-4xl sm:text-5xl md:text-6xl text-center font-extrabold bg-clip-text text-transparent bg-gradient-to-r from-yellow-500 via-orange-600 to-red-600 mb-6 drop-shadow-[2px_2px_2px_#ff0000]">
           CATEGORIAS
         </h1>
 
@@ -516,13 +518,12 @@ export default function ProdutosPage() {
                 onChange={(e) => setBusca(e.target.value)}
                 placeholder="Buscar por nome ou marca…"
                 className="w-full py-3 pl-10 pr-4 outline-none rounded-xl bg-white/10 focus:bg-white/15"
-                inputMode="search"
               />
             </div>
           </div>
 
-          <div className="flex flex-wrap items-center gap-2 lg:col-span-4">
-            <label className="inline-flex items-center gap-2 px-3 py-2 rounded-lg bg-white/10 touch-target">
+          <div className="flex items-center gap-2 lg:col-span-4">
+            <label className="inline-flex items-center gap-2 px-3 py-2 rounded-lg bg-white/10">
               <input
                 type="checkbox"
                 className="accent-yellow-400"
@@ -531,7 +532,7 @@ export default function ProdutosPage() {
               />
               <span className="text-sm">Somente disponíveis</span>
             </label>
-            <label className="inline-flex items-center gap-2 px-3 py-2 rounded-lg bg-white/10 touch-target">
+            <label className="inline-flex items-center gap-2 px-3 py-2 rounded-lg bg-white/10">
               <input
                 type="checkbox"
                 className="accent-yellow-400"
@@ -543,7 +544,7 @@ export default function ProdutosPage() {
               />
               <span className="text-sm">Novidades</span>
             </label>
-            <label className="inline-flex items-center gap-2 px-3 py-2 rounded-lg bg-white/10 touch-target">
+            <label className="inline-flex items-center gap-2 px-3 py-2 rounded-lg bg-white/10">
               <input
                 type="checkbox"
                 className="accent-yellow-400"
@@ -561,7 +562,7 @@ export default function ProdutosPage() {
             <select
               value={sort}
               onChange={(e) => setSort(e.target.value as SortKey)}
-              className="w-full px-4 py-3 text-white bg-black border outline-none rounded-xl border-white/20 touch-target"
+              className="w-full px-4 py-3 text-white bg-black border outline-none rounded-xl border-white/20"
             >
               <option value="mlDesc">Ordenar: maior volume (ml) ↓</option>
               <option value="precoAsc">Preço: menor → maior</option>
@@ -611,7 +612,7 @@ export default function ProdutosPage() {
               sort !== 'mlDesc') && (
               <button
                 onClick={limparFiltros}
-                className="px-3 py-2 ml-auto text-sm border rounded-lg bg-zinc-900/80 hover:bg-zinc-800 border-white/10 touch-target"
+                className="px-3 py-2 ml-auto text-sm border rounded-lg bg-zinc-900/80 hover:bg-zinc-800 border-white/10"
                 title="Limpar filtros"
               >
                 Limpar filtros
@@ -619,11 +620,11 @@ export default function ProdutosPage() {
             )}
           </div>
 
-          {/* Popover de marcas — centralizado e com largura segura */}
+          {/* Popover de marcas */}
           {openMarcas && (
             <div
               ref={popoverRef}
-              className="absolute z-20 mt-2 -translate-x-1/2 border shadow-2xl popover left-1/2 rounded-2xl border-white/10 bg-zinc-950"
+              className="absolute z-20 mt-2 w-full sm:w-[520px] max-w-[calc(100vw-2rem)] rounded-2xl border border-white/10 bg-zinc-950 shadow-2xl"
             >
               <div className="p-3 border-b border-white/10">
                 <div className="relative">
@@ -638,34 +639,32 @@ export default function ProdutosPage() {
               </div>
 
               <div className="grid grid-cols-2 gap-1 p-2 overflow-auto max-h-72">
-                {marcasDisponiveis
-                  .filter((m) => (queryMarcas ? m.toLowerCase().includes(queryMarcas.toLowerCase()) : true))
-                  .map((m) => {
-                    const checked = marcasSelecionadas.includes(m);
-                    return (
-                      <label
-                        key={m}
-                        className={`flex items-center gap-2 px-2 py-1.5 rounded-md border cursor-pointer ${
-                          checked
-                            ? 'bg-yellow-400/15 border-yellow-400/40'
-                            : 'bg-white/5 border-white/10 hover:bg-white/10'
-                        }`}
-                      >
-                        <input
-                          type="checkbox"
-                          className="accent-yellow-400"
-                          checked={checked}
-                          onChange={(e) =>
-                            setMarcasSelecionadas((prev) =>
-                              e.target.checked ? [...prev, m] : prev.filter((x) => x !== m)
-                            )
-                          }
-                        />
-                        <span className="text-sm">{m}</span>
-                      </label>
-                    );
-                  })}
-                {marcasDisponiveis.length === 0 && (
+                {marcasFiltradasPopover.map((m) => {
+                  const checked = marcasSelecionadas.includes(m);
+                  return (
+                    <label
+                      key={m}
+                      className={`flex items-center gap-2 px-2 py-1.5 rounded-md border cursor-pointer ${
+                        checked
+                          ? 'bg-yellow-400/15 border-yellow-400/40'
+                          : 'bg-white/5 border-white/10 hover:bg-white/10'
+                      }`}
+                    >
+                      <input
+                        type="checkbox"
+                        className="accent-yellow-400"
+                        checked={checked}
+                        onChange={(e) =>
+                          setMarcasSelecionadas((prev) =>
+                            e.target.checked ? [...prev, m] : prev.filter((x) => x !== m)
+                          )
+                        }
+                      />
+                      <span className="text-sm">{m}</span>
+                    </label>
+                  );
+                })}
+                {marcasFiltradasPopover.length === 0 && (
                   <div className="col-span-2 py-6 text-sm text-center opacity-60">Nenhuma marca encontrada.</div>
                 )}
               </div>
@@ -688,7 +687,7 @@ export default function ProdutosPage() {
           )}
         </div>
 
-        {/* Listagem agrupada — grid fluido sem corte */}
+        {/* Listagem agrupada */}
         {gruposPorMarca.length === 0 ? (
           <p className="font-semibold text-center text-red-400">Nenhum produto encontrado com os filtros atuais.</p>
         ) : (
@@ -696,7 +695,7 @@ export default function ProdutosPage() {
             <section key={marca} className="mb-10">
               <h2 className="mb-4 text-2xl font-extrabold text-yellow-400 md:text-3xl">{tituloSecao(marca)}</h2>
 
-              <div className="grid grid-cols-1 gap-5 sm:grid-cols-2 md:grid-cols-3 xl:grid-cols-4">
+              <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 md:grid-cols-3 xl:grid-cols-4">
                 {itens.map((produto) => {
                   const tipo = tipoSelecionado[produto.id] || 'unidade';
                   const preco = tipo === 'caixa' ? produto.precoCaixa ?? 0 : produto.precoUnidade ?? 0;
@@ -706,22 +705,18 @@ export default function ProdutosPage() {
                   return (
                     <div
                       key={produto.id}
-                      className={`prod-card ${esgotado ? 'opacity-70' : ''}`}
+                      className={`flex flex-col p-4 transition-transform shadow-2xl rounded-2xl bg-gradient-to-br from-neutral-900 via-neutral-800 to-neutral-900 hover:scale-[1.02] hover:shadow-yellow-400/20 ${
+                        esgotado ? 'opacity-70' : ''
+                      }`}
                     >
-                      <div className="prod-img-wrap">
+                      <div className="relative flex items-center justify-center w-full mb-3 overflow-hidden rounded-xl aspect-square bg-black/20">
                         {esgotado && (
                           <span className="absolute z-10 px-2 py-1 text-xs font-bold text-white bg-red-600 rounded">
                             ESGOTADO
                           </span>
                         )}
                         {/* eslint-disable-next-line @next/next/no-img-element */}
-                        <img
-                          src={imgSrc}
-                          alt={produto.nome}
-                          className="object-contain max-w-full max-h-full"
-                          loading="lazy"
-                          decoding="async"
-                        />
+                        <img src={imgSrc} alt={produto.nome} className="object-contain max-w-full max-h-full" loading="lazy" />
                       </div>
 
                       <div className="flex-1">
@@ -733,7 +728,7 @@ export default function ProdutosPage() {
                             value={tipoSelecionado[produto.id] || 'unidade'}
                             onChange={(e) => setTipoSelecionado((prev) => ({ ...prev, [produto.id]: e.target.value }))}
                             disabled={esgotado}
-                            className={`w-full p-2 mb-2 text-sm text-white rounded shadow-inner touch-target ${
+                            className={`w-full p-2 mb-2 text-sm text-white rounded shadow-inner ${
                               esgotado ? 'bg-zinc-800/60 cursor-not-allowed' : 'bg-zinc-700 hover:bg-zinc-600'
                             }`}
                           >
@@ -751,7 +746,7 @@ export default function ProdutosPage() {
 
                         <div className="flex items-center justify-center gap-3 mb-3">
                           <button
-                            className="text-lg text-black bg-yellow-400 rounded-full w-9 h-9 hover:bg-yellow-500 disabled:opacity-40 touch-target"
+                            className="w-8 h-8 text-lg text-black bg-yellow-400 rounded-full hover:bg-yellow-500 disabled:opacity-40"
                             onClick={() => alterarQuantidade(produto.id, -1)}
                             disabled={esgotado}
                           >
@@ -759,7 +754,7 @@ export default function ProdutosPage() {
                           </button>
                           <span className="text-lg font-semibold">{quantidade[produto.id] || 0}</span>
                           <button
-                            className="text-lg text-black bg-yellow-400 rounded-full w-9 h-9 hover:bg-yellow-500 disabled:opacity-40 touch-target"
+                            className="w-8 h-8 text-lg text-black bg-yellow-400 rounded-full hover:bg-yellow-500 disabled:opacity-40"
                             onClick={() => alterarQuantidade(produto.id, 1)}
                             disabled={esgotado}
                           >
@@ -770,7 +765,7 @@ export default function ProdutosPage() {
                         <button
                           onClick={() => handleAdicionar(produto)}
                           disabled={esgotado}
-                          className={`w-full py-2 text-sm font-bold text-white uppercase transition-colors rounded touch-target ${
+                          className={`w-full py-2 text-sm font-bold text-white uppercase transition-colors rounded ${
                             esgotado ? 'bg-zinc-700 cursor-not-allowed' : 'bg-yellow-600 hover:bg-yellow-700'
                           }`}
                         >
@@ -786,7 +781,7 @@ export default function ProdutosPage() {
         )}
       </div>
 
-      {/* -------- FAB do carrinho (ESQUERDA) -------- */}
+      {/* -------- FAB do carrinho (ESQUERDA) com badge e “slide” -------- */}
       <div
         className={[
           'fixed left-4 md:left-6 top-1/2 -translate-y-1/2 z-30',
@@ -800,7 +795,7 @@ export default function ProdutosPage() {
             title="Abrir carrinho"
             aria-label="Abrir carrinho"
             className={[
-              'rounded-full p-4 md:p-5 bg-black text-white touch-target',
+              'rounded-full p-4 md:p-5 bg-black text-white',
               'hover:scale-105 active:scale-95',
               'border border-green-400/60 hover:border-green-300 ring-1 ring-green-500/30',
               'shadow-[0_0_22px_rgba(34,197,94,0.75),0_0_48px_rgba(34,197,94,0.55)]',
@@ -847,7 +842,7 @@ export default function ProdutosPage() {
               </div>
               <button
                 onClick={() => setOpenMiniCart(false)}
-                className="p-2 rounded-md bg-white/5 hover:bg-white/10 touch-target"
+                className="p-2 rounded-md bg-white/5 hover:bg-white/10"
                 aria-label="Fechar mini carrinho"
               >
                 <FaTimes />
@@ -890,7 +885,7 @@ export default function ProdutosPage() {
 
                         <div className="flex items-center gap-2 mt-2">
                           <button
-                            className="font-bold text-black bg-yellow-400 rounded-full w-7 h-7 disabled:opacity-40 touch-target"
+                            className="font-bold text-black bg-yellow-400 rounded-full w-7 h-7 disabled:opacity-40"
                             onClick={() =>
                               atualizarQuantidade?.(item.id, item.tipo, Math.max((item.quantidade ?? 1) - 1, 0))
                             }
@@ -902,7 +897,7 @@ export default function ProdutosPage() {
                             {item.quantidade ?? 0}
                           </span>
                           <button
-                            className="font-bold text-black bg-yellow-400 rounded-full w-7 h-7 disabled:opacity-40 touch-target"
+                            className="font-bold text-black bg-yellow-400 rounded-full w-7 h-7 disabled:opacity-40"
                             onClick={() => atualizarQuantidade?.(item.id, item.tipo, (item.quantidade ?? 0) + 1)}
                             disabled={!canUpdate}
                           >
@@ -910,7 +905,7 @@ export default function ProdutosPage() {
                           </button>
 
                           <button
-                            className="px-2 py-1 ml-auto text-xs text-white rounded-md bg-red-600/80 hover:bg-red-600 disabled:opacity-40 touch-target"
+                            className="px-2 py-1 ml-auto text-xs text-white rounded-md bg-red-600/80 hover:bg-red-600 disabled:opacity-40"
                             onClick={() => removerDoCarrinho?.(item.id, item.tipo)}
                             disabled={!canRemove}
                           >
@@ -933,7 +928,7 @@ export default function ProdutosPage() {
               <div className="flex items-center justify-between mb-3">
                 <span className="text-sm opacity-80">Subtotal</span>
                 <strong className="text-lg text-green-400">
-                  R{'$ '}
+                  R${' '}
                   {((cartItems ?? []) as CartItem[])
                     .reduce((acc, it) => acc + (it.preco ?? 0) * (it.quantidade ?? 0), 0)
                     .toFixed(2)}
@@ -943,13 +938,13 @@ export default function ProdutosPage() {
               <div className="flex gap-2">
                 <button
                   onClick={() => setOpenMiniCart(false)}
-                  className="flex-1 py-2 border rounded-lg border-white/15 bg-white/5 hover:bg-white/10 touch-target"
+                  className="flex-1 py-2 border rounded-lg border-white/15 bg-white/5 hover:bg-white/10"
                 >
                   Continuar comprando
                 </button>
                 <button
                   onClick={() => router.push('/carrinho')}
-                  className="flex-1 py-2 rounded-lg bg-yellow-500 hover:bg-yellow-400 text-black font-bold shadow-[0_0_18px_rgba(234,179,8,0.35)] disabled:opacity-40 touch-target"
+                  className="flex-1 py-2 rounded-lg bg-yellow-500 hover:bg-yellow-400 text-black font-bold shadow-[0_0_18px_rgba(234,179,8,0.35)] disabled:opacity-40"
                   disabled={cartCount === 0}
                 >
                   Finalizar compra
