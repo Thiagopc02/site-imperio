@@ -265,3 +265,55 @@ body {
 /* leve parallax/float alternado */
 .marquee-track > li:nth-child(odd)  .float { animation: floaty 5.5s ease-in-out infinite .2s; }
 .marquee-track > li:nth-child(even) .float { animation: floaty 6.2s ease-in-out infinite; }
+
+/* =========================
+   Moldura elegante da imagem
+   ========================= */
+.img-frame {
+  position: relative;
+  border-radius: 16px;
+  background:
+    radial-gradient(120% 140% at 50% 0%,
+      rgba(250, 204, 21, .06) 0%,
+      rgba(255, 255, 255, .02) 40%,
+      transparent 70%),
+    linear-gradient(180deg,
+      rgba(255,255,255,.06), rgba(255,255,255,.02));
+  box-shadow:
+    inset 0 1px 0 rgba(255,255,255,.25),
+    inset 0 0 18px rgba(255,255,255,.05);
+}
+
+.img-frame::before{
+  content:"";
+  position:absolute; inset:0;
+  border-radius: 16px;
+  padding: 1px; /* espessura da moldura */
+  background: conic-gradient(
+    from 220deg,
+    rgba(250,204,21,.55),
+    rgba(255,255,255,.15),
+    rgba(250,204,21,.35),
+    rgba(255,255,255,.10),
+    rgba(250,204,21,.55)
+  );
+  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor; mask-composite: exclude;
+  pointer-events: none;
+  filter: saturate(110%);
+  animation: frameSpin 14s linear infinite;
+  opacity: .9;
+}
+
+.img-frame::after{
+  content:"";
+  position:absolute; inset:6% 6% auto 6%;
+  height: 18%;
+  border-radius: 9999px;
+  background: radial-gradient(60% 100% at 50% 0%, rgba(250,204,21,.35), transparent 70%);
+  filter: blur(14px);
+  opacity: .18;
+  pointer-events:none;
+}
+
+@keyframes frameSpin { to { transform: rotate(360deg); } }

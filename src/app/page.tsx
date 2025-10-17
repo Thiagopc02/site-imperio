@@ -15,22 +15,15 @@ function normalizeImagePath(p?: string): string | null {
   if (!p) return null;
   const s = p.trim();
 
-  // URL externa ou data URI
-  if (/^https?:\/\//i.test(s) || s.startsWith('data:')) return s;
-
-  // já começa com /
-  if (s.startsWith('/')) return encodeURI(s);
-
-  // começa com pastas conhecidas → prefixa /
+  if (/^https?:\/\//i.test(s) || s.startsWith('data:')) return s; // URL externa
+  if (s.startsWith('/')) return encodeURI(s);                      // já começa com /
   if (s.startsWith('produtos/') || s.startsWith('publi/') || s.startsWith('logos/')) {
     return encodeURI('/' + s);
   }
-
-  // só nome do arquivo → assume /produtos/<arquivo> (onde estão suas imagens)
-  return encodeURI('/produtos/' + s);
+  return encodeURI('/produtos/' + s); // só nome do arquivo
 }
 
-// Placeholder inline (não precisa de arquivo)
+// Placeholder inline
 const FALLBACK_DATA_URI =
   'data:image/svg+xml;utf8,' +
   encodeURIComponent(
@@ -42,12 +35,12 @@ const FALLBACK_DATA_URI =
     </svg>`
   );
 
-/* ===================== Carrossel (usa CSS global do globals.css) ===================== */
+/* ===================== Carrossel ===================== */
 type MarqueeItem = { src: string; alt?: string };
 
 function MarqueePro({
   items,
-  speed = 36,     // maior = mais lento
+  speed = 36,
   cardW = 180,
   cardH = 180,
 }: {
@@ -61,7 +54,6 @@ function MarqueePro({
   return (
     <div className="relative w-full py-8 bg-black">
       <div className="marquee-bg" />
-      {/* fades laterais */}
       <div className="absolute inset-y-0 left-0 w-20 pointer-events-none bg-gradient-to-r from-black via-black/70 to-transparent" />
       <div className="absolute inset-y-0 right-0 w-20 pointer-events-none bg-gradient-to-l from-black via-black/70 to-transparent" />
 
@@ -74,14 +66,15 @@ function MarqueePro({
               style={{ width: cardW, height: cardH }}
               title={item.alt ?? 'Produto'}
             >
-              <div className="w-full h-full p-3 float">
+              {/* Moldura aplicada aqui */}
+              <div className="w-full h-full p-3 float img-frame">
                 <img
                   src={item.src}
                   alt={item.alt ?? 'Produto'}
                   className="w-full h-full object-contain rounded-[16px] bg-white/5"
                   loading="lazy"
                   onError={(e) => {
-                    const el = e.currentTarget;
+                    const el = e.currentTarget as HTMLImageElement;
                     if (el.src !== FALLBACK_DATA_URI) el.src = FALLBACK_DATA_URI;
                     el.style.opacity = '0.55';
                   }}
@@ -112,7 +105,6 @@ export default function Home() {
     return () => unsubscribe();
   }, []);
 
-  // Busca imagens do Firestore + mistura com /public/produtos (se quiser)
   useEffect(() => {
     (async () => {
       try {
@@ -129,7 +121,6 @@ export default function Home() {
           alt: name.replace(/\.[^/.]+$/, '').replace(/[-_]/g, ' '),
         }));
 
-        // remove duplicatas
         const uniq = new Map<string, MarqueeItem>();
         [...fromDb, ...fromLocal].forEach((it) => uniq.set(it.src, it));
         let final = Array.from(uniq.values());
@@ -159,7 +150,6 @@ export default function Home() {
     <>
       {/* Header */}
       <header className="flex flex-col gap-4 px-6 py-4 text-black bg-yellow-400 shadow-md md:flex-row md:items-center md:justify-between">
-        {/* Logo */}
         <div className="flex items-center justify-between w-full md:w-auto">
           <a href="/" aria-label="Página inicial">
             <img
