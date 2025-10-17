@@ -1,19 +1,30 @@
-// src/app/sitemap.ts
+// app/sitemap.ts
 import type { MetadataRoute } from "next";
 
+const SITE_URL =
+  process.env.NEXT_PUBLIC_SITE_URL?.replace(/\/+$/, "") ||
+  "https://imperiodistr3015.com.br";
+
 export default function sitemap(): MetadataRoute.Sitemap {
-  const base = process.env.NEXT_PUBLIC_SITE_URL || "https://site-imperio.vercel.app";
   const now = new Date();
 
-  const paths = [
-    "/", "/produtos", "/contato", "/carrinho", "/sobre-nos",
-    "/privacidade", "/termos", "/historia", "/login", "/admin/login",
+  const routes = [
+    "",                // /
+    "/produtos",
+    "/contato",
+    "/sobre-nos",
+    "/termos",
+    "/privacidade",
+    "/login",
+    "/recuperar",
+    "/(privado)/carrinho",
+    "/(privado)/pedidos",
   ];
 
-  return paths.map((p) => ({
-    url: `${base}${p}`,
+  return routes.map((path) => ({
+    url: `${SITE_URL}${path}`,
     lastModified: now,
-    changeFrequency: p === "/" ? "weekly" : "monthly",
-    priority: p === "/" ? 1 : 0.7,
+    changeFrequency: path === "" || path === "/produtos" ? "daily" : "weekly",
+    priority: path === "" ? 1 : path === "/produtos" ? 0.9 : 0.6,
   }));
 }

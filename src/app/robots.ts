@@ -1,23 +1,19 @@
-// src/app/robots.ts
+// app/robots.ts
 import type { MetadataRoute } from "next";
 
-export default function robots(): MetadataRoute.Robots {
-  const base = process.env.NEXT_PUBLIC_SITE_URL || "https://site-imperio.vercel.app";
+const SITE_URL =
+  process.env.NEXT_PUBLIC_SITE_URL?.replace(/\/+$/, "") ||
+  "https://imperiodistr3015.com.br";
 
+export default function robots(): MetadataRoute.Robots {
   return {
     rules: [
       {
         userAgent: "*",
-        allow: ["/"],
-        disallow: [
-          "/admin/",
-          "/api/",
-          "/_next/",
-          "/private/",
-        ],
+        allow: "/",
       },
     ],
-    sitemap: `${base}/sitemap.xml`,
-    host: base,
+    sitemap: `${SITE_URL}/sitemap.xml`,
+    host: SITE_URL,
   };
 }
