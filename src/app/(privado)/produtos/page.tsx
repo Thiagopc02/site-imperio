@@ -18,7 +18,7 @@ import {
   FaTrashAlt,
   FaTimes,
 } from 'react-icons/fa';
-import { GiChocolateBar } from 'react-icons/gi';
+import { GiChocolateBar, GiSmokingPipe } from 'react-icons/gi';
 
 /* ======================= Tipos ======================= */
 type Produto = {
@@ -246,7 +246,6 @@ export default function ProdutosPage() {
     return () => document.removeEventListener('mousedown', onDocClick);
   }, [openMarcas]);
 
-  // controla a visibilidade do FAB (mostra ao rolar)
   useEffect(() => {
     const handler = () => setShowFab(window.scrollY > 140);
     handler();
@@ -301,6 +300,7 @@ export default function ProdutosPage() {
     { nome: 'Águas', Icon: FaTint },
     { nome: 'Balas e Gomas', Icon: FaCandyCane },
     { nome: 'Chocolates', Icon: GiChocolateBar },
+    { nome: 'Tabacaria', Icon: GiSmokingPipe }, // ⬅️ NOVA CATEGORIA
   ] as const;
 
   /* ---------- filtros / ordenação ---------- */
@@ -928,7 +928,7 @@ export default function ProdutosPage() {
               <div className="flex items-center justify-between mb-3">
                 <span className="text-sm opacity-80">Subtotal</span>
                 <strong className="text-lg text-green-400">
-                  R${' '}
+                  R{'$ '}
                   {((cartItems ?? []) as CartItem[])
                     .reduce((acc, it) => acc + (it.preco ?? 0) * (it.quantidade ?? 0), 0)
                     .toFixed(2)}

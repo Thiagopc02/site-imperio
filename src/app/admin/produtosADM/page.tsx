@@ -19,7 +19,7 @@ import {
   deleteField,
 } from 'firebase/firestore';
 
-// ----------------- Config de Admin -----------------
+/* ----------------- Config de Admin ----------------- */
 const ALLOWED_EMAILS = new Set<string>([
   'thiagotorres5517@gmail.com',
   'thiagotorresdeoliveira9@gmail.com',
@@ -60,7 +60,7 @@ async function hasAdminRole(uid: string): Promise<boolean> {
   return false;
 }
 
-// ----------------- Tipos -----------------
+/* ----------------- Tipos ----------------- */
 type Produto = {
   id?: string;
   nome: string;
@@ -75,7 +75,7 @@ type Produto = {
   emFalta?: boolean;
 };
 
-// Inclui a nova categoria
+/* ----------------- Categorias (inclui Tabacaria) ----------------- */
 const CATEGORIAS = [
   'Refrescos e Sucos',
   'Fermentados',
@@ -85,9 +85,10 @@ const CATEGORIAS = [
   'Balas e Gomas',
   'Chocolates',
   'Copão de 770ml',
+  'Tabacaria', // ⬅️ NOVA
 ];
 
-// ----------------- Página -----------------
+/* ----------------- Página ----------------- */
 export default function AdminProdutosPage() {
   const router = useRouter();
   const [user, setUser] = useState<User | null>(null);
@@ -124,7 +125,7 @@ export default function AdminProdutosPage() {
     setDispCaixa(false);
   };
 
-  // auth + gate
+  /* auth + gate */
   useEffect(() => {
     const auth = getAuth();
     const unsub = onAuthStateChanged(auth, async (u) => {
@@ -209,7 +210,6 @@ export default function AdminProdutosPage() {
     if (dispUnidade) disp.push('unidade');
     if (dispCaixa) disp.push('caixa');
 
-    // Campos obrigatórios
     const base = {
       nome: nome.trim(),
       descrição: descricao.trim(),
@@ -221,10 +221,9 @@ export default function AdminProdutosPage() {
 
     try {
       if (editingId) {
-        // UPDATE: usa deleteField() para remover campos não usados
         const payload: Record<string, any> = {
           ...base,
-          emFalta: false, // ao editar, mantém como disponível por padrão (ajuste se quiser manter estado)
+          emFalta: false,
         };
 
         payload.precoUnidade = dispUnidade
@@ -242,7 +241,6 @@ export default function AdminProdutosPage() {
 
         await updateDoc(doc(db, 'produtos', editingId), payload);
       } else {
-        // CREATE: só adiciona os campos que existem (nada de deleteField no create)
         const createPayload: Record<string, any> = {
           ...base,
           emFalta: false,
@@ -293,7 +291,6 @@ export default function AdminProdutosPage() {
     }
   }
 
-  // Alternar status de estoque
   async function toggleFalta(p: Produto) {
     if (!p.id) return;
     try {
@@ -334,7 +331,6 @@ export default function AdminProdutosPage() {
         <h1 className="text-2xl font-bold text-yellow-400">Gerenciar Produtos</h1>
         <span className="text-sm text-gray-400">Cadastro, edição e exclusão</span>
 
-        {/* Voltar ao painel */}
         <Link
           href="/admin/dashboard"
           className="inline-flex items-center gap-2 px-4 py-2 ml-auto text-sm font-extrabold rounded-2xl focus:outline-none focus:ring-2"
@@ -382,7 +378,7 @@ export default function AdminProdutosPage() {
               value={nome}
               onChange={(e) => setNome(e.target.value)}
               className="w-full px-3 py-2 mt-1 text-sm text-white border rounded outline-none bg-zinc-800 border-zinc-700"
-              placeholder="Ex.: Coca Cola 2L"
+              placeholder="Ex.: Seda King 33 Folhas"
               required
             />
           </label>
@@ -394,7 +390,7 @@ export default function AdminProdutosPage() {
               onChange={(e) => setDescricao(e.target.value)}
               className="w-full px-3 py-2 mt-1 text-sm text-white border rounded outline-none bg-zinc-800 border-zinc-700"
               rows={3}
-              placeholder="Ex.: Refrigerante Coca-Cola garrafa PET 2 Litros"
+              placeholder="Detalhes do produto…"
             />
           </label>
 
@@ -502,7 +498,7 @@ export default function AdminProdutosPage() {
               value={imagem}
               onChange={(e) => setImagem(e.target.value)}
               className="w-full px-3 py-2 mt-1 text-sm text-white border rounded outline-none bg-zinc-800 border-zinc-700"
-              placeholder="ex.: coca-cola-2l.jpg"
+              placeholder="ex.: seda-king-33f.png"
               required
             />
             {imagem && (
