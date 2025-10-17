@@ -14,59 +14,114 @@ import { auth, db } from '@/firebase/config';
 import { collection, getDocs } from 'firebase/firestore';
 import Footer from '@/components/Footer';
 
-/* -------------------------- Componente: Marquee -------------------------- */
+/* =========================================================================
+   Componente: MarqueePro (carrossel infinito, moderno, uniforme)
+   - Cards com tamanho fixo (mesma largura/altura)
+   - Gradiente nas bordas, sombra suave
+   - Pausa no hover
+   - Dobra os itens para loop contínuo
+   - speed: segundos para completar 50% da faixa (ajuste fino)
+   ========================================================================= */
 type MarqueeItem = { src: string; alt?: string };
 
-function MarqueeStrip({ items, speed = 35 }: { items: MarqueeItem[]; speed?: number }) {
-  // Duplicamos o array para o loop infinito ficar contínuo
+function MarqueePro({
+  items,
+  speed = 40,          // +baixo = mais rápido | +alto = mais lento
+  cardW = 170,         // largura fixa do card
+  cardH = 170,         // altura fixa do card
+  topPadding = true,   // espaçamento vertical
+}: {
+  items: MarqueeItem[];
+  speed?: number;
+  cardW?: number;
+  cardH?: number;
+  topPadding?: boolean;
+}) {
+  // Duplicamos o array para transição contínua
   const track = useMemo(() => [...items, ...items], [items]);
 
   return (
-    <div className="relative w-full py-4 overflow-hidden bg-black">
-      {/* fade nas laterais (sutil) */}
-      <div className="absolute inset-y-0 left-0 w-16 pointer-events-none bg-gradient-to-r from-black to-transparent"></div>
-      <div className="absolute inset-y-0 right-0 w-16 pointer-events-none bg-gradient-to-l from-black to-transparent"></div>
+    <div className={`relative w-full overflow-hidden bg-black ${topPadding ? 'py-6 md:py-8' : ''}`}>
+      {/* fades laterais */}
+      <div className="absolute inset-y-0 left-0 w-20 pointer-events-none bg-gradient-to-r from-black via-black/70 to-transparent" />
+      <div className="absolute inset-y-0 right-0 w-20 pointer-events-none bg-gradient-to-l from-black via-black/70 to-transparent" />
 
       <div
-        className="flex items-center gap-8 marquee-track will-change-transform"
+        className="relative group"
         style={
           {
-            // velocidade controlada por variável CSS
+            ['--card-w' as any]: `${cardW}px`,
+            ['--card-h' as any]: `${cardH}px`,
             ['--marquee-speed' as any]: `${speed}s`,
           } as React.CSSProperties
         }
       >
-        {track.map((item, i) => (
-          <div key={i} className="shrink-0">
-            <img
-              src={item.src}
-              alt={item.alt ?? 'Produto'}
-              className="h-28 md:h-36 lg:h-40 w-auto object-contain rounded-lg bg-white/5 p-2 shadow-[0_6px_20px_rgba(0,0,0,.35)]"
-              loading="lazy"
-            />
-          </div>
-        ))}
-      </div>
+        <ul className="flex items-center gap-5 marquee-track md:gap-7 will-change-transform">
+          {track.map((item, i) => (
+            <li
+              key={i}
+              className="
+                shrink-0 rounded-2xl border border-white/8
+                bg-gradient-to-b from-white/5 to-white/0
+                shadow-[0_8px_26px_rgba(0,0,0,.45)]
+                hover:shadow-[0_12px_36px_rgba(0,0,0,.6)]
+                transition-shadow duration-200
+              "
+              style={{ width: `var(--card-w)`, height: `var(--card-h)` }}
+              title={item.alt ?? 'Produto'}
+            >
+              <div className="w-full h-full p-3">
+                <img
+                  src={item.src}
+                  alt={item.alt ?? 'Produto'}
+                  className="object-contain w-full h-full rounded-xl bg-white/3"
+                  loading="lazy"
+                  onError={(e) => {
+                    // fallback visual discreto se a imagem não for encontrada
+                    const el = e.currentTarget;
+                    el.src = '/placeholder-product.png'; // opcional: adicione um placeholder em /public
+                    el.classList.add('opacity-70');
+                  }}
+                />
+              </div>
+            </li>
+          ))}
+        </ul>
 
-      {/* Estilos do marquee */}
-      <style jsx>{`
-        .marquee-track {
-          animation: marquee var(--marquee-speed) linear infinite;
-        }
-        @keyframes marquee {
-          0% {
-            transform: translateX(0);
+        {/* estilos do marquee */}
+        <style jsx>{`
+          .marquee-track {
+            animation: marquee var(--marquee-speed) linear infinite;
           }
-          100% {
-            transform: translateX(-50%);
+          .group:hover .marquee-track {
+            animation-play-state: paused; /* pausa no hover */
           }
-        }
-      `}</style>
+          @keyframes marquee {
+            0%   { transform: translateX(0); }
+            100% { transform: translateX(-50%); }
+          }
+        `}</style>
+      </div>
     </div>
   );
 }
 
-/* ------------------------------------------------------------------------ */
+/* ========================= Helpers / Fontes de imagens ==================== */
+/** 
+ * 1) Imagens do Firestore (campo `imagem`).
+ * 2) Imagens locais dentro de /public/publi -> use caminho '/publi/arquivo.ext'
+ *    Preencha o array abaixo com os nomes reais que você colocou na pasta.
+ */
+const PUBLI: string[] = [
+  // EXEMPLOS — substitua pelos seus arquivos reais da pasta /public/publi
+  // 'coca-zero-2l.png',
+  // 'guarana-antarctica-269ml.jpg',
+  // 'corona-269ml.png',
+  // 'aurora-500ml.jpg',
+  // 'licor-43.png',
+];
+
+/* ========================================================================== */
 
 export default function Home() {
   const router = useRouter();
@@ -78,48 +133,57 @@ export default function Home() {
     return () => unsubscribe();
   }, []);
 
-  // Busca das imagens dos produtos no Firestore
+  // Busca das imagens dos produtos no Firestore + mistura com /public/publi
   useEffect(() => {
     (async () => {
       try {
         const snap = await getDocs(collection(db, 'produtos'));
-        const list: MarqueeItem[] = [];
+        const fromDb: MarqueeItem[] = [];
         snap.forEach((doc) => {
           const data = doc.data() as { imagem?: string; nome?: string };
-          if (data?.imagem) {
-            list.push({ src: data.imagem, alt: data.nome ?? 'Produto' });
-          }
+          if (!data) return;
+
+          // Se usar arquivos locais dentro de /public, lembre-se do "/" inicial:
+          // ex.: '/produtos/Brahma-chopp-cx.jpg'  ou  '/publi/meu-arquivo.png'
+          const src = data.imagem?.startsWith('/') ? data.imagem : data.imagem;
+          if (src) fromDb.push({ src, alt: data.nome ?? 'Produto' });
         });
 
-        if (list.length === 0) {
-          // Fallback se a coleção estiver vazia
-          setItems([
+        // Concatena com as imagens locais da pasta /public/publi
+        const fromLocal: MarqueeItem[] = PUBLI.map((name) => ({
+          src: `/publi/${name}`,
+          alt: name.replace(/\.[^/.]+$/, '').replace(/[-_]/g, ' '),
+        }));
+
+        // Remove duplicatas pelo src
+        const uniq = new Map<string, MarqueeItem>();
+        [...fromDb, ...fromLocal].forEach((it) => {
+          if (it.src) uniq.set(it.src, it);
+        });
+
+        let final = Array.from(uniq.values());
+
+        // Fallback se nada vier (evita carrossel vazio)
+        if (final.length === 0) {
+          final = [
             { src: '/produtos/Brahma-chopp-cx.jpg', alt: 'Brahma Chopp' },
             { src: '/produtos/royal-salute.jpg', alt: 'Royal Salute 21' },
             { src: '/produtos/Smirnoff-1L-uni00.jpg', alt: 'Smirnoff 1L' },
-            { src: '/produtos/blue-label.jpg', alt: 'Blue Label' },
-            { src: '/produtos/jack-daniels.jpg', alt: 'Jack Daniels' },
-          ]);
-        } else {
-          setItems(list);
+          ];
         }
+
+        setItems(final);
       } catch {
-        // Qualquer erro: usa fallback
         setItems([
           { src: '/produtos/Brahma-chopp-cx.jpg', alt: 'Brahma Chopp' },
           { src: '/produtos/royal-salute.jpg', alt: 'Royal Salute 21' },
           { src: '/produtos/Smirnoff-1L-uni00.jpg', alt: 'Smirnoff 1L' },
-          { src: '/produtos/blue-label.jpg', alt: 'Blue Label' },
-          { src: '/produtos/jack-daniels.jpg', alt: 'Jack Daniels' },
         ]);
       }
     })();
   }, []);
 
-  const handleCarrinhoClick = () => {
-    router.push(user ? '/carrinho' : '/login');
-  };
-
+  const handleCarrinhoClick = () => router.push(user ? '/carrinho' : '/login');
   const handleLoginClick = () => router.push('/login');
 
   return (
@@ -181,11 +245,7 @@ export default function Home() {
       </header>
 
       {/* Botão flutuante → HISTÓRIA (castelo maior) */}
-      <div
-        className="castle-fab animate-bounce"
-        title="História das marcas"
-        aria-label="História das marcas"
-      >
+      <div className="castle-fab animate-bounce" title="História das marcas" aria-label="História das marcas">
         <a href="/historia" className="grid w-full h-full place-items-center">
           <GiCastle className="w-10 h-10 drop-shadow-[0_0_8px_rgba(0,0,0,.45)]" />
         </a>
@@ -208,7 +268,7 @@ export default function Home() {
             Qualidade e exclusividade direto para sua casa
           </p>
 
-          {/* Botão visível */}
+          {/* BOTÃO VISÍVEL */}
           <a
             href="/produtos"
             className="
@@ -230,7 +290,9 @@ export default function Home() {
       </section>
 
       {/* ===== Carrossel 1 — entre o Hero e os Destaques ===== */}
-      {items.length > 0 && <MarqueeStrip items={items} speed={35} />}
+      {items.length > 0 && (
+        <MarqueePro items={items} speed={38} cardW={170} cardH={170} />
+      )}
 
       {/* Destaques da Semana */}
       <section className="px-4 py-16 text-white bg-black">
@@ -292,7 +354,9 @@ export default function Home() {
       </section>
 
       {/* ===== Carrossel 2 — entre os Destaques e o Rodapé ===== */}
-      {items.length > 0 && <MarqueeStrip items={items} speed={38} />}
+      {items.length > 0 && (
+        <MarqueePro items={items} speed={42} cardW={170} cardH={170} />
+      )}
 
       {/* Rodapé */}
       <Footer />
