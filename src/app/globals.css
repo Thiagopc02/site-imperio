@@ -3,7 +3,7 @@
 @tailwind utilities;
 
 /* =========================
-   Tema base
+   Tema base / Variáveis
    ========================= */
 :root {
   --background: #ffffff;
@@ -12,6 +12,10 @@
   /* Carrossel / UI */
   --accent: #facc15; /* amarelo imperial */
   --card-r: 20px;
+
+  /* iOS safe-areas */
+  --safe-top: env(safe-area-inset-top);
+  --safe-bottom: env(safe-area-inset-bottom);
 }
 
 @media (prefers-color-scheme: dark) {
@@ -27,9 +31,19 @@ html {
   text-size-adjust: 100%;
 }
 
+/* Evita scroll lateral acidental (principalmente com sombras/anim.) */
+html, body { overflow-x: hidden; }
+
 body {
   @apply bg-[var(--background)] text-[var(--foreground)] font-sans antialiased;
 }
+
+/* Helpers de safe-area (usa junto com padding) */
+.pb-safe { padding-bottom: max(var(--safe-bottom), 1rem); }
+.pt-safe { padding-top: max(var(--safe-top), 1rem); }
+
+/* Alvos de toque confortáveis (WCAG/iOS guideline) */
+.touch-target { min-height: 44px; min-width: 44px; }
 
 /* =========================
    Utilitários do projeto
@@ -42,25 +56,15 @@ body {
   @apply px-5 py-2 rounded bg-yellow-400 text-black font-semibold hover:bg-yellow-500 transition;
 }
 
-.section-title {
-  @apply text-2xl font-bold mb-4 text-center;
-}
+.section-title { @apply text-2xl font-bold mb-4 text-center; }
 
-.container {
-  @apply max-w-7xl mx-auto px-4;
-}
+.container { @apply max-w-7xl mx-auto px-4; }
 
-.img-responsive {
-  @apply w-full max-w-[400px] mx-auto rounded-lg shadow-md;
-}
+.img-responsive { @apply w-full max-w-[400px] mx-auto rounded-lg shadow-md; }
 
-.navbar {
-  @apply bg-yellow-400 text-black shadow-md p-4 flex justify-between items-center;
-}
+.navbar { @apply bg-yellow-400 text-black shadow-md p-4 flex justify-between items-center; }
 
-.link-hover {
-  @apply hover:underline transition;
-}
+.link-hover { @apply hover:underline transition; }
 
 /* =========================
    Destaques da semana
@@ -105,7 +109,6 @@ body {
   @apply bg-neutral-900 rounded-2xl overflow-hidden shadow-xl transition
          hover:scale-[1.01] hover:shadow-2xl;
 }
-
 .product-title { @apply text-lg md:text-xl font-semibold; }
 .product-desc  { @apply mt-1 text-sm md:text-[15px] text-gray-300; }
 
@@ -166,10 +169,7 @@ body {
   will-change: transform;
   animation: marqueeSlide var(--speed, 36s) linear infinite;
 }
-/* mais respiro no desktop */
-@media (min-width: 768px) {
-  .marquee-track { gap: 1.75rem; }
-}
+@media (min-width: 768px) { .marquee-track { gap: 1.75rem; } }
 .marquee-wrap:hover .marquee-track { animation-play-state: paused; }
 
 .marquee-bg {
@@ -257,4 +257,27 @@ body {
 /* Mobile – sombras mais leves pra performance no iPhone */
 @media (max-width: 480px) {
   .fancy-card { box-shadow: 0 8px 18px rgba(0,0,0,.45), inset 0 1px 0 rgba(255,255,255,.06); }
+}
+
+/* =========================
+   /produtos – estilos globais
+   ========================= */
+/* Cards e imagem quadrada fluida */
+.prod-card {
+  @apply flex flex-col p-4 rounded-2xl shadow-2xl
+         bg-gradient-to-br from-neutral-900 via-neutral-800 to-neutral-900
+         transition-transform hover:scale-[1.02] hover:shadow-yellow-400/20;
+}
+.prod-img-wrap {
+  @apply relative mb-3 overflow-hidden rounded-xl bg-black/20 flex items-center justify-center;
+  aspect-ratio: 1/1;
+}
+@media (min-width: 768px) {
+  .prod-img-wrap { aspect-ratio: 1/1; }
+}
+
+/* Popover de marcas – largura segura em mobile */
+.popover {
+  max-width: calc(100vw - 1rem);
+  width: 520px;
 }
