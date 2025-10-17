@@ -9,50 +9,44 @@ import { auth, db } from '@/firebase/config';
 import { collection, getDocs } from 'firebase/firestore';
 import Footer from '@/components/Footer';
 
-/* ===================== NORMALIZAÇÃO DE CAMINHOS DE IMAGENS ===================== */
-/** Remove acentos, caracteres estranhos, troca espaços por hifens, força minúsculas,
- * corrige ".png1" → ".png" e garante caminho /produtos/<arquivo> quando vier só o nome.
- */
-function normalizeImagePath(input?: string): string | null {
-  if (!input) return null;
+/* ===================== Normalizador de caminhos ===================== */
+function normalizeImagePath(p?: string): string | null {
+  if (!p) return null;
+  let s = p.trim();
 
-  // Se já é URL absoluta ou caminho absoluto (começa com "/"), apenas corrige ".png1"
-  if (/^https?:\/\//i.test(input) || input.startsWith('/')) {
-    return input.replace(/\.png1$/i, '.png').replace(/\.jpg1$/i, '.jpg');
+  // URLs externas ou data URIs
+  if (/^https?:\/\//i.test(s) || s.startsWith('data:')) return s;
+
+  // Já começa com / (ex.: /produtos/...). Apenas codifica espaços/caracteres.
+  if (s.startsWith('/')) return encodeURI(s);
+
+  // Começa com pastas conhecidas -> prefixa / e codifica.
+  if (s.startsWith('produtos/') || s.startsWith('publi/')) {
+    return encodeURI('/' + s);
   }
 
-  // Pega só o nome do arquivo
-  let name = input.split('/').pop() || input;
-
-  // Corrige extensões digitadas com "1"
-  name = name.replace(/\.png1$/i, '.png').replace(/\.jpg1$/i, '.jpg').replace(/\.jpeg1$/i, '.jpeg');
-
-  // Remove extensão desconhecida extra "1" caso ainda exista algo assim no final
-  name = name.replace(/(\.(png|jpg|jpeg|webp))\d+$/i, '$1');
-
-  // Normaliza: sem acento, sem caracteres especiais, espaços/hífens ok, minúsculo
-  name = name
-    .normalize('NFD').replace(/[\u0300-\u036f]/g, '') // sem acentos
-    .replace(/[^a-zA-Z0-9._ -]/g, '')                 // remove !, %, etc
-    .replace(/\s+/g, '-')                              // espaços -> hifens
-    .replace(/-+/g, '-')                               // hifens duplos
-    .toLowerCase();
-
-  // Se não veio extensão, por segurança tente .png
-  if (!/\.(png|jpg|jpeg|webp)$/i.test(name)) {
-    name = name + '.png';
-  }
-
-  // Garante caminho em /produtos
-  return `/produtos/${name}`;
+  // Só nome do arquivo -> assume /publi/<arquivo>
+  return encodeURI('/publi/' + s);
 }
 
-/* ========================= Carrossel (Marquee) ========================= */
+// Placeholder inline (não precisa de arquivo)
+const FALLBACK_DATA_URI =
+  'data:image/svg+xml;utf8,' +
+  encodeURIComponent(
+    `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 300 300">
+      <rect width="100%" height="100%" fill="#0b0b0b"/>
+      <text x="50%" y="50%" fill="#8a8a8a" font-size="16" font-family="Arial,Helvetica" text-anchor="middle" dominant-baseline="middle">
+        imagem indisponível
+      </text>
+    </svg>`
+  );
+
+/* ===================== Carrossel (Marquee) ===================== */
 type MarqueeItem = { src: string; alt?: string };
 
 function MarqueePro({
   items,
-  speed = 40,          // maior = mais lento
+  speed = 38,      // maior = mais lento
   cardW = 170,
   cardH = 170,
 }: {
@@ -90,7 +84,7 @@ function MarqueePro({
                 hover:shadow-[0_12px_36px_rgba(0,0,0,.6)]
                 transition-shadow duration-200
               "
-              style={{ width: `var(--card-w)`, height: `var(--card-h)` }}
+              style={{ width: 'var(--card-w)', height: 'var(--card-h)' }}
               title={item.alt ?? 'Produto'}
             >
               <div className="w-full h-full p-3">
@@ -101,8 +95,7 @@ function MarqueePro({
                   loading="lazy"
                   onError={(e) => {
                     const el = e.currentTarget;
-                    el.src = '/placeholder-product.png'; // opcional: crie /public/placeholder-product.png
-                    el.classList.add('opacity-70');
+                    if (el.src !== FALLBACK_DATA_URI) el.src = FALLBACK_DATA_URI;
                   }}
                 />
               </div>
@@ -112,7 +105,7 @@ function MarqueePro({
 
         <style jsx>{`
           .marquee-track { animation: marquee var(--marquee-speed) linear infinite; }
-          .group:hover .marquee-track { animation-play-state: paused; }
+          .group:hover .marquee-track { animation-play-state: paused; } /* pausa no hover */
           @keyframes marquee {
             0% { transform: translateX(0); }
             100% { transform: translateX(-50%); }
@@ -123,18 +116,12 @@ function MarqueePro({
   );
 }
 
-/* ========================= Lista local opcional (/public/produtos) =========================
-   Se quiser, você pode listar aqui alguns nomes crus como eles estão no Firestore.
-   A função normalizeImagePath vai padronizar e apontar para /produtos/<slug>.ext
-*/
-const LOCAL_NAMES: string[] = [
-  // 'CocaColaZero2L.PNG1',
-  // 'H2OH! Limoneto 500ML.png',
-  // 'Heineken 6x330ml.PNG',
+/* ====== Lista opcional de imagens locais em /public/publi (preencha se quiser) ====== */
+const PUBLI: string[] = [
+  // Ex.: 'cocacolazero2l.png', 'antarctica-original-269ml.jpg', ...
 ];
 
-/* ======================================================================== */
-
+/* =============================== Página =============================== */
 export default function Home() {
   const router = useRouter();
   const [user, setUser] = useState<User | null>(null);
@@ -145,7 +132,7 @@ export default function Home() {
     return () => unsubscribe();
   }, []);
 
-  // Busca imagens do Firestore e concatena com lista local; normaliza tudo
+  // Busca imagens do Firestore + mistura com /public/publi
   useEffect(() => {
     (async () => {
       try {
@@ -153,38 +140,33 @@ export default function Home() {
         const fromDb: MarqueeItem[] = [];
         snap.forEach((doc) => {
           const data = doc.data() as { imagem?: string; nome?: string };
-          const normalized = normalizeImagePath(data?.imagem);
-          if (normalized) fromDb.push({ src: normalized, alt: data?.nome ?? 'Produto' });
+          const src = normalizeImagePath(data?.imagem);
+          if (src) fromDb.push({ src, alt: data?.nome ?? 'Produto' });
         });
 
-        const fromLocal: MarqueeItem[] = LOCAL_NAMES.map((raw) => {
-          const normalized = normalizeImagePath(raw)!;
-          return { src: normalized, alt: raw.replace(/\.[^/.]+$/, '') };
-        });
+        const fromLocal: MarqueeItem[] = PUBLI.map((name) => ({
+          src: normalizeImagePath(`publi/${name}`)!,
+          alt: name.replace(/\.[^/.]+$/, '').replace(/[-_]/g, ' '),
+        }));
 
-        // Remove duplicatas
+        // remove duplicatas
         const uniq = new Map<string, MarqueeItem>();
-        [...fromDb, ...fromLocal].forEach((it) => {
-          if (it.src) uniq.set(it.src, it);
-        });
-
+        [...fromDb, ...fromLocal].forEach((it) => uniq.set(it.src, it));
         let final = Array.from(uniq.values());
 
-        // Fallback mínimo
         if (final.length === 0) {
           final = [
-            { src: '/produtos/Brahma-chopp-cx.jpg', alt: 'Brahma Chopp' },
-            { src: '/produtos/royal-salute.jpg', alt: 'Royal Salute 21' },
-            { src: '/produtos/Smirnoff-1L-uni00.jpg', alt: 'Smirnoff 1L' },
+            { src: normalizeImagePath('/produtos/Brahma-chopp-cx.jpg')!, alt: 'Brahma Chopp' },
+            { src: normalizeImagePath('/produtos/royal-salute.jpg')!, alt: 'Royal Salute 21' },
+            { src: normalizeImagePath('/produtos/Smirnoff-1L-uni00.jpg')!, alt: 'Smirnoff 1L' },
           ];
         }
-
         setItems(final);
       } catch {
         setItems([
-          { src: '/produtos/Brahma-chopp-cx.jpg', alt: 'Brahma Chopp' },
-          { src: '/produtos/royal-salute.jpg', alt: 'Royal Salute 21' },
-          { src: '/produtos/Smirnoff-1L-uni00.jpg', alt: 'Smirnoff 1L' },
+          { src: normalizeImagePath('/produtos/Brahma-chopp-cx.jpg')!, alt: 'Brahma Chopp' },
+          { src: normalizeImagePath('/produtos/royal-salute.jpg')!, alt: 'Royal Salute 21' },
+          { src: normalizeImagePath('/produtos/Smirnoff-1L-uni00.jpg')!, alt: 'Smirnoff 1L' },
         ]);
       }
     })();
@@ -208,11 +190,16 @@ export default function Home() {
           </a>
         </div>
 
-        {/* Slogan no lugar da busca */}
+        {/* Slogan */}
         <div className="flex items-center justify-center w-full md:max-w-2xl">
           <span
             className="text-xl italic tracking-tight text-center text-black select-none md:text-2xl font-extralight"
-            style={{ fontFamily: "'Segoe Script','Brush Script MT','Dancing Script',cursive" }}
+            style={{
+              fontFamily:
+                "'Segoe Script','Brush Script MT','Dancing Script',cursive",
+            }}
+            aria-label="Slogan"
+            title="Império a um gole de você"
           >
             Império a um gole de você
           </span>
@@ -223,15 +210,12 @@ export default function Home() {
           <button onClick={handleLoginClick} className="flex items-center gap-2 hover:underline" title="Entrar">
             <FaUser /> Entrar
           </button>
-
           <a href="/contato" className="flex items-center gap-2 hover:underline">
             <FaPhoneAlt /> Contato
           </a>
-
           <a href="/produtos" className="flex items-center gap-2 hover:underline">
             <FaBoxes /> Categorias
           </a>
-
           <button
             onClick={handleCarrinhoClick}
             className="p-2 text-3xl text-black transition bg-white rounded-full drop-shadow-lg hover:scale-110 hover:text-yellow-600"
@@ -266,7 +250,6 @@ export default function Home() {
             Qualidade e exclusividade direto para sua casa
           </p>
 
-          {/* BOTÃO VISÍVEL */}
           <a
             href="/produtos"
             className="
@@ -292,7 +275,9 @@ export default function Home() {
 
       {/* Destaques da Semana */}
       <section className="px-4 py-16 text-white bg-black">
-        <h2 className="mb-10 text-3xl font-bold text-center md:text-4xl">Destaques da Semana</h2>
+        <h2 className="mb-10 text-3xl font-bold text-center md:text-4xl">
+          Destaques da Semana
+        </h2>
 
         <div className="grid max-w-6xl grid-cols-1 gap-8 mx-auto sm:grid-cols-2 md:grid-cols-3">
           {[
@@ -318,7 +303,11 @@ export default function Home() {
             },
           ].map((produto, idx) => (
             <div key={idx} className="product-card">
-              <img src={produto.img} alt={produto.nome} className="object-contain w-full bg-white h-60" />
+              <img
+                src={produto.img}
+                alt={produto.nome}
+                className="object-contain w-full bg-white h-60"
+              />
               <div className="p-5">
                 <h3 className="product-title">{produto.nome}</h3>
                 <p className="product-desc">{produto.descricao}</p>
