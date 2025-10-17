@@ -173,3 +173,95 @@ body {
   0%,100% { box-shadow: 0 10px 28px rgba(0,0,0,.45), 0 0 18px rgba(255,0,76,.35), inset 0 0 14px rgba(255,255,255,.10);}
   50%     { box-shadow: 0 10px 28px rgba(0,0,0,.45), 0 0 36px rgba(255,0,76,.55), inset 0 0 20px rgba(255,255,255,.14);}
 }
+
+/* =========================
+   Carrossel Premium (global)
+   ========================= */
+
+:root {
+  --accent: #facc15; /* amarelo imperial */
+  --card-r: 20px;
+}
+
+@keyframes marqueeSlide {
+  0%   { transform: translateX(0); }
+  100% { transform: translateX(-50%); }
+}
+@keyframes floaty {
+  0%,100% { transform: translateY(0) rotateX(0deg) rotateY(0deg); }
+  50%     { transform: translateY(-4px) rotateX(0.3deg) rotateY(-0.3deg); }
+}
+@keyframes glowPulse {
+  0%,100% { opacity: .25; filter: blur(18px); }
+  50%     { opacity: .45; filter: blur(24px); }
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+
+.marquee-wrap { position: relative; width: 100%; overflow: hidden; }
+.marquee-track {
+  display: flex;
+  align-items: center;
+  gap: 1.75rem; /* mais respiro entre cards */
+  will-change: transform;
+  animation: marqueeSlide var(--speed, 36s) linear infinite;
+}
+.marquee-wrap:hover .marquee-track { animation-play-state: paused; }
+
+/* brilho/gradiente na faixa */
+.marquee-bg {
+  position:absolute; inset:0;
+  background:
+    radial-gradient(60% 120% at 50% 120%, rgba(250,204,21,.06), transparent 60%),
+    linear-gradient(180deg, rgba(255,255,255,.03), rgba(255,255,255,.01));
+  pointer-events:none;
+}
+
+/* card com glassmorphism + borda gradiente animada */
+.fancy-card {
+  position: relative;
+  border-radius: var(--card-r);
+  background: rgba(255,255,255,.04);
+  border: 1px solid rgba(255,255,255,.12);
+  box-shadow:
+    0 12px 28px rgba(0,0,0,.45),
+    inset 0 1px 0 rgba(255,255,255,.08);
+  transition: transform .25s ease, box-shadow .25s ease, border-color .25s ease;
+}
+.fancy-card::before {
+  content:"";
+  position:absolute; inset:-1px;
+  border-radius: calc(var(--card-r) + 1px);
+  background: conic-gradient(
+    from 180deg,
+    rgba(250,204,21,.0) 0%,
+    rgba(250,204,21,.45) 25%,
+    rgba(250,204,21,.0) 50%,
+    rgba(250,204,21,.45) 75%,
+    rgba(250,204,21,.0) 100%
+  );
+  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor; mask-composite: exclude;
+  padding: 1px; filter: blur(.2px);
+  animation: spin 8s linear infinite;
+  opacity: .9; pointer-events:none;
+}
+.fancy-card::after {
+  content:"";
+  position:absolute; inset:12% 10% auto 10%;
+  height: 40%;
+  border-radius: 9999px;
+  background: radial-gradient(60% 100% at 50% 0%, var(--accent), transparent 70%);
+  opacity: .25; animation: glowPulse 3.6s ease-in-out infinite;
+  filter: blur(18px); pointer-events:none;
+}
+.fancy-card:hover {
+  transform: translateY(-4px) scale(1.02) rotateX(.4deg) rotateY(-.4deg);
+  box-shadow:
+    0 16px 36px rgba(0,0,0,.55),
+    inset 0 1px 0 rgba(255,255,255,.12);
+  border-color: rgba(250,204,21,.35);
+}
+
+/* leve parallax/float alternado */
+.marquee-track > li:nth-child(odd)  .float { animation: floaty 5.5s ease-in-out infinite .2s; }
+.marquee-track > li:nth-child(even) .float { animation: floaty 6.2s ease-in-out infinite; }
