@@ -42,31 +42,14 @@ const FALLBACK_DATA_URI =
     </svg>`
   );
 
-/* ===================== CSS global do marquee (sem styled-jsx) ===================== */
-const MARQUEE_CSS = String.raw`
-@keyframes marqueeSlide {
-  0%   { transform: translateX(0); }
-  100% { transform: translateX(-50%); }
-}
-.marquee-wrap { position: relative; width: 100%; overflow: hidden; }
-.marquee-track {
-  display: flex;
-  align-items: center;
-  gap: 1.25rem; /* 5 */
-  will-change: transform;
-  animation: marqueeSlide var(--speed, 38s) linear infinite;
-}
-.marquee-wrap:hover .marquee-track { animation-play-state: paused; }
-`;
-
-/* ===================== Carrossel (Marquee) ===================== */
+/* ===================== Carrossel (usa CSS global do globals.css) ===================== */
 type MarqueeItem = { src: string; alt?: string };
 
 function MarqueePro({
   items,
-  speed = 38,     // maior = mais lento
-  cardW = 170,
-  cardH = 170,
+  speed = 36,     // maior = mais lento
+  cardW = 180,
+  cardH = 180,
 }: {
   items: MarqueeItem[];
   speed?: number;
@@ -76,7 +59,8 @@ function MarqueePro({
   const track = useMemo(() => [...items, ...items], [items]);
 
   return (
-    <div className="relative w-full py-6 overflow-hidden bg-black md:py-8">
+    <div className="relative w-full py-8 bg-black">
+      <div className="marquee-bg" />
       {/* fades laterais */}
       <div className="absolute inset-y-0 left-0 w-20 pointer-events-none bg-gradient-to-r from-black via-black/70 to-transparent" />
       <div className="absolute inset-y-0 right-0 w-20 pointer-events-none bg-gradient-to-l from-black via-black/70 to-transparent" />
@@ -86,20 +70,20 @@ function MarqueePro({
           {track.map((item, i) => (
             <li
               key={`${item.src}-${i}`}
-              className="shrink-0 rounded-2xl border border-white/8 bg-gradient-to-b from-white/5 to-white/0 shadow-[0_8px_26px_rgba(0,0,0,.45)] hover:shadow-[0_12px_36px_rgba(0,0,0,.6)] transition-shadow duration-200"
+              className="fancy-card shrink-0"
               style={{ width: cardW, height: cardH }}
               title={item.alt ?? 'Produto'}
             >
-              <div className="w-full h-full p-3">
+              <div className="w-full h-full p-3 float">
                 <img
                   src={item.src}
                   alt={item.alt ?? 'Produto'}
-                  className="object-contain w-full h-full rounded-xl bg-white/3"
+                  className="w-full h-full object-contain rounded-[16px] bg-white/5"
                   loading="lazy"
                   onError={(e) => {
                     const el = e.currentTarget;
                     if (el.src !== FALLBACK_DATA_URI) el.src = FALLBACK_DATA_URI;
-                    el.style.opacity = '0.5';
+                    el.style.opacity = '0.55';
                   }}
                 />
               </div>
@@ -113,7 +97,8 @@ function MarqueePro({
 
 /* ====== (Opcional) imagens locais extras em /public/produtos ====== */
 const LOCALS_IN_PRODUTOS: string[] = [
-  // exemplo: 'coca-cola-2L.jpg', 'H2OHlimoneto500ML.png'
+  // 'coca-cola-2L.jpg',
+  // 'H2OHlimoneto500ML.png',
 ];
 
 /* =============================== Página =============================== */
@@ -172,9 +157,6 @@ export default function Home() {
 
   return (
     <>
-      {/* CSS global do marquee */}
-      <style>{MARQUEE_CSS}</style>
-
       {/* Header */}
       <header className="flex flex-col gap-4 px-6 py-4 text-black bg-yellow-400 shadow-md md:flex-row md:items-center md:justify-between">
         {/* Logo */}
@@ -192,10 +174,7 @@ export default function Home() {
         <div className="flex items-center justify-center w-full md:max-w-2xl">
           <span
             className="text-xl italic tracking-tight text-center text-black select-none md:text-2xl font-extralight"
-            style={{
-              fontFamily:
-                "'Segoe Script','Brush Script MT','Dancing Script',cursive",
-            }}
+            style={{ fontFamily: "'Segoe Script','Brush Script MT','Dancing Script',cursive" }}
             aria-label="Slogan"
             title="Império a um gole de você"
           >
@@ -269,7 +248,7 @@ export default function Home() {
       </section>
 
       {/* Carrossel 1 — entre o Hero e os Destaques */}
-      {items.length > 0 && <MarqueePro items={items} speed={36} cardW={170} cardH={170} />}
+      {items.length > 0 && <MarqueePro items={items} speed={34} cardW={180} cardH={180} />}
 
       {/* Destaques da Semana */}
       <section className="px-4 py-16 text-white bg-black">
@@ -324,7 +303,7 @@ export default function Home() {
       </section>
 
       {/* Carrossel 2 — entre os Destaques e o Rodapé */}
-      {items.length > 0 && <MarqueePro items={items} speed={40} cardW={170} cardH={170} />}
+      {items.length > 0 && <MarqueePro items={items} speed={40} cardW={180} cardH={180} />}
 
       {/* Rodapé */}
       <Footer />
