@@ -10,23 +10,24 @@ import { collection, getDocs } from 'firebase/firestore';
 import Footer from '@/components/Footer';
 
 /* ===================== Normalizador de caminhos ===================== */
+/* Padrão: /public/produtos */
 function normalizeImagePath(p?: string): string | null {
   if (!p) return null;
-  let s = p.trim();
+  const s = p.trim();
 
-  // URLs externas ou data URIs
+  // URL externa ou data URI
   if (/^https?:\/\//i.test(s) || s.startsWith('data:')) return s;
 
-  // Já começa com / (ex.: /produtos/...). Apenas codifica espaços/caracteres.
+  // já começa com /
   if (s.startsWith('/')) return encodeURI(s);
 
-  // Começa com pastas conhecidas -> prefixa / e codifica.
-  if (s.startsWith('produtos/') || s.startsWith('publi/')) {
+  // começa com pastas conhecidas → prefixa /
+  if (s.startsWith('produtos/') || s.startsWith('publi/') || s.startsWith('logos/')) {
     return encodeURI('/' + s);
   }
 
-  // Só nome do arquivo -> assume /publi/<arquivo>
-  return encodeURI('/publi/' + s);
+  // só nome do arquivo → assume /produtos/<arquivo> (onde estão suas imagens)
+  return encodeURI('/produtos/' + s);
 }
 
 // Placeholder inline (não precisa de arquivo)
@@ -41,12 +42,29 @@ const FALLBACK_DATA_URI =
     </svg>`
   );
 
+/* ===================== CSS global do marquee (sem styled-jsx) ===================== */
+const MARQUEE_CSS = String.raw`
+@keyframes marqueeSlide {
+  0%   { transform: translateX(0); }
+  100% { transform: translateX(-50%); }
+}
+.marquee-wrap { position: relative; width: 100%; overflow: hidden; }
+.marquee-track {
+  display: flex;
+  align-items: center;
+  gap: 1.25rem; /* 5 */
+  will-change: transform;
+  animation: marqueeSlide var(--speed, 38s) linear infinite;
+}
+.marquee-wrap:hover .marquee-track { animation-play-state: paused; }
+`;
+
 /* ===================== Carrossel (Marquee) ===================== */
 type MarqueeItem = { src: string; alt?: string };
 
 function MarqueePro({
   items,
-  speed = 38,      // maior = mais lento
+  speed = 38,     // maior = mais lento
   cardW = 170,
   cardH = 170,
 }: {
@@ -63,28 +81,13 @@ function MarqueePro({
       <div className="absolute inset-y-0 left-0 w-20 pointer-events-none bg-gradient-to-r from-black via-black/70 to-transparent" />
       <div className="absolute inset-y-0 right-0 w-20 pointer-events-none bg-gradient-to-l from-black via-black/70 to-transparent" />
 
-      <div
-        className="relative group"
-        style={
-          {
-            ['--card-w' as any]: `${cardW}px`,
-            ['--card-h' as any]: `${cardH}px`,
-            ['--marquee-speed' as any]: `${speed}s`,
-          } as React.CSSProperties
-        }
-      >
-        <ul className="flex items-center gap-5 marquee-track md:gap-7 will-change-transform">
+      <div className="marquee-wrap" style={{ ['--speed' as any]: `${speed}s` }}>
+        <ul className="marquee-track">
           {track.map((item, i) => (
             <li
               key={`${item.src}-${i}`}
-              className="
-                shrink-0 rounded-2xl border border-white/8
-                bg-gradient-to-b from-white/5 to-white/0
-                shadow-[0_8px_26px_rgba(0,0,0,.45)]
-                hover:shadow-[0_12px_36px_rgba(0,0,0,.6)]
-                transition-shadow duration-200
-              "
-              style={{ width: 'var(--card-w)', height: 'var(--card-h)' }}
+              className="shrink-0 rounded-2xl border border-white/8 bg-gradient-to-b from-white/5 to-white/0 shadow-[0_8px_26px_rgba(0,0,0,.45)] hover:shadow-[0_12px_36px_rgba(0,0,0,.6)] transition-shadow duration-200"
+              style={{ width: cardW, height: cardH }}
               title={item.alt ?? 'Produto'}
             >
               <div className="w-full h-full p-3">
@@ -96,29 +99,21 @@ function MarqueePro({
                   onError={(e) => {
                     const el = e.currentTarget;
                     if (el.src !== FALLBACK_DATA_URI) el.src = FALLBACK_DATA_URI;
+                    el.style.opacity = '0.5';
                   }}
                 />
               </div>
             </li>
           ))}
         </ul>
-
-        <style jsx>{`
-          .marquee-track { animation: marquee var(--marquee-speed) linear infinite; }
-          .group:hover .marquee-track { animation-play-state: paused; } /* pausa no hover */
-          @keyframes marquee {
-            0% { transform: translateX(0); }
-            100% { transform: translateX(-50%); }
-          }
-        `}</style>
       </div>
     </div>
   );
 }
 
-/* ====== Lista opcional de imagens locais em /public/publi (preencha se quiser) ====== */
-const PUBLI: string[] = [
-  // Ex.: 'cocacolazero2l.png', 'antarctica-original-269ml.jpg', ...
+/* ====== (Opcional) imagens locais extras em /public/produtos ====== */
+const LOCALS_IN_PRODUTOS: string[] = [
+  // exemplo: 'coca-cola-2L.jpg', 'H2OHlimoneto500ML.png'
 ];
 
 /* =============================== Página =============================== */
@@ -132,7 +127,7 @@ export default function Home() {
     return () => unsubscribe();
   }, []);
 
-  // Busca imagens do Firestore + mistura com /public/publi
+  // Busca imagens do Firestore + mistura com /public/produtos (se quiser)
   useEffect(() => {
     (async () => {
       try {
@@ -144,8 +139,8 @@ export default function Home() {
           if (src) fromDb.push({ src, alt: data?.nome ?? 'Produto' });
         });
 
-        const fromLocal: MarqueeItem[] = PUBLI.map((name) => ({
-          src: normalizeImagePath(`publi/${name}`)!,
+        const fromLocal: MarqueeItem[] = LOCALS_IN_PRODUTOS.map((name) => ({
+          src: normalizeImagePath('produtos/' + name)!,
           alt: name.replace(/\.[^/.]+$/, '').replace(/[-_]/g, ' '),
         }));
 
@@ -177,6 +172,9 @@ export default function Home() {
 
   return (
     <>
+      {/* CSS global do marquee */}
+      <style>{MARQUEE_CSS}</style>
+
       {/* Header */}
       <header className="flex flex-col gap-4 px-6 py-4 text-black bg-yellow-400 shadow-md md:flex-row md:items-center md:justify-between">
         {/* Logo */}
