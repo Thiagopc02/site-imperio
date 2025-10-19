@@ -1,78 +1,57 @@
-import { NextResponse } from "next/server";
+// app/api/mp/create-preference/route.ts
+import { NextResponse } from 'next/server';
 
-const MP_API = "https://api.mercadopago.com";
+const MP_API = process.env.MP_API || 'https://api.mercadopago.com';
+const ACCESS_TOKEN = process.env.MP_ACCESS_TOKEN;
 
 export async function POST(req: Request) {
   try {
+    if (!ACCESS_TOKEN) {
+      return NextResponse.json({ error: 'MP_ACCESS_TOKEN ausente' }, { status: 500 });
+    }
+
     const body = await req.json().catch(() => ({}));
+    const items = Array.isArray(body?.items) ? body.items : [];
 
-    // Exemplo de fallback se o frontend não enviar itens ainda:
-    const {
-      orderId = `test-${Date.now()}`,
-      items = [
-        {
-          title: "Carrinho Império",
-          quantity: 1,
-          unit_price: 1.99, // valor simbólico para sandbox
-          currency_id: process.env.MP_CURRENCY || "BRL",
-        },
-      ],
-      payer = {
-        email: "test_user_123456@testuser.com", // email de teste no sandbox
-      },
-    } = body || {};
-
-    const accessToken = process.env.MP_ACCESS_TOKEN!;
-    const siteURL = process.env.NEXT_PUBLIC_SITE_URL!;
-    const statementDescriptor =
-      process.env.MP_STATEMENT_DESCRIPTOR || "IMPERIO";
-
-    // URL do webhook (precisa ser pública)
-    const notification_url = `${siteURL}/api/mp/webhook`;
-
+    // Monte sua preferência: use seus itens reais e URLs de retorno
     const preferencePayload = {
-      items,
-      payer,
-      external_reference: String(orderId),
-      notification_url,
-      statement_descriptor: statementDescriptor,
+      items: items.map((it: any) => ({
+        id: it.id,
+        title: it.title,
+        quantity: it.quantity,
+        currency_id: it.currency_id || 'BRL',
+        unit_price: it.unit_price,
+      })),
       back_urls: {
-        success: `${siteURL}/pedido/${orderId}?status=approved`,
-        failure: `${siteURL}/pedido/${orderId}?status=failure`,
-        pending: `${siteURL}/pedido/${orderId}?status=pending`,
+        success: `${process.env.NEXT_PUBLIC_SITE_URL}/checkout/sucesso`,
+        pending: `${process.env.NEXT_PUBLIC_SITE_URL}/checkout/pending`,
+        failure: `${process.env.NEXT_PUBLIC_SITE_URL}/checkout/erro`,
       },
-      auto_return: "approved",
-      binary_mode: false, // se true, só approved/declined (sem pending)
+      auto_return: 'approved',
+      notification_url: `${process.env.NEXT_PUBLIC_SITE_URL}/api/mp/webhook`, // webhook
+      external_reference: `order_${Date.now()}`,
     };
 
     const res = await fetch(`${MP_API}/checkout/preferences`, {
-      method: "POST",
+      method: 'POST',
       headers: {
-        Authorization: `Bearer ${accessToken}`,
-        "Content-Type": "application/json",
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${ACCESS_TOKEN}`,
       },
       body: JSON.stringify(preferencePayload),
-      // idempotency opcional:
-      // headers: { 'X-Idempotency-Key': orderId, ... }
+      cache: 'no-store',
     });
 
     if (!res.ok) {
-      const err = await res.text();
-      console.error("MP create preference error:", err);
-      return NextResponse.json(
-        { error: "MP_CREATE_PREFERENCE_FAILED", detail: err },
-        { status: 400 }
-      );
+      const t = await res.text();
+      console.error('MP create preference error:', t);
+      return NextResponse.json({ error: 'Falha ao criar preferência' }, { status: 500 });
     }
 
-    const pref = await res.json();
-    // pref.id é o preferenceId que o Bricks/Wallet usa
-    return NextResponse.json({ id: pref.id, init_point: pref.init_point });
+    const json = await res.json();
+    return NextResponse.json({ preferenceId: json.id });
   } catch (e: any) {
     console.error(e);
-    return NextResponse.json(
-      { error: "UNEXPECTED_ERROR", detail: e?.message },
-      { status: 500 }
-    );
+    return NextResponse.json({ error: 'Erro interno' }, { status: 500 });
   }
 }
