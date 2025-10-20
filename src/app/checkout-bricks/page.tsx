@@ -7,7 +7,7 @@ import { useSearchParams } from 'next/navigation';
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
 
-/* ===== Tipos mínimos, alinhados com o SDK ===== */
+/* ========= Tipos mínimos, compatíveis com o SDK ========= */
 type PaymentBrickController = { unmount: () => void };
 
 type PaymentBrickOptions = {
@@ -15,13 +15,12 @@ type PaymentBrickOptions = {
   customization?: unknown;
   callbacks?: {
     onReady?: () => void;
-    onSubmit?: (args: unknown) => Promise<void>; // <- void, não boolean
+    onSubmit?: (_args: unknown) => Promise<void>; // importante: Promise<void>
     onError?: (err: unknown) => void;
   };
 };
 
 type BricksBuilder = {
-  // alguns wrappers retornam void/undefined quando falha
   create: (
     type: 'payment',
     containerId: string,
@@ -34,7 +33,7 @@ type MPInstance = { bricks: () => BricksBuilder };
 type MPWindow = typeof window & {
   MercadoPago?: new (key: string, opts?: { locale?: string }) => MPInstance;
 };
-/* ============================================== */
+/* ======================================================== */
 
 function CheckoutBricksInner() {
   const containerRef = useRef<HTMLDivElement | null>(null);
@@ -44,7 +43,7 @@ function CheckoutBricksInner() {
   const qs = useSearchParams();
   const prefIdFromQS = qs.get('pref_id');
 
-  // marca como pronto caso o SDK já exista
+  // Se o SDK já existir (navegação/memo), marca como pronto
   useEffect(() => {
     if (typeof window !== 'undefined' && (window as MPWindow).MercadoPago) {
       setSdkReady(true);
@@ -64,7 +63,7 @@ function CheckoutBricksInner() {
 
     (async () => {
       try {
-        // 1) garante preferenceId
+        // 1) Garante um preferenceId (usa o da URL ou cria um básico)
         let preferenceId = prefIdFromQS ?? '';
         if (!preferenceId) {
           const prefRes = await fetch('/api/mp/create-preference', {
@@ -72,50 +71,64 @@ function CheckoutBricksInner() {
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
               items: [
-                { id: 'sku-1', title: 'Exemplo', quantity: 1, unit_price: 10.0, currency_id: 'BRL' },
+                {
+                  id: 'sku-1',
+                  title: 'Exemplo',
+                  quantity: 1,
+                  unit_price: 10.0,
+                  currency_id: 'BRL',
+                },
               ],
             }),
           });
+
           if (!prefRes.ok) throw new Error('Falha ao criar preferência');
+
           const json: { id?: string; preferenceId?: string } = await prefRes.json();
           preferenceId = json.id ?? json.preferenceId ?? '';
           if (!preferenceId) throw new Error('Preferência criada sem ID.');
 
-          // coloca o pref_id na URL
+          // Atualiza a URL com o pref_id (sem recarregar)
           const url = new URL(window.location.href);
           url.searchParams.set('pref_id', preferenceId);
           window.history.replaceState({}, '', url.toString());
         }
 
-        // 2) monta o Payment Brick
+        // 2) Monta o Payment Brick
         const MPClass = (window as MPWindow).MercadoPago;
-        if (!MPClass) throw new Error('SDK Mercado Pago não carregado.');
+        if (!MPClass) throw new Error('SDK do Mercado Pago não carregado.');
 
         const mp = new MPClass(publicKey, { locale: 'pt-BR' });
         const bricksBuilder = mp.bricks();
 
-        const controller = await bricksBuilder.create('payment', 'payment_brick_container', {
-          initialization: { amount: 10.0, preferenceId },
-          customization: {
-            paymentMethods: {
-              creditCard: 'all',
-              debitCard: 'all',
-              ticket: 'all',
-              bankTransfer: 'all', // PIX
+        const controller = await bricksBuilder.create(
+          'payment',
+          'payment_brick_container',
+          {
+            initialization: { amount: 10.0, preferenceId },
+            customization: {
+              paymentMethods: {
+                creditCard: 'all',
+                debitCard: 'all',
+                ticket: 'all',
+                bankTransfer: 'all', // PIX
+              },
             },
-          },
-          callbacks: {
-            onReady: () => {},
-            onSubmit: async (_args: unknown) => {
-              // Se quiser capturar no backend, faça fetch para /api/mp/process-payment aqui
-              // e trate erros lançando exception para cair no onError
+            callbacks: {
+              onReady: () => {
+                // opcional
+              },
+              onSubmit: async (_args) => {
+                // Se desejar processar no backend, faça fetch para /api/mp/process-payment
+                // e lance erro em caso de falha para cair no onError.
+              },
+              onError: (err) => {
+                console.error(err);
+                setError('Erro no Payment Brick.');
+              },
             },
-            onError: (err: unknown) => {
-              console.error(err);
-              setError('Erro no Payment Brick.');
-            },
-          },
-        });
+          }
+        );
 
         if (controller && typeof (controller as PaymentBrickController).unmount === 'function') {
           bricksController = controller as PaymentBrickController;
@@ -146,7 +159,11 @@ function CheckoutBricksInner() {
       />
       <div className="max-w-xl px-4 py-8 mx-auto">
         <h1 className="mb-4 text-2xl font-bold">Pagamento</h1>
-        {error && <div className="p-3 mb-4 text-sm text-red-700 bg-red-100 rounded">{error}</div>}
+        {error && (
+          <div className="p-3 mb-4 text-sm text-red-700 bg-red-100 rounded">
+            {error}
+          </div>
+        )}
         <div id="payment_brick_container" ref={containerRef} />
       </div>
     </>

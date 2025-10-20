@@ -1,6 +1,7 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import Image from 'next/image';
+import { useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { getAuth } from 'firebase/auth';
 import { db } from '@/firebase/config';
@@ -77,9 +78,12 @@ export default function CarrinhoPage() {
   const user = auth.currentUser;
   const router = useRouter();
 
-  const total = carrinho.reduce((acc, item) => acc + item.preco * item.quantidade, 0);
+  const total = useMemo(
+    () => carrinho.reduce((acc, item) => acc + item.preco * item.quantidade, 0),
+    [carrinho]
+  );
 
-  // =============== Endereços do usuário ===============
+  // Endereços do usuário
   useEffect(() => {
     if (!user) return;
     setNovoEndereco((prev) => ({ ...prev, usuarioId: user.uid }));
@@ -88,7 +92,7 @@ export default function CarrinhoPage() {
     const unsubscribe = onSnapshot(q, (snapshot) => {
       const lista: Endereco[] = [];
       snapshot.forEach((docu) =>
-        lista.push({ id: docu.id, ...(docu.data() as Omit<Endereco, 'id'>) }),
+        lista.push({ id: docu.id, ...(docu.data() as Omit<Endereco, 'id'>) })
       );
       setEnderecos(lista);
     });
@@ -121,14 +125,19 @@ export default function CarrinhoPage() {
     navigator.geolocation.getCurrentPosition(
       (pos) => {
         const { latitude, longitude, accuracy } = pos.coords;
-        setNovoEndereco((prev) => ({ ...prev, lat: latitude, lng: longitude, accuracy }));
+        setNovoEndereco((prev) => ({
+          ...prev,
+          lat: latitude,
+          lng: longitude,
+          accuracy,
+        }));
         setLocStatus('Localização capturada com sucesso ✅');
       },
       (err) => {
         console.error(err);
         setLocStatus('Não foi possível obter sua localização. Verifique permissões.');
       },
-      { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 },
+      { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 }
     );
   }
 
@@ -175,10 +184,8 @@ export default function CarrinhoPage() {
     }
   };
 
-  // =============== Finalização local (dinheiro) ===============
   const finalizarPedido = async () => {
-    if (!nome || telefone.replace(/\D/g, '').length < 10)
-      return alert('Preencha nome e telefone válidos.');
+    if (!nome || !telefone) return alert('Preencha nome e telefone.');
     if (!tipoEntrega) return alert('Selecione o tipo de entrega.');
     if (!formaPagamento) return alert('Selecione a forma de pagamento.');
     if (formaPagamento === 'dinheiro' && !troco) return alert('Informe o valor do troco.');
@@ -220,7 +227,6 @@ export default function CarrinhoPage() {
     }
   };
 
-  // =============== Iniciar pagamento MP (Pix/Cartão) ===============
   const gerarExternalRef = () =>
     `order_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
 
@@ -228,12 +234,13 @@ export default function CarrinhoPage() {
     try {
       if (carrinho.length === 0) return alert('Seu carrinho está vazio.');
       if (!['pix', 'cartao_credito', 'cartao_debito'].includes(formaPagamento)) {
-        alert('Selecione Pix ou Cartão para pagar online.');
-        return;
+        return alert('Selecione Pix ou Cartão para pagar online.');
       }
-      if (!nome || telefone.replace(/\D/g, '').length < 10) {
-        alert('Preencha nome e telefone válidos.');
-        return;
+      if (!nome || !telefone) {
+        return alert('Preencha nome e telefone antes de continuar.');
+      }
+      if (tipoEntrega === 'entrega' && !enderecoSelecionado) {
+        return alert('Selecione um endereço para entrega.');
       }
 
       const endEntrega =
@@ -253,7 +260,7 @@ export default function CarrinhoPage() {
         payer: {
           name: nome || 'Cliente',
           email: user?.email || 'sandbox@test.com',
-          phone: { number: telefone.replace(/\D/g, '').slice(-11) || '' },
+          phone: { number: telefone?.replace(/\D/g, '')?.slice(-11) || '' },
         },
         external_reference: externalRef,
         shipment: endEntrega
@@ -299,7 +306,6 @@ export default function CarrinhoPage() {
     }
   };
 
-  // =============== util ===============
   const formatarTelefone = (valor: string) => {
     const cleaned = valor.replace(/\D/g, '');
     const match = cleaned.match(/^(\d{2})(\d{5})(\d{4})$/);
@@ -307,10 +313,19 @@ export default function CarrinhoPage() {
   };
 
   const handleNovoEnderecoChange =
-    (campo: keyof Endereco) => (e: React.ChangeEvent<HTMLInputElement>) =>
-      setNovoEndereco((prev) => ({ ...prev, [campo]: e.target.value }));
+    (campo: keyof Endereco) =>
+    (e: React.ChangeEvent<HTMLInputElement>) => {
+      const value = e.target.value;
+      setNovoEndereco((prev) => ({ ...prev, [campo]: value }));
+    };
 
-  // =============== UI ===============
+  const podePagarOnline =
+    carrinho.length > 0 &&
+    !!nome &&
+    !!telefone &&
+    (tipoEntrega === 'retirada' || !!enderecoSelecionado) &&
+    ['pix', 'cartao_credito', 'cartao_debito'].includes(formaPagamento);
+
   return (
     <main className="min-h-screen px-4 py-8 text-white bg-black">
       <div className="max-w-3xl mx-auto">
@@ -326,10 +341,13 @@ export default function CarrinhoPage() {
                 className="flex items-center justify-between p-4 rounded shadow bg-neutral-900"
               >
                 <div className="flex items-center gap-4">
-                  <img
+                  <Image
                     src={`/produtos/${item.imagem}`}
                     alt={item.nome}
-                    className="object-contain w-16 h-16 rounded"
+                    width={64}
+                    height={64}
+                    className="object-contain rounded"
+                    loading="lazy"
                   />
                   <div>
                     <p className="text-lg font-semibold">{item.nome}</p>
@@ -367,6 +385,7 @@ export default function CarrinhoPage() {
           </div>
         )}
 
+        {/* Dados do cliente */}
         <input
           type="text"
           placeholder="Nome completo"
@@ -382,6 +401,7 @@ export default function CarrinhoPage() {
           className="w-full p-2 mb-4 text-black rounded"
         />
 
+        {/* Tipo de entrega */}
         <div className="mb-4">
           <label className="block mb-1 font-semibold">Tipo de entrega:</label>
           <div className="flex gap-4">
@@ -404,6 +424,7 @@ export default function CarrinhoPage() {
           </div>
         </div>
 
+        {/* Entrega: endereços / novo endereço */}
         {tipoEntrega === 'entrega' && (
           <div className="mb-4">
             {enderecos.length > 0 && (
@@ -418,8 +439,7 @@ export default function CarrinhoPage() {
                     }`}
                   >
                     <p className="text-sm font-semibold">
-                      {endereco.rua}, {endereco.numero} - {endereco.bairro}, {endereco.cidade} -{' '}
-                      {endereco.cep}
+                      {endereco.rua}, {endereco.numero} - {endereco.bairro}, {endereco.cidade} - {endereco.cep}
                     </p>
                     {endereco.complemento && (
                       <p className="text-sm text-gray-300">Compl.: {endereco.complemento}</p>
@@ -454,34 +474,24 @@ export default function CarrinhoPage() {
             {mostrarFormulario || enderecos.length === 0 ? (
               <div className="p-4 mt-4 border border-yellow-500 rounded bg-zinc-900">
                 <p className="mb-2 text-yellow-400">Preencha o novo endereço:</p>
-                {(
-                  [
-                    'cep',
-                    'rua',
-                    'numero',
-                    'bairro',
-                    'cidade',
-                    'complemento',
-                    'pontoReferencia',
-                  ] as const
-                ).map((campo) => (
-                  <input
-                    key={campo}
-                    type="text"
-                    placeholder={
-                      campo.charAt(0).toUpperCase() + campo.slice(1).replace(/([A-Z])/g, ' $1')
-                    }
-                    value={String(novoEndereco[campo] ?? '')}
-                    onChange={handleNovoEnderecoChange(campo)}
-                    onBlur={() => {
-                      if (campo === 'cep') {
-                        const cepLimpo = String(novoEndereco.cep ?? '').replace(/\D/g, '');
-                        if (cepLimpo.length === 8) buscarCidadePorCep(cepLimpo);
-                      }
-                    }}
-                    className="w-full p-2 mb-2 text-black rounded"
-                  />
-                ))}
+                {(['cep', 'rua', 'numero', 'bairro', 'cidade', 'complemento', 'pontoReferencia'] as const).map(
+                  (campo) => (
+                    <input
+                      key={campo}
+                      type="text"
+                      placeholder={campo.charAt(0).toUpperCase() + campo.slice(1).replace(/([A-Z])/g, ' $1')}
+                      value={String(novoEndereco[campo] ?? '')}
+                      onChange={handleNovoEnderecoChange(campo)}
+                      onBlur={() => {
+                        if (campo === 'cep') {
+                          const cepLimpo = String(novoEndereco.cep ?? '').replace(/\D/g, '');
+                          if (cepLimpo.length === 8) buscarCidadePorCep(cepLimpo);
+                        }
+                      }}
+                      className="w-full p-2 mb-2 text-black rounded"
+                    />
+                  )
+                )}
 
                 <div className="p-2 mt-2 rounded bg-zinc-800">
                   <button
@@ -513,34 +523,20 @@ export default function CarrinhoPage() {
           </div>
         )}
 
+        {/* Retirada: info com mapa fixo da loja */}
         {tipoEntrega === 'retirada' && (
           <div className="p-4 mb-4 rounded bg-zinc-800">
-            <p className="mb-2 font-medium text-green-400">
-              Você optou por retirar no estabelecimento.
-            </p>
+            <p className="mb-2 font-medium text-green-400">Você optou por retirar no estabelecimento.</p>
             <div className="text-sm text-white">
-              <p>
-                <strong>Império Bebidas e Tabacos</strong>
-              </p>
+              <p><strong>Império Bebidas e Tabacos</strong></p>
               <p>R. Temístocles Rocha, Qd. 07 - Lt. 01, Nº 56</p>
               <p>Setor Central – Campos Belos – GO | CEP 73840-000</p>
-              <p>
-                <strong>Ref.:</strong> Próximo à Câmara Municipal
-              </p>
-
-              <a
-                href="https://www.google.com/maps?q=-13.034359,-46.775423"
-                target="_blank"
-                rel="noopener noreferrer"
-                className="inline-flex items-center gap-2 px-4 py-2 mt-2 text-sm font-semibold text-white bg-yellow-500 rounded hover:bg-yellow-600"
-              >
-                <img src="/google-maps-icon.png" alt="Google Maps" className="w-5 h-5" />
-                Ver no Google Maps
-              </a>
+              <p><strong>Ref.:</strong> Próximo à Câmara Municipal</p>
             </div>
           </div>
         )}
 
+        {/* Pagamento */}
         <div className="mb-4">
           <label className="block mb-2 font-semibold">Forma de pagamento:</label>
 
@@ -660,7 +656,12 @@ export default function CarrinhoPage() {
             ) : (
               <button
                 onClick={irParaPagamentoMP}
-                className="w-full py-3 text-lg font-semibold text-black bg-yellow-400 rounded hover:bg-yellow-500"
+                disabled={!podePagarOnline}
+                className={`w-full py-3 text-lg font-semibold rounded ${
+                  podePagarOnline
+                    ? 'bg-yellow-400 text-black hover:bg-yellow-500'
+                    : 'bg-zinc-700 text-zinc-300 cursor-not-allowed'
+                }`}
               >
                 Ir para pagamento (Mercado Pago)
               </button>
