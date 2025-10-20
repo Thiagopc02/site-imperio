@@ -31,26 +31,58 @@ import {
   FaWhatsapp,
 } from 'react-icons/fa';
 
+/* ---------- Tipos ---------- */
+
 type Item = { id?: string; nome?: string; quantidade?: number; preco?: number };
 type Endereco = {
-  rua?: string; numero?: string; bairro?: string; cidade?: string; cep?: string;
-  complemento?: string; pontoReferencia?: string; lat?: number | null; lng?: number | null;
+  rua?: string;
+  numero?: string;
+  bairro?: string;
+  cidade?: string;
+  cep?: string;
+  complemento?: string;
+  pontoReferencia?: string;
+  lat?: number | null;
+  lng?: number | null;
 };
+
+/** Timestamp “like” recebido do Firestore quando serializado */
+type FireTimestampLike = { seconds?: number } | Date | null | undefined;
+
+type StatusFilter = 'todos' | 'andamento' | 'confirmado' | 'rota' | 'entregue' | 'cancelado';
+
 type Pedido = {
-  id: string; uid: string; nome?: string; total?: number; status?: string; data?: any;
+  id: string;
+  uid: string;
+  nome?: string;
+  total?: number;
+  status?: string;
+  data?: FireTimestampLike;
   tipoEntrega?: 'entrega' | 'retirada';
   formaPagamento?: 'pix' | 'cartao_credito' | 'cartao_debito' | 'dinheiro';
-  itens?: Item[]; endereco?: Endereco | null;
+  itens?: Item[];
+  endereco?: Endereco | null;
 
   /** campos para envio ao grupo do WhatsApp */
   grupoEnviado?: boolean;
-  grupoEnviadoEm?: any;
+  grupoEnviadoEm?: FireTimestampLike;
 };
 
+/* ---------- Helpers ---------- */
+
 const money = (n: number) => `R$ ${Number(n || 0).toFixed(2)}`;
-const toDate = (v: any) => (v?.seconds ? new Date(v.seconds * 1000) : new Date(v ?? NaN));
+
+const toDate = (v: FireTimestampLike): Date => {
+  if (v instanceof Date) return v;
+  if (v && typeof v === 'object' && typeof (v as { seconds?: number }).seconds === 'number') {
+    return new Date((v as { seconds: number }).seconds * 1000);
+  }
+  return new Date(NaN);
+};
+
 const fmtDateTime = (d: Date) =>
   isNaN(+d) ? '—' : d.toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' });
+
 const enderecoTexto = (e?: Endereco | null) =>
   e ? [e.rua, e.numero, e.bairro, e.cidade, e.cep, 'Brasil'].filter(Boolean).join(', ') : '';
 
@@ -58,6 +90,7 @@ const ALLOWED_EMAILS = new Set<string>([
   'thiagotorresdeoliveira9@gmail.com',
   'thiagotorres5517@gmail.com',
 ]);
+
 const normalizeEmail = (raw: string) =>
   raw.normalize('NFKC').replace(/[\u200B-\u200D\uFEFF]/g, '').trim().toLowerCase();
 
@@ -65,31 +98,31 @@ async function hasAdminRole(uid: string): Promise<boolean> {
   try {
     const s = await getDoc(doc(db, 'administrador', uid));
     if (s.exists()) {
-      const d: any = s.data();
-      if (d?.ativo === true) return true;
-      if (d?.papel === 'administrador') return true;
-      if (d?.role === 'admin') return true;
+      const d = s.data() as Record<string, unknown>;
+      if (d['ativo'] === true) return true;
+      if (d['papel'] === 'administrador') return true;
+      if (d['role'] === 'admin') return true;
     }
   } catch {}
   try {
     const s = await getDoc(doc(db, 'admin', uid));
     if (s.exists()) {
-      const d: any = s.data();
-      if (d?.papel === 'administrador' || d?.role === 'admin' || d?.ativo === true) return true;
+      const d = s.data() as Record<string, unknown>;
+      if (d['papel'] === 'administrador' || d['role'] === 'admin' || d['ativo'] === true) return true;
     }
   } catch {}
   try {
     const s = await getDoc(doc(db, 'usuarios', uid));
     if (s.exists()) {
-      const d: any = s.data();
-      if (d?.papel === 'administrador' || d?.role === 'admin') return true;
+      const d = s.data() as Record<string, unknown>;
+      if (d['papel'] === 'administrador' || d['role'] === 'admin') return true;
     }
   } catch {}
   try {
     const s = await getDoc(doc(db, 'usuários', uid));
     if (s.exists()) {
-      const d: any = s.data();
-      if (d?.papel === 'administrador' || d?.role === 'admin') return true;
+      const d = s.data() as Record<string, unknown>;
+      if (d['papel'] === 'administrador' || d['role'] === 'admin') return true;
     }
   } catch {}
   return false;
@@ -103,6 +136,8 @@ type ClienteResumo = {
   ultimaCompra: Date | null;
 };
 
+/* ---------- Página ---------- */
+
 export default function PedidosDetalhadosPage() {
   const router = useRouter();
   const [user, setUser] = useState<User | null>(null);
@@ -113,11 +148,10 @@ export default function PedidosDetalhadosPage() {
 
   const [q, setQ] = useState('');
   const [days, setDays] = useState<7 | 30 | 90 | 0>(30);
-  const [statusFilter, setStatusFilter] =
-    useState<'todos' | 'andamento' | 'confirmado' | 'rota' | 'entregue' | 'cancelado'>('todos');
+  const [statusFilter, setStatusFilter] = useState<StatusFilter>('todos');
 
   const [loadingRow, setLoadingRow] = useState<string | null>(null);
-  const [hoverId, setHoverId] = useState<string | null>(null); // para reforçar o brilho no hover do botão WA
+  const [hoverId, setHoverId] = useState<string | null>(null);
 
   // Auth + gate + assinatura
   useEffect(() => {
@@ -147,7 +181,32 @@ export default function PedidosDetalhadosPage() {
       const qy = query(collection(db, 'pedidos'), orderBy('data', 'desc'));
       unsubRef.current = onSnapshot(qy, (snap) => {
         const arr: Pedido[] = [];
-        snap.forEach((d) => arr.push({ id: d.id, ...(d.data() as any) }));
+        snap.forEach((d) => {
+          const raw = d.data() as Record<string, unknown>;
+          arr.push({
+            id: d.id,
+            uid: String(raw['uid'] ?? ''),
+            nome: typeof raw['nome'] === 'string' ? raw['nome'] : undefined,
+            total: typeof raw['total'] === 'number' ? raw['total'] : undefined,
+            status: typeof raw['status'] === 'string' ? raw['status'] : undefined,
+            data: (raw['data'] as FireTimestampLike) ?? null,
+            tipoEntrega:
+              raw['tipoEntrega'] === 'entrega' || raw['tipoEntrega'] === 'retirada'
+                ? (raw['tipoEntrega'] as 'entrega' | 'retirada')
+                : undefined,
+            formaPagamento:
+              raw['formaPagamento'] === 'pix' ||
+              raw['formaPagamento'] === 'cartao_credito' ||
+              raw['formaPagamento'] === 'cartao_debito' ||
+              raw['formaPagamento'] === 'dinheiro'
+                ? (raw['formaPagamento'] as Pedido['formaPagamento'])
+                : undefined,
+            itens: Array.isArray(raw['itens']) ? (raw['itens'] as Item[]) : undefined,
+            endereco: (raw['endereco'] as Endereco) ?? null,
+            grupoEnviado: raw['grupoEnviado'] === true,
+            grupoEnviadoEm: (raw['grupoEnviadoEm'] as FireTimestampLike) ?? null,
+          });
+        });
         setPedidos(arr);
       });
     });
@@ -177,12 +236,10 @@ export default function PedidosDetalhadosPage() {
 
   /** Abre o WhatsApp com mensagem pronta e marca o pedido como enviado ao grupo */
   async function enviarParaGrupo(p: Pedido) {
-    // Monta descrição de itens
     const itensTxt = (p.itens || [])
       .map((i) => `• ${i.nome || '—'} — ${i.quantidade || 0} × ${money(i.preco || 0)}`)
       .join('\n');
 
-    // Link do Maps (prioriza coordenadas)
     const endTxt = enderecoTexto(p.endereco);
     const hasCoords = typeof p.endereco?.lat === 'number' && typeof p.endereco?.lng === 'number';
     const mapsUrl = hasCoords
@@ -193,12 +250,18 @@ export default function PedidosDetalhadosPage() {
 
     const cabecalho = `*NOVO PEDIDO* #${p.id}`;
     const cliente = `*Cliente:* ${p.nome || '—'}`;
-    const entrega = p.tipoEntrega === 'retirada' ? '*Entrega:* Retirada no balcão' : '*Entrega:* Entrega em domicílio';
+    const entrega =
+      p.tipoEntrega === 'retirada' ? '*Entrega:* Retirada no balcão' : '*Entrega:* Entrega em domicílio';
     const pagamento =
-      p.formaPagamento === 'pix' ? 'PIX' :
-      p.formaPagamento === 'cartao_credito' ? 'Cartão (Crédito)' :
-      p.formaPagamento === 'cartao_debito' ? 'Cartão (Débito)' :
-      p.formaPagamento === 'dinheiro' ? 'Dinheiro' : '—';
+      p.formaPagamento === 'pix'
+        ? 'PIX'
+        : p.formaPagamento === 'cartao_credito'
+        ? 'Cartão (Crédito)'
+        : p.formaPagamento === 'cartao_debito'
+        ? 'Cartão (Débito)'
+        : p.formaPagamento === 'dinheiro'
+        ? 'Dinheiro'
+        : '—';
 
     const corpo =
       `${cabecalho}\n` +
@@ -211,18 +274,15 @@ export default function PedidosDetalhadosPage() {
       `*Total:* ${money(p.total || 0)}`;
 
     const url = `https://api.whatsapp.com/send?text=${encodeURIComponent(corpo)}`;
-
-    // Abre o WhatsApp (o usuário escolhe o grupo "Entregas Império")
     window.open(url, '_blank');
 
-    // Marca no Firestore que foi enviado ao grupo
     try {
       await updateDoc(doc(db, 'pedidos', p.id), {
         grupoEnviado: true,
         grupoEnviadoEm: serverTimestamp(),
       });
     } catch {
-      // silencioso – se falhar, o estado visual continuará vermelho até recarregar
+      /* silencioso */
     }
   }
 
@@ -309,7 +369,6 @@ export default function PedidosDetalhadosPage() {
   return (
     <main className="min-h-screen p-6 text-white bg-black">
       <header className="flex flex-wrap items-center gap-3 mb-5">
-        {/* BOTÃO VOLTAR */}
         <Link
           href="/admin/dashboard"
           className="inline-flex items-center gap-2 px-3 py-2 font-semibold rounded-lg bg-violet-600 hover:bg-violet-700"
@@ -352,7 +411,9 @@ export default function PedidosDetalhadosPage() {
 
         <select
           value={statusFilter}
-          onChange={(e) => setStatusFilter(e.target.value as any)}
+          onChange={(e: React.ChangeEvent<HTMLSelectElement>) =>
+            setStatusFilter(e.target.value as StatusFilter)
+          }
           className="px-3 py-2 text-sm border rounded outline-none bg-zinc-900 border-zinc-700"
         >
           <option value="todos">Todos status</option>
@@ -374,7 +435,7 @@ export default function PedidosDetalhadosPage() {
         </div>
       </div>
 
-      {/* Lista de pedidos detalhados */}
+      {/* Lista */}
       <div className="space-y-4">
         {pedidosFiltrados.length === 0 ? (
           <p className="text-sm text-gray-400">Nenhum pedido encontrado.</p>
@@ -416,13 +477,28 @@ export default function PedidosDetalhadosPage() {
                     <h3 className="inline-flex items-center gap-2 mb-2 text-sm font-semibold text-white">
                       <FaUser /> Cliente
                     </h3>
-                    <p className="text-sm"><span className="text-gray-400">Nome:</span> {p.nome || '—'}</p>
-                    <p className="text-sm"><span className="text-gray-400">UID:</span> {p.uid}</p>
+                    <p className="text-sm">
+                      <span className="text-gray-400">Nome:</span> {p.nome || '—'}
+                    </p>
+                    <p className="text-sm">
+                      <span className="text-gray-400">UID:</span> {p.uid}
+                    </p>
                     {resumoCliente && (
                       <ul className="mt-2 text-sm text-gray-300">
-                        <li>Compras: <strong className="text-white">{resumoCliente.pedidos}</strong></li>
-                        <li>Gasto total: <strong className="text-white">{money(resumoCliente.gastoTotal)}</strong></li>
-                        <li>Última compra: <strong className="text-white">{fmtDateTime(resumoCliente.ultimaCompra || new Date(NaN))}</strong></li>
+                        <li>
+                          Compras:{' '}
+                          <strong className="text-white">{resumoCliente.pedidos}</strong>
+                        </li>
+                        <li>
+                          Gasto total:{' '}
+                          <strong className="text-white">{money(resumoCliente.gastoTotal)}</strong>
+                        </li>
+                        <li>
+                          Última compra:{' '}
+                          <strong className="text-white">
+                            {fmtDateTime(resumoCliente.ultimaCompra || new Date(NaN))}
+                          </strong>
+                        </li>
                       </ul>
                     )}
                   </section>
@@ -499,7 +575,9 @@ export default function PedidosDetalhadosPage() {
                             </a>
                           ) : addressText ? (
                             <a
-                              href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(addressText)}`}
+                              href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(
+                                addressText
+                              )}`}
                               target="_blank"
                               rel="noreferrer"
                               className="inline-flex items-center px-3 py-1.5 text-xs font-semibold rounded bg-violet-600 hover:bg-violet-700"
@@ -517,13 +595,12 @@ export default function PedidosDetalhadosPage() {
 
                 {/* Ações */}
                 <div className="flex flex-wrap items-center gap-2 mt-4">
-                  {/* Botão WhatsApp com glow neon azul claro */}
+                  {/* Botão WhatsApp com glow */}
                   <div
                     className="relative group"
                     onMouseEnter={() => setHoverId(p.id)}
                     onMouseLeave={() => setHoverId(null)}
                   >
-                    {/* “Luzes” por trás (gradiente animado) */}
                     <span
                       className="absolute transition-opacity duration-300 pointer-events-none -inset-1 rounded-2xl opacity-90 blur-2xl"
                       style={{
@@ -546,8 +623,6 @@ export default function PedidosDetalhadosPage() {
                     >
                       <FaWhatsapp className="text-green-500" />
                       Mandar no grupo de entregas
-
-                      {/* Bolinhas (status): azul = enviado, vermelha = pendente */}
                       <span className="flex items-center ml-2">
                         <span
                           className={[
@@ -600,12 +675,13 @@ export default function PedidosDetalhadosPage() {
       </div>
 
       <p className="mt-4 text-xs text-gray-400">
-        Mostrando {pedidosFiltrados.length} pedido(s){' '}
-        {days ? `nos últimos ${days} dias.` : 'no período selecionado.'}
+        Mostrando {pedidosFiltrados.length} pedido(s) {days ? `nos últimos ${days} dias.` : 'no período selecionado.'}
       </p>
     </main>
   );
 }
+
+/* ---------- Componentes ---------- */
 
 function ActionBtn({
   children,
@@ -620,7 +696,8 @@ function ActionBtn({
   title?: string;
   tone?: 'success' | 'info' | 'ok' | 'danger';
 }) {
-  const base = 'inline-flex items-center gap-1 px-2.5 py-1.5 text-xs font-semibold rounded transition-colors';
+  const base =
+    'inline-flex items-center gap-1 px-2.5 py-1.5 text-xs font-semibold rounded transition-colors';
   const map: Record<string, string> = {
     success: 'bg-green-600 hover:bg-green-700 text-white',
     info: 'bg-blue-600 hover:bg-blue-700 text-white',
@@ -632,7 +709,9 @@ function ActionBtn({
       onClick={onClick}
       disabled={!!disabled}
       title={title}
-      className={[base, map[tone], disabled ? 'opacity-60 cursor-not-allowed hover:bg-inherit' : ''].join(' ')}
+      className={[base, map[tone], disabled ? 'opacity-60 cursor-not-allowed hover:bg-inherit' : ''].join(
+        ' '
+      )}
     >
       {children}
     </button>

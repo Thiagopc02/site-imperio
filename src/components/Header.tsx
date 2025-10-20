@@ -1,18 +1,16 @@
 'use client';
 
 import Link from 'next/link';
+import Image from 'next/image';
 import {
   FaUser,
   FaPhoneAlt,
-  FaFacebookF,
-  FaInstagram,
-  FaTwitter,
   FaBoxes,
   FaShoppingCart,
   FaSearch,
 } from 'react-icons/fa';
 import { useEffect, useState } from 'react';
-import { onAuthStateChanged, signOut, User } from 'firebase/auth';
+import { onAuthStateChanged, signOut, type User } from 'firebase/auth';
 import { useRouter } from 'next/navigation';
 import { auth } from '@/firebase/config';
 
@@ -24,7 +22,10 @@ export default function Header() {
     const unsubscribe = onAuthStateChanged(auth, (usuario) => {
       setUser(usuario);
     });
-    return () => unsubscribe();
+    // cleanup explícito chama unsubscribe() — evita no-unused-expressions
+    return () => {
+      unsubscribe();
+    };
   }, []);
 
   const handleLogout = async () => {
@@ -39,10 +40,13 @@ export default function Header() {
   return (
     <header className="flex flex-col gap-4 px-6 py-4 text-black bg-yellow-400 shadow-md md:flex-row md:items-center md:justify-between">
       <div className="flex items-center justify-between w-full md:w-auto">
-        <Link href="/">
-          <img
+        <Link href="/" aria-label="Ir para a página inicial">
+          <Image
             src="/logo-coroa.png"
             alt="Logo Império"
+            width={160}
+            height={48}
+            priority
             className="w-auto h-10 md:h-12"
           />
         </Link>
@@ -56,6 +60,7 @@ export default function Header() {
           type="text"
           placeholder="Buscar produtos..."
           className="w-full py-2 pl-12 pr-4 text-black bg-white border border-black rounded-full shadow-md focus:outline-none focus:ring-2 focus:ring-yellow-600"
+          aria-label="Buscar produtos"
         />
       </div>
 
@@ -79,13 +84,16 @@ export default function Header() {
         <Link href="/contato" className="flex items-center gap-2 hover:underline">
           <FaPhoneAlt /> Contato
         </Link>
+
         <Link href="/categorias" className="flex items-center gap-2 hover:underline">
           <FaBoxes /> Categorias
         </Link>
+
         <button
           onClick={handleCarrinhoClick}
           className="p-2 text-3xl text-black transition bg-white rounded-full drop-shadow-lg hover:scale-110 hover:text-yellow-600"
           title="Carrinho"
+          aria-label="Ir para o carrinho"
         >
           <FaShoppingCart />
         </button>

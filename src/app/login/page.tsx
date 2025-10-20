@@ -87,8 +87,8 @@ export default function LoginPage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ token, action: 'login' }),
       });
-      const vj = await vr.json().catch(() => ({}));
-      if (!(vr.ok && vj?.success)) {
+      const vj = await vr.json().catch(() => ({} as unknown));
+      if (!(vr.ok && (vj as { success?: boolean })?.success)) {
         console.warn('verify-recaptcha FAIL', { status: vr.status, body: vj });
         setErro('Falha na verificação do reCAPTCHA.');
         return;
@@ -118,14 +118,17 @@ export default function LoginPage() {
       }
 
       router.replace('/produtos');
-    } catch (e: any) {
-      console.error('LOGIN ERROR', e?.code ?? e?.name, e?.message ?? e);
-      if (e?.message === 'recaptcha-not-ready') {
+    } catch (e: unknown) {
+      // narrowing seguro
+      const err = (e ?? {}) as { code?: string; message?: string; name?: string };
+      console.error('LOGIN ERROR', err.code ?? err.name, err.message ?? e);
+
+      if (err.message === 'recaptcha-not-ready') {
         setErro('reCAPTCHA não ficou pronto. Atualize a página e tente novamente.');
-      } else if (e?.message === 'token-vazio') {
+      } else if (err.message === 'token-vazio') {
         setErro('Não foi possível obter o token do reCAPTCHA.');
       } else {
-        setErro(mapAuthError(e?.code, e?.message));
+        setErro(mapAuthError(err.code, err.message));
       }
     } finally {
       setLoading(false);
@@ -162,9 +165,10 @@ export default function LoginPage() {
         );
       }
       router.replace('/produtos');
-    } catch (e: any) {
-      console.error('GOOGLE LOGIN ERROR', e?.code, e?.message ?? e);
-      const c = String(e?.code || '').toLowerCase();
+    } catch (e: unknown) {
+      const err = (e ?? {}) as { code?: string; message?: string };
+      console.error('GOOGLE LOGIN ERROR', err.code, err.message ?? e);
+      const c = String(err.code || '').toLowerCase();
       if (c.includes('popup-blocked')) setErro('Pop-up bloqueado. Desative o bloqueador e tente novamente.');
       else if (c.includes('popup-closed-by-user')) setErro('Pop-up fechado antes de concluir.');
       else if (c.includes('account-exists-with-different-credential')) setErro('Este e-mail já existe com outro método. Use o método original.');
@@ -234,6 +238,7 @@ export default function LoginPage() {
           disabled={loading}
           className="flex items-center justify-center w-full gap-2 py-2 mt-3 font-semibold text-white transition bg-blue-600 rounded hover:bg-blue-700 disabled:opacity-60"
         >
+          {/* eslint-disable-next-line @next/next/no-img-element */}
           <img
             src="https://www.gstatic.com/firebasejs/ui/2.0.0/images/auth/google.svg"
             alt="Google"

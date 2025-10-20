@@ -28,35 +28,26 @@ const ALLOWED_EMAILS = new Set<string>([
 const normalizeEmail = (raw: string) =>
   raw.normalize('NFKC').replace(/[\u200B-\u200D\uFEFF]/g, '').trim().toLowerCase();
 
+/** helpers de tipo p/ evitar `any` */
+type AdminDoc = { ativo?: boolean; papel?: string; role?: string };
+const isAdminDoc = (x: unknown): x is AdminDoc => typeof x === 'object' && x !== null;
+
 async function hasAdminRole(uid: string): Promise<boolean> {
-  try {
-    const s = await getDoc(doc(db, 'administrador', uid));
-    if (s.exists()) {
-      const d: any = s.data();
-      if (d?.ativo === true || d?.papel === 'administrador' || d?.role === 'admin') return true;
+  const tryCol = async (col: string) => {
+    try {
+      const s = await getDoc(doc(db, col, uid));
+      if (!s.exists()) return false;
+      const d = s.data() as unknown;
+      if (!isAdminDoc(d)) return false;
+      return d.ativo === true || d.papel === 'administrador' || d.role === 'admin';
+    } catch {
+      return false;
     }
-  } catch {}
-  try {
-    const s = await getDoc(doc(db, 'admin', uid));
-    if (s.exists()) {
-      const d: any = s.data();
-      if (d?.ativo === true || d?.papel === 'administrador' || d?.role === 'admin') return true;
-    }
-  } catch {}
-  try {
-    const s = await getDoc(doc(db, 'usuarios', uid));
-    if (s.exists()) {
-      const d: any = s.data();
-      if (d?.papel === 'administrador' || d?.role === 'admin') return true;
-    }
-  } catch {}
-  try {
-    const s = await getDoc(doc(db, 'usuários', uid));
-    if (s.exists()) {
-      const d: any = s.data();
-      if (d?.papel === 'administrador' || d?.role === 'admin') return true;
-    }
-  } catch {}
+  };
+  if (await tryCol('administrador')) return true;
+  if (await tryCol('admin')) return true;
+  if (await tryCol('usuarios')) return true;
+  if (await tryCol('usuários')) return true;
   return false;
 }
 
@@ -75,6 +66,9 @@ type Produto = {
   emFalta?: boolean;
 };
 
+type ProdutoDoc = Partial<Produto>;
+const isProdutoDoc = (x: unknown): x is ProdutoDoc => typeof x === 'object' && x !== null;
+
 /* ----------------- Categorias (inclui Tabacaria) ----------------- */
 const CATEGORIAS = [
   'Refrescos e Sucos',
@@ -85,7 +79,7 @@ const CATEGORIAS = [
   'Balas e Gomas',
   'Chocolates',
   'Copão de 770ml',
-  'Tabacaria', // ⬅️ NOVA
+  'Tabacaria',
 ];
 
 /* ----------------- Página ----------------- */
@@ -157,18 +151,19 @@ export default function AdminProdutosPage() {
           (snap) => {
             const list: Produto[] = [];
             snap.forEach((d) => {
-              const data = d.data() as any;
+              const raw = d.data() as unknown;
+              const data = isProdutoDoc(raw) ? raw : {};
               list.push({
                 id: d.id,
-                nome: data.nome || '',
-                descrição: data.descrição || '',
-                categoria: data.categoria || '',
-                imagem: data.imagem || '',
-                precoUnidade: Number(data.precoUnidade ?? 0),
-                precoCaixa: Number(data.precoCaixa ?? 0),
-                itensPorCaixa: Number(data.itensPorCaixa ?? 0),
+                nome: data.nome ?? '',
+                descrição: data.descrição ?? '',
+                categoria: data.categoria ?? '',
+                imagem: data.imagem ?? '',
+                precoUnidade: typeof data.precoUnidade === 'number' ? data.precoUnidade : Number(data.precoUnidade ?? 0),
+                precoCaixa: typeof data.precoCaixa === 'number' ? data.precoCaixa : Number(data.precoCaixa ?? 0),
+                itensPorCaixa: typeof data.itensPorCaixa === 'number' ? data.itensPorCaixa : Number(data.itensPorCaixa ?? 0),
                 destaque: !!data.destaque,
-                disponivelPor: data.disponivelPor || ['unidade'],
+                disponivelPor: (Array.isArray(data.disponivelPor) ? data.disponivelPor : ['unidade']) as ('unidade' | 'caixa')[],
                 emFalta: !!data.emFalta,
               });
             });
@@ -194,7 +189,7 @@ export default function AdminProdutosPage() {
     const precosOk =
       (!dispUnidade || parseFloat(precoUnidade || '0') > 0) &&
       (!dispCaixa || parseFloat(precoCaixa || '0') > 0);
-    return nome.trim() && categoria && imagem.trim() && disp.length > 0 && precosOk;
+    return Boolean(nome.trim() && categoria && imagem.trim() && disp.length > 0 && precosOk);
   }, [nome, categoria, imagem, dispUnidade, dispCaixa, precoUnidade, precoCaixa]);
 
   async function handleSubmit(e: React.FormEvent) {
@@ -221,7 +216,7 @@ export default function AdminProdutosPage() {
 
     try {
       if (editingId) {
-        const payload: Record<string, any> = {
+        const payload: Record<string, unknown> = {
           ...base,
           emFalta: false,
         };
@@ -232,7 +227,7 @@ export default function AdminProdutosPage() {
 
         if (dispCaixa) {
           payload.precoCaixa = Number(parseFloat(precoCaixa || '0').toFixed(2));
-          const it = Number.parseInt(itensPorCaixa || '0');
+          const it = Number.parseInt(itensPorCaixa || '0', 10);
           payload.itensPorCaixa = it > 0 ? it : deleteField();
         } else {
           payload.precoCaixa = deleteField();
@@ -241,7 +236,7 @@ export default function AdminProdutosPage() {
 
         await updateDoc(doc(db, 'produtos', editingId), payload);
       } else {
-        const createPayload: Record<string, any> = {
+        const createPayload: Record<string, unknown> = {
           ...base,
           emFalta: false,
         };
@@ -250,7 +245,7 @@ export default function AdminProdutosPage() {
         }
         if (dispCaixa) {
           createPayload.precoCaixa = Number(parseFloat(precoCaixa || '0').toFixed(2));
-          const it = Number.parseInt(itensPorCaixa || '0');
+          const it = Number.parseInt(itensPorCaixa || '0', 10);
           if (it > 0) createPayload.itensPorCaixa = it;
         }
 
@@ -258,9 +253,10 @@ export default function AdminProdutosPage() {
       }
 
       resetForm();
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error(err);
-      setErrMsg(`Erro ao salvar: ${err?.message ?? 'verifique as regras do Firestore.'}`);
+      const msg = (typeof err === 'object' && err && 'message' in err) ? String((err as { message: unknown }).message) : '';
+      setErrMsg(`Erro ao salvar: ${msg || 'verifique as regras do Firestore.'}`);
     }
   }
 
@@ -295,9 +291,10 @@ export default function AdminProdutosPage() {
     if (!p.id) return;
     try {
       await updateDoc(doc(db, 'produtos', p.id), { emFalta: !p.emFalta });
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error(err);
-      setErrMsg(`Não foi possível atualizar estoque: ${err?.message ?? ''}`);
+      const msg = (typeof err === 'object' && err && 'message' in err) ? String((err as { message: unknown }).message) : '';
+      setErrMsg(`Não foi possível atualizar estoque: ${msg}`);
     }
   }
 
@@ -503,6 +500,7 @@ export default function AdminProdutosPage() {
             />
             {imagem && (
               <div className="mt-2">
+                {/* eslint-disable-next-line @next/next/no-img-element */}
                 <img
                   src={`/produtos/${imagem}`}
                   alt="preview"
@@ -550,6 +548,7 @@ export default function AdminProdutosPage() {
                 >
                   <div className="flex items-center justify-center w-full mb-2 overflow-hidden rounded-md aspect-video bg-black/20">
                     {p.imagem ? (
+                      // eslint-disable-next-line @next/next/no-img-element
                       <img
                         src={`/produtos/${p.imagem}`}
                         alt={p.nome}

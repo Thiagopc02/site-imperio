@@ -1,7 +1,15 @@
 // src/components/LinhaDoTempoComMangueira.tsx
-"use client";
+'use client';
 
-import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import Image from 'next/image';
+import {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+} from 'react';
 
 export type Marco = {
   ano: number;
@@ -21,9 +29,9 @@ type Props = {
 export default function LinhaDoTempoComMangueira({
   marcos,
   passoInicial = 0,
-  cor = "#E10600",
-  corEscura = "#7a0b0b",
-  corLiquido = "#c81414",
+  cor = '#E10600',
+  corEscura = '#7a0b0b',
+  corLiquido = '#c81414',
 }: Props) {
   const [ativo, setAtivo] = useState(passoInicial);
 
@@ -40,7 +48,7 @@ export default function LinhaDoTempoComMangueira({
   const [svgSize, setSvgSize] = useState({ w: 1200, h: 600 });
   const [points, setPoints] = useState<Array<{ x: number; y: number }>>([]);
 
-  const recalcular = () => {
+  const recalcular = useCallback(() => {
     const wrap = wrapperRef.current;
     if (!wrap) return;
     const rectWrap = wrap.getBoundingClientRect();
@@ -60,29 +68,31 @@ export default function LinhaDoTempoComMangueira({
     }
     setSvgSize({ w: Math.max(800, w), h: Math.max(h, 400) });
     setPoints(pts);
-  };
+  }, []);
 
   useLayoutEffect(() => {
     recalcular();
+
     const canObserve =
-      typeof window !== "undefined" &&
-      typeof (window as any).ResizeObserver !== "undefined";
+      typeof window !== 'undefined' && 'ResizeObserver' in window;
+
     let ro: ResizeObserver | null = null;
     if (canObserve && wrapperRef.current) {
       ro = new ResizeObserver(() => recalcular());
       ro.observe(wrapperRef.current);
     }
+
     const onResize = () => recalcular();
-    window.addEventListener("resize", onResize);
+    window.addEventListener('resize', onResize);
+
     return () => {
-      window.removeEventListener("resize", onResize);
+      window.removeEventListener('resize', onResize);
       if (ro) ro.disconnect();
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [marcos.length]);
+  }, [recalcular, marcos.length]);
 
   const hosePath = useMemo(() => {
-    if (!points.length) return "";
+    if (!points.length) return '';
     const segs: string[] = [];
     segs.push(`M ${points[0].x} ${points[0].y}`);
     for (let i = 1; i < points.length; i++) {
@@ -95,7 +105,7 @@ export default function LinhaDoTempoComMangueira({
     const endX = Math.min(svgSize.w - 60, last.x + 120);
     const endY = last.y + 36;
     segs.push(`C ${endX - 80} ${last.y}, ${endX - 30} ${endY}, ${endX} ${endY}`);
-    return segs.join(" ");
+    return segs.join(' ');
   }, [points, svgSize.w]);
 
   const pathRef = useRef<SVGPathElement | null>(null);
@@ -113,7 +123,7 @@ export default function LinhaDoTempoComMangueira({
     const el = secRefs.current[idx];
     if (!el) return;
     setAtivo(idx);
-    el.scrollIntoView({ behavior: "smooth", block: "start" });
+    el.scrollIntoView({ behavior: 'smooth', block: 'start' });
   };
   const proximo = (idx: number) => Math.min(idx + 1, marcos.length - 1);
 
@@ -166,7 +176,7 @@ export default function LinhaDoTempoComMangueira({
               style={{
                 strokeDasharray: dashArray,
                 strokeDashoffset: dashOffset,
-                transition: "stroke-dashoffset 900ms ease",
+                transition: 'stroke-dashoffset 900ms ease',
               }}
               filter="url(#ltm-glow)"
             />
@@ -182,11 +192,11 @@ export default function LinhaDoTempoComMangueira({
                   key={`${m.ano}-${idx}`}
                   ref={addRef}
                   className={[
-                    "grid items-center gap-6 md:grid-cols-2",
-                    invert ? "md:[&>*:first-child]:order-2" : "",
-                    "rounded-2xl p-5 ring-1 ring-white/10",
-                    "bg-gradient-to-b from-white/[.02] to-white/[.04]",
-                  ].join(" ")}
+                    'grid items-center gap-6 md:grid-cols-2',
+                    invert ? 'md:[&>*:first-child]:order-2' : '',
+                    'rounded-2xl p-5 ring-1 ring-white/10',
+                    'bg-gradient-to-b from-white/[.02] to-white/[.04]',
+                  ].join(' ')}
                 >
                   <div>
                     <div className="inline-flex items-center gap-2 mb-2">
@@ -210,11 +220,16 @@ export default function LinhaDoTempoComMangueira({
 
                   <div className="w-full max-w-xl justify-self-center">
                     {m.imagem ? (
-                      <img
-                        src={m.imagem}
-                        alt={`${m.ano} — ${m.titulo}`}
-                        className="object-contain w-full h-56 bg-white md:h-64 rounded-xl"
-                      />
+                      <div className="relative h-56 bg-white md:h-64 rounded-xl">
+                        <Image
+                          src={m.imagem}
+                          alt={`${m.ano} — ${m.titulo}`}
+                          fill
+                          className="object-contain rounded-xl"
+                          sizes="(min-width: 768px) 32rem, 100vw"
+                          priority={idx === 0}
+                        />
+                      </div>
                     ) : (
                       <div className="grid h-56 md:h-64 rounded-xl bg-white/5 ring-1 ring-white/10 place-items-center text-white/50">
                         sem imagem
@@ -227,7 +242,11 @@ export default function LinhaDoTempoComMangueira({
                         className="px-3 py-1.5 text-sm rounded-lg font-semibold text-white transition"
                         style={{ backgroundColor: cor }}
                         disabled={idx === marcos.length - 1}
-                        title={idx === marcos.length - 1 ? "Fim da história" : "Ir para a próxima parte"}
+                        title={
+                          idx === marcos.length - 1
+                            ? 'Fim da história'
+                            : 'Ir para a próxima parte'
+                        }
                       >
                         Próxima parte
                       </button>
@@ -244,9 +263,13 @@ export default function LinhaDoTempoComMangueira({
                 <div
                   className="absolute bottom-0 left-0 right-0 rounded-b-xl transition-[height] duration-900"
                   style={{
-                    height: `${Math.min(100, (marcos.length <= 1 ? 1 : ativo / (marcos.length - 1)) * 100)}%`,
+                    height: `${Math.min(
+                      100,
+                      (marcos.length <= 1 ? 1 : ativo / (marcos.length - 1)) *
+                        100
+                    )}%`,
                     background: `linear-gradient(180deg, ${cor} 0%, ${corLiquido} 70%)`,
-                    boxShadow: "inset 0 8px 18px rgba(0,0,0,.35)",
+                    boxShadow: 'inset 0 8px 18px rgba(0,0,0,.35)',
                   }}
                 />
                 <div className="absolute inset-0 pointer-events-none rounded-b-xl rounded-t-md bg-gradient-to-br from-white/10 to-transparent" />

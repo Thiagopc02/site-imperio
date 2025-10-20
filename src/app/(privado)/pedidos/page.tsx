@@ -3,10 +3,12 @@
 import { useEffect, useMemo, useState } from 'react';
 import { db, auth } from '@/firebase/config';
 import { collection, onSnapshot, query, where } from 'firebase/firestore';
-import { onAuthStateChanged, User } from 'firebase/auth';
+import { onAuthStateChanged } from 'firebase/auth';
+
+/* ------------ Tipos ------------ */
 
 type PedidoItem = {
-  id: string;
+  id?: string;
   nome: string;
   imagem?: string;
   tipo?: string;
@@ -27,6 +29,9 @@ type Endereco = {
   accuracy?: number;
 };
 
+/** Timestamp-like aceito (Date, objeto com seconds, ISO etc.) */
+type FireTimestampLike = { seconds?: number } | Date | string | number | null | undefined;
+
 type Pedido = {
   id: string;
   uid: string;
@@ -38,22 +43,26 @@ type Pedido = {
   endereco?: Endereco | null;
   itens: PedidoItem[];
   total: number;
-  data: any; // ISO ou Timestamp
+  data: FireTimestampLike; // <— tipado
   status: 'Em andamento' | 'Confirmado' | 'Em rota' | 'Entregue' | 'Cancelado' | string;
 };
 
 type Range = 'hoje' | 'duas_semanas' | 'quinze_dias' | 'um_mes' | 'todos';
+
+/* ------------ Helpers ------------ */
 
 const isSameLocalDay = (a: Date, b: Date) =>
   a.getFullYear() === b.getFullYear() &&
   a.getMonth() === b.getMonth() &&
   a.getDate() === b.getDate();
 
-const toDate = (v: any): Date => {
-  if (!v) return new Date(NaN);
-  if (typeof v === 'string') return new Date(v);
-  if (v?.seconds) return new Date(v.seconds * 1000);
-  return new Date(v);
+const toDate = (v: FireTimestampLike): Date => {
+  if (v instanceof Date) return v;
+  if (typeof v === 'string' || typeof v === 'number') return new Date(v);
+  if (v && typeof v === 'object' && typeof (v as { seconds?: number }).seconds === 'number') {
+    return new Date((v as { seconds: number }).seconds * 1000);
+  }
+  return new Date(NaN);
 };
 
 const money = (n: number) => `R$ ${Number(n || 0).toFixed(2)}`;
@@ -87,24 +96,51 @@ function enderecoTexto(e?: Endereco | null) {
   return [e.rua, e.numero, e.bairro, e.cidade, e.cep, 'Brasil'].filter(Boolean).join(', ');
 }
 
+/* ------------ Página ------------ */
+
 export default function PedidosPage() {
   const [pedidos, setPedidos] = useState<Pedido[]>([]);
-  const [usuarioLogado, setUsuarioLogado] = useState<User | null>(null);
   const [range, setRange] = useState<Range>('todos');
 
   useEffect(() => {
     const unsubscribeAuth = onAuthStateChanged(auth, (user) => {
       if (!user) {
-        setUsuarioLogado(null);
         setPedidos([]);
         return;
       }
-      setUsuarioLogado(user);
 
       const pedidosQuery = query(collection(db, 'pedidos'), where('uid', '==', user.uid));
+
       const unsubscribeSnapshot = onSnapshot(pedidosQuery, (snapshot) => {
         const lista: Pedido[] = [];
-        snapshot.forEach((doc) => lista.push({ id: doc.id, ...(doc.data() as any) }));
+        snapshot.forEach((d) => {
+          const raw = d.data() as Record<string, unknown>;
+
+          lista.push({
+            id: d.id,
+            uid: String(raw['uid'] ?? ''),
+            nome: String(raw['nome'] ?? ''),
+            telefone: String(raw['telefone'] ?? ''),
+            tipoEntrega: (raw['tipoEntrega'] === 'entrega' || raw['tipoEntrega'] === 'retirada'
+              ? raw['tipoEntrega']
+              : 'entrega') as Pedido['tipoEntrega'],
+            formaPagamento: (
+              raw['formaPagamento'] === 'pix' ||
+              raw['formaPagamento'] === 'cartao_credito' ||
+              raw['formaPagamento'] === 'cartao_debito' ||
+              raw['formaPagamento'] === 'dinheiro'
+                ? raw['formaPagamento']
+                : 'pix'
+            ) as Pedido['formaPagamento'],
+            troco: typeof raw['troco'] === 'number' ? raw['troco'] : null,
+            endereco: (raw['endereco'] as Endereco) ?? null,
+            itens: Array.isArray(raw['itens']) ? (raw['itens'] as PedidoItem[]) : [],
+            total: Number(raw['total'] ?? 0),
+            data: (raw['data'] as FireTimestampLike) ?? null,
+            status: String(raw['status'] ?? 'Em andamento'),
+          });
+        });
+
         lista.sort((a, b) => toDate(b.data).getTime() - toDate(a.data).getTime());
         setPedidos(lista);
       });
@@ -137,7 +173,7 @@ export default function PedidosPage() {
         'px-3 py-2 rounded-full text-xs sm:text-sm font-medium transition border',
         range === value
           ? 'bg-yellow-400 text-black border-yellow-500 shadow-[0_0_0_3px_rgba(234,179,8,0.25)]'
-          : 'bg-zinc-800 text-white border-zinc-600 hover:bg-zinc-700'
+          : 'bg-zinc-800 text-white border-zinc-600 hover:bg-zinc-700',
       ].join(' ')}
       aria-pressed={range === value}
     >
@@ -167,11 +203,7 @@ export default function PedidosPage() {
       ) : (
         <div className="space-y-6">
           {filteredPedidos.map((pedido) => {
-            const hasCoords =
-              typeof pedido.endereco?.lat === 'number' &&
-              typeof pedido.endereco?.lng === 'number';
-
-            // monta URLs para botão/iframe (coords -> preferencial; senão, endereço textual)
+            const hasCoords = typeof pedido.endereco?.lat === 'number' && typeof pedido.endereco?.lng === 'number';
             const addrText = enderecoTexto(pedido.endereco);
             const mapHref = hasCoords
               ? `https://www.google.com/maps?q=${pedido.endereco!.lat},${pedido.endereco!.lng}`
@@ -188,7 +220,9 @@ export default function PedidosPage() {
                     <p className="text-lg font-semibold">
                       Pedido <span className="text-yellow-400">#{pedido.id}</span>
                     </p>
-                    <p className="text-sm text-gray-400">Data: {toDate(pedido.data).toLocaleString()}</p>
+                    <p className="text-sm text-gray-400">
+                      Data: {toDate(pedido.data).toLocaleString()}
+                    </p>
                   </div>
                   <div className="flex items-center gap-2">
                     {badgeEntrega(pedido.tipoEntrega)}
@@ -202,7 +236,7 @@ export default function PedidosPage() {
                     const src = item.imagem ? `/produtos/${item.imagem}` : '/sem-imagem.png';
                     const subtotal = item.preco * item.quantidade;
                     return (
-                      <div key={`${item.id}-${idx}`} className="flex items-center gap-3 p-3 rounded-lg bg-zinc-800/70">
+                      <div key={`${item.id ?? 'i'}-${idx}`} className="flex items-center gap-3 p-3 rounded-lg bg-zinc-800/70">
                         <img src={src} alt={item.nome} className="object-contain w-16 h-16 rounded bg-zinc-900" />
                         <div className="flex-1 min-w-0">
                           <p className="font-medium truncate">{item.nome}</p>
@@ -223,7 +257,9 @@ export default function PedidosPage() {
                       Pagamento{' '}
                       <span className="font-medium text-yellow-300">{fmtPagamento(pedido.formaPagamento)}</span>
                       {pedido.formaPagamento === 'dinheiro' && typeof pedido.troco === 'number' && (
-                        <> • Troco para: <span className="text-white">{money(pedido.troco)}</span></>
+                        <>
+                          {' '}• Troco para: <span className="text-white">{money(pedido.troco)}</span>
+                        </>
                       )}
                     </p>
 

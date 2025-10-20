@@ -28,6 +28,9 @@ type ReviewDoc = {
   origem: 'guest' | 'user';
 };
 
+// Estrutura salva no Firestore (sem o id)
+type ReviewDocFS = Omit<ReviewDoc, 'id'>;
+
 export default function ReviewsBoard() {
   const [user, setUser] = useState<User | null>(null);
 
@@ -53,13 +56,18 @@ export default function ReviewsBoard() {
     const q = query(
       collection(db, 'reviews'),
       where('status', '==', 'aprovado'),
-      orderBy('criadoEm', 'desc'),
+      orderBy('criadoEm', 'desc')
     );
+
     const unsub = onSnapshot(q, (snap) => {
       const list: ReviewDoc[] = [];
-      snap.forEach((d) => list.push({ id: d.id, ...(d.data() as any) }));
+      snap.forEach((d) => {
+        const data = d.data() as ReviewDocFS; // tipado (sem `any`)
+        list.push({ id: d.id, ...data });
+      });
       setItems(list);
     });
+
     return unsub;
   }, []);
 
@@ -81,17 +89,18 @@ export default function ReviewsBoard() {
 
     try {
       setSalvando(true);
-      await addDoc(collection(db, 'reviews'), {
+      const payload: ReviewDocFS = {
         uid: user ? user.uid : null,
         nome: nome.trim(),
         rating,
         comentario: comentario.trim(),
-        criadoEm: serverTimestamp(),
-        status: 'pendente',            // admin aprova depois
+        criadoEm: serverTimestamp() as unknown as Timestamp, // mantemos Timestamp do Firestore
+        status: 'pendente', // admin aprova depois
         origem: user ? 'user' : 'guest',
-      });
+      };
+      await addDoc(collection(db, 'reviews'), payload);
       setComentario('');
-      if (!user) setNome('');         // visitante: limpa o nome também
+      if (!user) setNome('');
       setRating(5);
       alert('Obrigado! Sua avaliação foi enviada e aguarda aprovação.');
     } catch (e) {
@@ -112,7 +121,9 @@ export default function ReviewsBoard() {
           </div>
           <div className="flex items-center gap-3 text-sm text-zinc-300">
             <Stars value={media} readOnly />
-            <span><strong className="text-white">{media.toFixed(2)}</strong>/5 • {items.length} avaliações</span>
+            <span>
+              <strong className="text-white">{media.toFixed(2)}</strong>/5 • {items.length} avaliações
+            </span>
           </div>
         </div>
 
@@ -121,7 +132,14 @@ export default function ReviewsBoard() {
           {!user && (
             <p className="p-3 mb-4 text-sm border rounded bg-zinc-800 border-zinc-700 text-zinc-200">
               Você pode avaliar sem login. Se preferir publicar com seu nome de perfil,
-              <a href="/login?next=/sobre-nos#avaliar" className="font-semibold text-yellow-400 underline underline-offset-2"> faça login</a>.
+              <a
+                href="/login?next=/sobre-nos#avaliar"
+                className="font-semibold text-yellow-400 underline underline-offset-2"
+              >
+                {' '}
+                faça login
+              </a>
+              .
             </p>
           )}
 
@@ -147,7 +165,9 @@ export default function ReviewsBoard() {
             placeholder="Conte sua experiência (mín. 10 e máx. 500 caracteres)"
             className="w-full px-3 py-2 border rounded outline-none bg-black/40 border-zinc-700 focus:ring-2 focus:ring-yellow-500"
           />
-          <div className="mt-1 text-xs text-right text-zinc-500">{comentario.trim().length}/500</div>
+          <div className="mt-1 text-xs text-right text-zinc-500">
+            {comentario.trim().length}/500
+          </div>
 
           <button
             onClick={enviar}

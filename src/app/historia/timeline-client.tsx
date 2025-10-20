@@ -1,5 +1,5 @@
 // src/app/historia/timeline-client.tsx
-"use client";
+'use client';
 
 import {
   useEffect,
@@ -7,13 +7,20 @@ import {
   useMemo,
   useRef,
   useState,
-} from "react";
-import type { Brand } from "./page";
+} from 'react';
+import type { Brand } from './page';
 
 type Props = { brands: Brand[] };
 
+// Custom properties tipadas para evitar "any"
+type CSSVars = React.CSSProperties & {
+  ['--brand']?: string;
+  ['--brandDark']?: string;
+  ['--liquid']?: string;
+};
+
 export default function TimelineClient({ brands }: Props) {
-  const [activeSlug, setActiveSlug] = useState(brands[0]?.slug ?? "");
+  const [activeSlug, setActiveSlug] = useState(brands[0]?.slug ?? '');
   const brand = useMemo(
     () => brands.find((b) => b.slug === activeSlug) ?? brands[0],
     [activeSlug, brands]
@@ -25,10 +32,10 @@ export default function TimelineClient({ brands }: Props) {
   const [showModal, setShowModal] = useState(false);
   const [modalShownOnce, setModalShownOnce] = useState(false);
 
-  const themeVars: React.CSSProperties = {
-    ["--brand" as any]: brand.color,
-    ["--brandDark" as any]: brand.dark,
-    ["--liquid" as any]: brand.liquid,
+  const themeVars: CSSVars = {
+    '--brand': brand.color,
+    '--brandDark': brand.dark,
+    '--liquid': brand.liquid,
   };
 
   // ---------- path da mangueira (descendo) ----------
@@ -69,25 +76,29 @@ export default function TimelineClient({ brands }: Props) {
 
   useLayoutEffect(() => {
     recalc();
+
+    // Garante ResizeObserver sem "any"
     const canObserve =
-      typeof window !== "undefined" &&
-      typeof (window as any).ResizeObserver !== "undefined";
+      typeof window !== 'undefined' && typeof (window as Window & { ResizeObserver?: typeof ResizeObserver }).ResizeObserver !== 'undefined';
+
     let ro: ResizeObserver | null = null;
     if (canObserve && wrapperRef.current) {
       ro = new ResizeObserver(() => recalc());
       ro.observe(wrapperRef.current);
     }
+
     const onResize = () => recalc();
-    window.addEventListener("resize", onResize);
+    window.addEventListener('resize', onResize);
+
     return () => {
-      window.removeEventListener("resize", onResize);
+      window.removeEventListener('resize', onResize);
       if (ro) ro.disconnect();
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [brand.slug]);
 
   const hosePath = useMemo(() => {
-    if (!points.length) return "";
+    if (!points.length) return '';
     const segs: string[] = [];
     segs.push(`M ${points[0].x} ${points[0].y}`);
     for (let i = 1; i < points.length; i++) {
@@ -100,7 +111,7 @@ export default function TimelineClient({ brands }: Props) {
     const endX = Math.min(svgSize.w - 60, last.x + 160);
     const endY = last.y + 44;
     segs.push(`C ${endX - 120} ${last.y}, ${endX - 40} ${endY}, ${endX} ${endY}`);
-    return segs.join(" ");
+    return segs.join(' ');
   }, [points, svgSize.w]);
 
   const pathRef = useRef<SVGPathElement | null>(null);
@@ -127,11 +138,11 @@ export default function TimelineClient({ brands }: Props) {
     const el = sectionsRef.current[idx];
     if (el) {
       setActiveIdx(idx);
-      el.scrollIntoView({ behavior: "smooth", block: "start" });
+      el.scrollIntoView({ behavior: 'smooth', block: 'start' });
     }
   };
   const nextIdx = (idx: number) => Math.min(idx + 1, total - 1);
-  const goTop = () => window.scrollTo({ top: 0, behavior: "smooth" });
+  const goTop = () => window.scrollTo({ top: 0, behavior: 'smooth' });
 
   const brandIndex = brands.findIndex((b) => b.slug === brand.slug);
   const nextBrand =
@@ -183,11 +194,11 @@ export default function TimelineClient({ brands }: Props) {
                 {/* Plaquinha acima — maior e bold */}
                 <span
                   className={[
-                    "absolute -top-12 left-1/2 -translate-x-1/2",
-                    "px-4 py-1.5 rounded-full shadow-xl ring-1 ring-black/10",
-                    "text-sm md:text-base font-extrabold tracking-tight",
-                    isActive ? "bg-white text-black" : "bg-white/90 text-black",
-                  ].join(" ")}
+                    'absolute -top-12 left-1/2 -translate-x-1/2',
+                    'px-4 py-1.5 rounded-full shadow-xl ring-1 ring-black/10',
+                    'text-sm md:text-base font-extrabold tracking-tight',
+                    isActive ? 'bg-white text-black' : 'bg-white/90 text-black',
+                  ].join(' ')}
                 >
                   {b.name}
                 </span>
@@ -195,24 +206,23 @@ export default function TimelineClient({ brands }: Props) {
                 {/* Orbe maior, com borda e glow */}
                 <span
                   className={[
-                    "block size-28 md:size-32 rounded-full transition-transform",
-                    "ring-4 ring-white/35 ring-offset-2 ring-offset-black shadow-[0_20px_60px_rgba(0,0,0,.45)]",
-                    "group-hover:scale-105",
-                  ].join(" ")}
+                    'block size-28 md:size-32 rounded-full transition-transform',
+                    'ring-4 ring-white/35 ring-offset-2 ring-offset-black shadow-[0_20px_60px_rgba(0,0,0,.45)]',
+                    'group-hover:scale-105',
+                  ].join(' ')}
                   style={{
                     background: isActive
                       ? `radial-gradient(35% 35% at 30% 25%, rgba(255,255,255,.9), rgba(255,255,255,.05)), var(--brand)`
-                      : "linear-gradient(180deg, #1f2937 0%, #111827 100%)",
+                      : 'linear-gradient(180deg, #1f2937 0%, #111827 100%)',
                     boxShadow: isActive
-                      ? "0 22px 70px rgba(225,6,0,.45)"
-                      : "0 16px 44px rgba(0,0,0,.35)",
+                      ? '0 22px 70px rgba(225,6,0,.45)'
+                      : '0 16px 44px rgba(0,0,0,.35)',
                   }}
                 />
 
                 {/* Logo inferior — GRANDE e circular */}
-                <span
-                  className="absolute flex items-center justify-center overflow-hidden -translate-x-1/2 rounded-full shadow-xl  -bottom-14 left-1/2 size-20 md:size-24 bg-white/95 ring-1 ring-black/5"
-                >
+                <span className="absolute flex items-center justify-center overflow-hidden -translate-x-1/2 rounded-full shadow-xl -bottom-14 left-1/2 size-20 md:size-24 bg-white/95 ring-1 ring-black/5">
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
                   <img
                     src={b.badgeLogo}
                     alt={`${b.name} logo`}
@@ -267,7 +277,7 @@ export default function TimelineClient({ brands }: Props) {
             style={{
               strokeDasharray: dashArray,
               strokeDashoffset: dashOffset,
-              transition: "stroke-dashoffset 900ms ease",
+              transition: 'stroke-dashoffset 900ms ease',
             }}
             filter="url(#softGlow)"
           />
@@ -283,11 +293,11 @@ export default function TimelineClient({ brands }: Props) {
                 key={ev.id}
                 ref={captureSectionRef}
                 className={[
-                  "grid items-center gap-6 md:grid-cols-2",
-                  invert ? "md:[&>*:first-child]:order-2" : "",
-                  "rounded-2xl p-5 ring-1 ring-white/10",
-                  "bg-gradient-to-b from-white/[.02] to-white/[.04]",
-                ].join(" ")}
+                  'grid items-center gap-6 md:grid-cols-2',
+                  invert ? 'md:[&>*:first-child]:order-2' : '',
+                  'rounded-2xl p-5 ring-1 ring-white/10',
+                  'bg-gradient-to-b from-white/[.02] to-white/[.04]',
+                ].join(' ')}
               >
                 <div>
                   <div className="inline-flex items-center gap-2 mb-2">
@@ -311,11 +321,14 @@ export default function TimelineClient({ brands }: Props) {
 
                 <div className="w-full max-w-xl justify-self-center">
                   {ev.image ? (
-                    <img
-                      src={ev.image}
-                      alt={`${brand.name} — ${ev.year}`}
-                      className="object-contain w-full h-56 bg-white md:h-64 rounded-xl"
-                    />
+                    <>
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      <img
+                        src={ev.image}
+                        alt={`${brand.name} — ${ev.year}`}
+                        className="object-contain w-full h-56 bg-white md:h-64 rounded-xl"
+                      />
+                    </>
                   ) : (
                     <div className="grid h-56 md:h-64 rounded-xl bg-white/5 ring-1 ring-white/10 place-items-center text-white/50">
                       sem imagem
@@ -326,7 +339,7 @@ export default function TimelineClient({ brands }: Props) {
                       onClick={() => goToIdx(nextIdx(idx))}
                       className="px-3 py-1.5 text-sm rounded-lg font-semibold bg-[var(--brand)] text-white hover:brightness-110 transition"
                       disabled={idx === total - 1}
-                      title={idx === total - 1 ? "Fim da história" : "Ir para a próxima parte"}
+                      title={idx === total - 1 ? 'Fim da história' : 'Ir para a próxima parte'}
                     >
                       Próxima parte
                     </button>
@@ -345,8 +358,8 @@ export default function TimelineClient({ brands }: Props) {
                 style={{
                   height: `${Math.min(100, progress * 100)}%`,
                   background:
-                    "linear-gradient(180deg, var(--brand) 0%, var(--liquid) 70%)",
-                  boxShadow: "inset 0 8px 18px rgba(0,0,0,.35)",
+                    'linear-gradient(180deg, var(--brand) 0%, var(--liquid) 70%)',
+                  boxShadow: 'inset 0 8px 18px rgba(0,0,0,.35)',
                 }}
               />
               <div className="absolute inset-0 pointer-events-none rounded-b-xl rounded-t-md bg-gradient-to-br from-white/10 to-transparent" />

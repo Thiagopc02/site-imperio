@@ -11,6 +11,8 @@ import {
   doc,
   serverTimestamp,
   limit,
+  Timestamp,
+  FirestoreError,
 } from 'firebase/firestore';
 import { db } from '@/firebase/config';
 import { FaCheck, FaTimes, FaComments } from 'react-icons/fa';
@@ -21,10 +23,42 @@ type Review = {
   nome: string;
   rating: number;
   comentario: string;
-  criadoEm?: any;
+  criadoEm?: Timestamp;
   status: 'pendente' | 'aprovado' | 'reprovado';
   origem?: 'guest' | 'user';
 };
+
+function getErrMessage(e: unknown): string {
+  if (typeof e === 'string') return e;
+  if (typeof e === 'object' && e !== null) {
+    const r = e as Record<string, unknown>;
+    if (typeof r.message === 'string') return r.message;
+  }
+  return 'Ocorreu um erro.';
+}
+
+function parseReviewDoc(id: string, raw: unknown): Review {
+  const r = (typeof raw === 'object' && raw !== null
+    ? (raw as Record<string, unknown>)
+    : {}) as Record<string, unknown>;
+
+  const statusRaw = typeof r.status === 'string' ? r.status : 'pendente';
+  const status: Review['status'] =
+    statusRaw === 'aprovado' || statusRaw === 'reprovado' ? (statusRaw as Review['status']) : 'pendente';
+
+  const origem: Review['origem'] = r.origem === 'user' ? 'user' : 'guest';
+
+  return {
+    id,
+    uid: typeof r.uid === 'string' ? r.uid : null,
+    nome: typeof r.nome === 'string' ? r.nome : '',
+    rating: typeof r.rating === 'number' ? r.rating : Number(r.rating ?? 0),
+    comentario: typeof r.comentario === 'string' ? r.comentario : '',
+    criadoEm: (r.criadoEm as Timestamp | undefined),
+    status,
+    origem,
+  };
+}
 
 export default function ReviewsModeration() {
   const [pendentes, setPendentes] = useState<Review[]>([]);
@@ -43,15 +77,15 @@ export default function ReviewsModeration() {
       q,
       (snap) => {
         const list: Review[] = [];
-        snap.forEach((d) => list.push({ id: d.id, ...(d.data() as any) }));
+        snap.forEach((d) => list.push(parseReviewDoc(d.id, d.data())));
         setPendentes(list);
       },
-      (e) => setErro(e?.message || 'Falha ao ler pendentes.')
+      (e: FirestoreError) => setErro(e.message || 'Falha ao ler pendentes.')
     );
     return unsub;
   }, []);
 
-  // Aprovadas recentes (só para referência)
+  // Aprovadas recentes (só para referência visual)
   useEffect(() => {
     const q = query(
       collection(db, 'reviews'),
@@ -63,10 +97,12 @@ export default function ReviewsModeration() {
       q,
       (snap) => {
         const list: Review[] = [];
-        snap.forEach((d) => list.push({ id: d.id, ...(d.data() as any) }));
+        snap.forEach((d) => list.push(parseReviewDoc(d.id, d.data())));
         setAprovadasRecentes(list);
       },
-      () => {}
+      () => {
+        /* silencioso */
+      }
     );
     return unsub;
   }, []);
@@ -78,8 +114,8 @@ export default function ReviewsModeration() {
         status: 'aprovado',
         moderadoEm: serverTimestamp(),
       });
-    } catch (e: any) {
-      setErro(e?.message || 'Não foi possível aprovar.');
+    } catch (e: unknown) {
+      setErro(getErrMessage(e) || 'Não foi possível aprovar.');
     } finally {
       setBusyId(null);
     }
@@ -92,8 +128,8 @@ export default function ReviewsModeration() {
         status: 'reprovado',
         moderadoEm: serverTimestamp(),
       });
-    } catch (e: any) {
-      setErro(e?.message || 'Não foi possível reprovar.');
+    } catch (e: unknown) {
+      setErro(getErrMessage(e) || 'Não foi possível reprovar.');
     } finally {
       setBusyId(null);
     }

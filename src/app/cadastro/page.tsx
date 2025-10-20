@@ -48,6 +48,15 @@ export default function CadastroPage() {
 
   const normEmail = (e: string) => e.trim().toLowerCase().replace(/\s+/g, '');
 
+  // Pequenos type guards para evitar "any"
+  type WithCode = { code?: unknown; message?: unknown };
+  const hasCode = (x: unknown): x is WithCode =>
+    typeof x === 'object' && x !== null && 'code' in x;
+
+  type WithCustomDataEmail = { customData?: { email?: string } };
+  const hasCustomDataEmail = (x: unknown): x is WithCustomDataEmail =>
+    typeof x === 'object' && x !== null && 'customData' in x;
+
   // --------------- CEP -> cidade/UF ----------------
   const handleCep = async (cepDigitado: string) => {
     setCep(cepDigitado);
@@ -55,7 +64,7 @@ export default function CadastroPage() {
     if (clean.length === 8) {
       try {
         const resp = await fetch(`https://viacep.com.br/ws/${clean}/json/`);
-        const data = await resp.json();
+        const data: { localidade?: string; uf?: string } = await resp.json();
         setCidade(data?.localidade || '');
         setUf(data?.uf || '');
       } catch {
@@ -106,9 +115,12 @@ export default function CadastroPage() {
 
       alert('Cadastro concluído com sucesso!');
       router.push('/login');
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error('Erro ao cadastrar:', error);
-      const code = String(error?.code || error?.message || error);
+      const code = hasCode(error)
+        ? String(error.code || error.message || '')
+        : String(error ?? '');
+
       if (code.includes('email-already-in-use')) {
         alert('Este e-mail já está em uso. Tente fazer login.');
       } else if (code.includes('permission') || code.includes('insufficient')) {
@@ -153,14 +165,18 @@ export default function CadastroPage() {
 
       await signOut(auth);
       router.replace('/login?new=google');
-    } catch (e: any) {
+    } catch (e: unknown) {
       console.error('Google sign-in error:', e);
-      if (e?.code === 'auth/popup-blocked') {
+
+      const code = hasCode(e) ? String(e.code || '') : '';
+      if (code === 'auth/popup-blocked') {
         alert('Pop-up bloqueado. Desative o bloqueador e tente novamente.');
-      } else if (e?.code === 'auth/popup-closed-by-user') {
+      } else if (code === 'auth/popup-closed-by-user') {
         alert('Pop-up fechado antes de concluir.');
-      } else if (e?.code === 'auth/account-exists-with-different-credential') {
-        const em = e?.customData?.email;
+      } else if (code === 'auth/account-exists-with-different-credential') {
+        const em =
+          hasCustomDataEmail(e) && e.customData ? e.customData.email : undefined;
+
         if (em) {
           const methods = await fetchSignInMethodsForEmail(auth, em);
           alert(`Este e-mail já existe com: ${methods.join(', ')}. Entre por lá e vincule depois.`);
@@ -270,6 +286,7 @@ export default function CadastroPage() {
           onClick={cadastrarComGoogle}
           className="flex items-center justify-center w-full gap-2 py-3 mt-4 font-medium text-white bg-blue-600 rounded hover:bg-blue-700"
         >
+          {/* eslint-disable-next-line @next/next/no-img-element */}
           <img
             src="https://www.gstatic.com/firebasejs/ui/2.0.0/images/auth/google.svg"
             alt="Google"

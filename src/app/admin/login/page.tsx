@@ -31,14 +31,21 @@ const normalizeEmail = (raw: string) =>
     .toLowerCase();
 
 /** ====== Firestore: verificação de papel ====== */
-async function hasAdminRole(uid: string) {
+type AdminDoc = { papel?: string; role?: string; ativo?: boolean };
+const isAdminDoc = (x: unknown): x is AdminDoc =>
+  typeof x === 'object' && x !== null;
+
+/** Checa papéis de admin em coleções conhecidas */
+async function hasAdminRole(uid: string): Promise<boolean> {
   // Preferência: coleção "administrador"
   try {
     const ref = doc(db, 'administrador', uid);
     const snap = await getDoc(ref);
     if (snap.exists()) {
-      const d: any = snap.data();
-      if (d?.papel === 'administrador' || d?.role === 'admin' || d?.ativo === true) return true;
+      const d = snap.data() as unknown;
+      if (isAdminDoc(d) && (d.papel === 'administrador' || d.role === 'admin' || d.ativo === true)) {
+        return true;
+      }
     }
   } catch {
     /* noop */
@@ -49,14 +56,29 @@ async function hasAdminRole(uid: string) {
     const refU = doc(db, 'usuarios', uid);
     const snapU = await getDoc(refU);
     if (snapU.exists()) {
-      const d: any = snapU.data();
-      if (d?.papel === 'administrador' || d?.role === 'admin') return true;
+      const d = snapU.data() as unknown;
+      if (isAdminDoc(d) && (d.papel === 'administrador' || d.role === 'admin')) {
+        return true;
+      }
     }
   } catch {
     /* noop */
   }
 
   return false;
+}
+
+/** Extrai code/message com segurança de um erro desconhecido (sem `any`) */
+function getErrInfo(e: unknown): { code?: string; message?: string } {
+  if (typeof e === 'string') return { message: e };
+  if (typeof e === 'object' && e !== null) {
+    const rec = e as Record<string, unknown>;
+    return {
+      code: typeof rec.code === 'string' ? rec.code : undefined,
+      message: typeof rec.message === 'string' ? rec.message : undefined,
+    };
+  }
+  return {};
 }
 
 /** Mapeia mensagens amigáveis para códigos do Firebase/Identity Platform */
@@ -124,7 +146,7 @@ export default function AdminLoginPage() {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ token, action: 'admin-login' }),
     });
-    const j = await r.json().catch(() => ({}));
+    const j = (await r.json().catch(() => ({}))) as { success?: boolean };
     if (!(r.ok && j?.success)) {
       throw new Error('Falha na verificação do reCAPTCHA.');
     }
@@ -148,8 +170,8 @@ export default function AdminLoginPage() {
           try {
             recaptchaRef.current.execute();
             resolve();
-          } catch (e) {
-            reject(e);
+          } catch (err) {
+            reject(err);
           }
           return;
         }
@@ -180,9 +202,10 @@ export default function AdminLoginPage() {
 
       pending.current = { email: mail, senha };
       await executeRecaptchaOrFail(); // onVerify continua o fluxo
-    } catch (e: any) {
-      console.error('ADMIN doEmailPassword error:', e);
-      setErro(mapAuthError(e?.code, e?.message ?? String(e)));
+    } catch (err: unknown) {
+      const { code, message } = getErrInfo(err);
+      console.error('ADMIN doEmailPassword error:', code, message ?? err);
+      setErro(mapAuthError(code, message ?? String(err)));
       setLoading(false);
       pending.current = null;
     }
@@ -205,9 +228,10 @@ export default function AdminLoginPage() {
 
       // 4) navega
       router.replace('/admin/dashboard');
-    } catch (e: any) {
-      console.error('ADMIN onVerify error:', e?.code, e?.message ?? e);
-      setErro(mapAuthError(e?.code, e?.message ?? String(e)));
+    } catch (err: unknown) {
+      const { code, message } = getErrInfo(err);
+      console.error('ADMIN onVerify error:', code, message ?? err);
+      setErro(mapAuthError(code, message ?? String(err)));
     } finally {
       setLoading(false);
       pending.current = null;

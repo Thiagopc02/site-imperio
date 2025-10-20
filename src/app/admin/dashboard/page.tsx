@@ -19,7 +19,6 @@ import {
   FaShoppingCart,
   FaUsers,
   FaListAlt,
-  FaPlus,
   FaBoxOpen, // ícone para o botão de produtos
 } from 'react-icons/fa';
 import {
@@ -48,17 +47,40 @@ const ALLOWED_EMAILS = new Set<string>([
 
 type Item = { id?: string; nome?: string; quantidade?: number; preco?: number };
 type Endereco = {
-  rua?: string; numero?: string; bairro?: string; cidade?: string; cep?: string;
-  complemento?: string; pontoReferencia?: string; lat?: number | null; lng?: number | null;
+  rua?: string;
+  numero?: string;
+  bairro?: string;
+  cidade?: string;
+  cep?: string;
+  complemento?: string;
+  pontoReferencia?: string;
+  lat?: number | null;
+  lng?: number | null;
 };
 type Pedido = {
-  id: string; uid: string; nome?: string; total?: number; status?: string; data?: any;
+  id: string;
+  uid: string;
+  nome?: string;
+  total?: number;
+  status?: string;
+  data?: unknown;
   tipoEntrega?: 'entrega' | 'retirada';
   formaPagamento?: 'pix' | 'cartao_credito' | 'cartao_debito' | 'dinheiro';
-  itens?: Item[]; endereco?: Endereco | null;
+  itens?: Item[];
+  endereco?: Endereco | null;
 };
 
-const toDate = (v: any) => (v?.seconds ? new Date(v.seconds * 1000) : new Date(v ?? NaN));
+/** Timestamp “solto” vindo do Firestore quando serializado */
+type FireTimestampLike = { seconds?: number } | Date | null | undefined;
+
+const toDate = (v: FireTimestampLike): Date => {
+  if (v instanceof Date) return v;
+  if (v && typeof v === 'object' && typeof (v as { seconds?: number }).seconds === 'number') {
+    return new Date((v as { seconds: number }).seconds * 1000);
+  }
+  return new Date(NaN);
+};
+
 const money = (n: number) => `R$ ${n.toFixed(2)}`;
 const COLORS = ['#22c55e', '#eab308', '#60a5fa', '#f43f5e', '#a78bfa', '#34d399'];
 
@@ -71,31 +93,33 @@ async function hasAdminRole(uid: string): Promise<boolean> {
   try {
     const s = await getDoc(doc(db, 'administrador', uid));
     if (s.exists()) {
-      const d: any = s.data();
-      if (d?.ativo === true) return true;
-      if (d?.papel === 'administrador') return true;
-      if (d?.role === 'admin') return true;
+      const d = s.data() as Record<string, unknown>;
+      if (d?.['ativo'] === true) return true;
+      if (d?.['papel'] === 'administrador') return true;
+      if (d?.['role'] === 'admin') return true;
     }
   } catch {}
   try {
     const s = await getDoc(doc(db, 'admin', uid));
     if (s.exists()) {
-      const d: any = s.data();
-      if (d?.papel === 'administrador' || d?.role === 'admin' || d?.ativo === true) return true;
+      const d = s.data() as Record<string, unknown>;
+      if (d?.['papel'] === 'administrador' || d?.['role'] === 'admin' || d?.['ativo'] === true) {
+        return true;
+      }
     }
   } catch {}
   try {
     const s = await getDoc(doc(db, 'usuarios', uid));
     if (s.exists()) {
-      const d: any = s.data();
-      if (d?.papel === 'administrador' || d?.role === 'admin') return true;
+      const d = s.data() as Record<string, unknown>;
+      if (d?.['papel'] === 'administrador' || d?.['role'] === 'admin') return true;
     }
   } catch {}
   try {
     const s = await getDoc(doc(db, 'usuários', uid));
     if (s.exists()) {
-      const d: any = s.data();
-      if (d?.papel === 'administrador' || d?.role === 'admin') return true;
+      const d = s.data() as Record<string, unknown>;
+      if (d?.['papel'] === 'administrador' || d?.['role'] === 'admin') return true;
     }
   } catch {}
   return false;
@@ -150,10 +174,36 @@ export default function AdminDashboard() {
           qy,
           (s) => {
             const lista: Pedido[] = [];
-            s.forEach((d) => lista.push({ id: d.id, ...(d.data() as any) }));
+            s.forEach((d) => {
+              const dt = d.data() as Record<string, unknown>;
+              lista.push({
+                id: d.id,
+                uid: String(dt['uid'] ?? ''),
+                nome: typeof dt['nome'] === 'string' ? dt['nome'] : undefined,
+                total: typeof dt['total'] === 'number' ? dt['total'] : undefined,
+                status: typeof dt['status'] === 'string' ? dt['status'] : undefined,
+                data: dt['data'],
+                tipoEntrega:
+                  dt['tipoEntrega'] === 'entrega' || dt['tipoEntrega'] === 'retirada'
+                    ? dt['tipoEntrega']
+                    : undefined,
+                formaPagamento:
+                  dt['formaPagamento'] === 'pix' ||
+                  dt['formaPagamento'] === 'cartao_credito' ||
+                  dt['formaPagamento'] === 'cartao_debito' ||
+                  dt['formaPagamento'] === 'dinheiro'
+                    ? (dt['formaPagamento'] as Pedido['formaPagamento'])
+                    : undefined,
+                itens: Array.isArray(dt['itens']) ? (dt['itens'] as Item[]) : undefined,
+                endereco: (dt['endereco'] as Endereco) ?? null,
+              });
+            });
             setPedidos(lista);
           },
-          () => setErrMsg('Sem permissão para ler pedidos. Verifique as regras do Firestore e o papel do usuário.')
+          () =>
+            setErrMsg(
+              'Sem permissão para ler pedidos. Verifique as regras do Firestore e o papel do usuário.'
+            )
         );
       } catch {
         setErrMsg('Falha ao carregar pedidos. Verifique regras de segurança.');
@@ -172,7 +222,7 @@ export default function AdminDashboard() {
     const inicio = new Date();
     inicio.setDate(inicio.getDate() - days);
     const t0 = inicio.getTime();
-    return pedidos.filter((p) => toDate(p.data).getTime() >= t0);
+    return pedidos.filter((p) => toDate(p.data as FireTimestampLike).getTime() >= t0);
   }, [pedidos, days]);
 
   const kpi = useMemo(() => {
@@ -194,11 +244,14 @@ export default function AdminDashboard() {
     const map = new Map<string, number>();
     for (const p of pedidosPeriodo) {
       if ((p.status || '').toLowerCase() === 'cancelado') continue;
-      const d = toDate(p.data);
+      const d = toDate(p.data as FireTimestampLike);
       const k = d.toLocaleDateString('pt-BR');
       map.set(k, (map.get(k) || 0) + (p.total || 0));
     }
-    return Array.from(map.entries()).map(([name, total]) => ({ name, total: Number(total.toFixed(2)) }));
+    return Array.from(map.entries()).map(([name, total]) => ({
+      name,
+      total: Number(total.toFixed(2)),
+    }));
   }, [pedidosPeriodo]);
 
   const metodosPagamento = useMemo(() => {
@@ -206,12 +259,19 @@ export default function AdminDashboard() {
     for (const p of pedidosPeriodo) {
       if ((p.status || '').toLowerCase() === 'cancelado') continue;
       const key =
-        p.formaPagamento === 'pix' ? 'PIX' :
-        p.formaPagamento === 'cartao_credito' ? 'Crédito' :
-        p.formaPagamento === 'cartao_debito' ? 'Débito' : 'Outros';
+        p.formaPagamento === 'pix'
+          ? 'PIX'
+          : p.formaPagamento === 'cartao_credito'
+          ? 'Crédito'
+          : p.formaPagamento === 'cartao_debito'
+          ? 'Débito'
+          : 'Outros';
       map.set(key, (map.get(key) || 0) + (p.total || 0));
     }
-    return Array.from(map.entries()).map(([name, total]) => ({ name, total: Number(total.toFixed(2)) }));
+    return Array.from(map.entries()).map(([name, total]) => ({
+      name,
+      total: Number(total.toFixed(2)),
+    }));
   }, [pedidosPeriodo]);
 
   const topProdutos = useMemo(() => {
@@ -226,7 +286,11 @@ export default function AdminDashboard() {
       }
     }
     return Array.from(mapQtd.entries())
-      .map(([name, qtd]) => ({ name, qtd, valor: Number((mapValor.get(name) || 0).toFixed(2)) }))
+      .map(([name, qtd]) => ({
+        name,
+        qtd,
+        valor: Number((mapValor.get(name) || 0).toFixed(2)),
+      }))
       .sort((a, b) => b.qtd - a.qtd)
       .slice(0, 5);
   }, [pedidosPeriodo]);
@@ -280,10 +344,8 @@ export default function AdminDashboard() {
           title="Adicionar/editar produtos"
           className="inline-flex items-center gap-2 px-5 py-3 text-sm font-extrabold rounded-2xl focus:outline-none focus:ring-2"
           style={{
-            background:
-              'linear-gradient(135deg, #22c55e 0%, #84cc16 45%, #facc15 100%)',
-            boxShadow:
-              '0 8px 24px rgba(34,197,94,.35), inset 0 0 12px rgba(255,255,255,.16)',
+            background: 'linear-gradient(135deg, #22c55e 0%, #84cc16 45%, #facc15 100%)',
+            boxShadow: '0 8px 24px rgba(34,197,94,.35), inset 0 0 12px rgba(255,255,255,.16)',
           }}
         >
           <FaBoxOpen className="text-base" />
