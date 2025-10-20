@@ -1,88 +1,103 @@
-// app/api/mp/create-preference/route.ts
-import { NextResponse } from "next/server";
+// src/app/api/mp/create-preference/route.ts
+import { NextRequest, NextResponse } from "next/server";
 
-const MP_API = process.env.MP_API || "https://api.mercadopago.com";
-const ACCESS_TOKEN = process.env.MP_ACCESS_TOKEN;
+type CurrencyId = "BRL";
 
-type PreferenceItem = {
-  id?: string;
+type ItemInput = {
   title: string;
   quantity: number;
   unit_price: number;
-  currency_id?: "BRL" | string;
+  currency_id?: CurrencyId;
 };
 
-type CreatePrefBody = {
-  items: PreferenceItem[];
-  payer?: {
-    name?: string;
-    email?: string;
-    phone?: { number?: string };
-  };
+type Phone = { number?: string };
+type Payer = { name?: string; email?: string; phone?: Phone };
+
+type ReceiverAddress = {
+  zip_code?: string;
+  street_name?: string;
+  city_name?: string;
+};
+type Shipment = { receiver_address?: ReceiverAddress };
+
+type BackUrls = {
+  success: string;
+  failure: string;
+  pending: string;
+};
+
+type CreatePreferenceBody = {
+  items: ItemInput[];
+  payer?: Payer;
   external_reference?: string;
-  shipment?: unknown;
-  back_urls?: {
-    success?: string;
-    failure?: string;
-    pending?: string;
-  };
+  shipment?: Shipment;
+  back_urls?: BackUrls;
 };
 
-export async function POST(req: Request) {
+export async function POST(req: NextRequest) {
   try {
+    const ACCESS_TOKEN = process.env.MP_ACCESS_TOKEN;
     if (!ACCESS_TOKEN) {
-      return NextResponse.json(
-        { error: "MP_ACCESS_TOKEN ausente" },
-        { status: 500 }
-      );
+      console.error("MP_ACCESS_TOKEN ausente nas variáveis de ambiente.");
+      return NextResponse.json({ error: "Server misconfiguration" }, { status: 500 });
     }
 
-    const body = (await req.json().catch(() => ({}))) as Partial<CreatePrefBody>;
-    const items = Array.isArray(body.items) ? body.items : [];
+    const bodyUnknown: unknown = await req.json();
+    // _narrow_ para nosso tipo esperado:
+    const body = bodyUnknown as CreatePreferenceBody;
 
-    const preferencePayload = {
-      items: items.map((it) => ({
-        id: it.id,
-        title: it.title,
-        quantity: it.quantity,
-        currency_id: it.currency_id || "BRL",
-        unit_price: it.unit_price,
+    // Validações mínimas
+    if (!Array.isArray(body.items) || body.items.length === 0) {
+      return NextResponse.json({ error: "Invalid items" }, { status: 400 });
+    }
+
+    const SITE = process.env.NEXT_PUBLIC_SITE_URL ?? "";
+    const defaultBackUrls: BackUrls = {
+      success: `${SITE}/pedidos`,
+      failure: `${SITE}/checkout-bricks?status=failure`,
+      pending: `${SITE}/checkout-bricks?status=pending`,
+    };
+
+    // Monta payload aceito pelo MP
+    const payload = {
+      items: body.items.map((i) => ({
+        title: i.title,
+        quantity: Number(i.quantity),
+        unit_price: Number(i.unit_price),
+        currency_id: (i.currency_id ?? "BRL") as CurrencyId,
       })),
-      back_urls: {
-        success: `${process.env.NEXT_PUBLIC_SITE_URL}/checkout/sucesso`,
-        pending: `${process.env.NEXT_PUBLIC_SITE_URL}/checkout/pending`,
-        failure: `${process.env.NEXT_PUBLIC_SITE_URL}/checkout/erro`,
-      },
-      auto_return: "approved",
-      notification_url: `${process.env.NEXT_PUBLIC_SITE_URL}/api/mp/webhook`,
-      external_reference: body.external_reference || `order_${Date.now()}`,
       payer: body.payer,
+      external_reference: body.external_reference,
+      back_urls: body.back_urls ?? defaultBackUrls,
+      auto_return: "approved" as const,
+      // Você pode inserir outras chaves aceitas pelo MP aqui se precisar
+      // (statement_descriptor, notification_url, etc.)
       shipment: body.shipment,
     };
 
-    const res = await fetch(`${MP_API}/checkout/preferences`, {
+    const MP_API = "https://api.mercadopago.com/checkout/preferences";
+    const res = await fetch(MP_API, {
       method: "POST",
       headers: {
-        "Content-Type": "application/json",
         Authorization: `Bearer ${ACCESS_TOKEN}`,
+        "Content-Type": "application/json",
       },
-      body: JSON.stringify(preferencePayload),
-      cache: "no-store",
+      body: JSON.stringify(payload),
+      // Em server actions/route handlers não é necessário cache especial aqui
     });
 
+    const data: unknown = await res.json();
+
     if (!res.ok) {
-      const t = await res.text();
-      console.error("MP create preference error:", t);
-      return NextResponse.json(
-        { error: "Falha ao criar preferência" },
-        { status: 500 }
-      );
+      console.error("MP create preference FAILED", res.status, data);
+      return NextResponse.json({ error: "MP error", details: data }, { status: 500 });
     }
 
-    const json = (await res.json()) as { id: string };
-    return NextResponse.json({ preferenceId: json.id });
-  } catch (e) {
-    console.error(e);
-    return NextResponse.json({ error: "Erro interno" }, { status: 500 });
+    // A resposta do MP normalmente contém id e init_point
+    const parsed = data as { id?: string; init_point?: string };
+    return NextResponse.json({ id: parsed.id, init_point: parsed.init_point });
+  } catch (err) {
+    console.error("create-preference route error", err);
+    return NextResponse.json({ error: "Server error" }, { status: 500 });
   }
 }

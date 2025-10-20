@@ -34,7 +34,6 @@ type Endereco = {
   cidade: string;
   pontoReferencia?: string;
   usuarioId: string;
-  // opcionais (quando usuário usa GPS)
   lat?: number;
   lng?: number;
   accuracy?: number;
@@ -89,7 +88,9 @@ export default function CarrinhoPage() {
     const q = query(collection(db, 'enderecos'), where('usuarioId', '==', user.uid));
     const unsubscribe = onSnapshot(q, (snapshot) => {
       const lista: Endereco[] = [];
-      snapshot.forEach((docu) => lista.push({ id: docu.id, ...(docu.data() as Omit<Endereco, 'id'>) }));
+      snapshot.forEach((docu) =>
+        lista.push({ id: docu.id, ...(docu.data() as Omit<Endereco, 'id'>) })
+      );
       setEnderecos(lista);
     });
     return () => unsubscribe();
@@ -202,7 +203,7 @@ export default function CarrinhoPage() {
       nome,
       telefone,
       tipoEntrega,
-      formaPagamento, // 'pix' | 'cartao_credito' | 'cartao_debito' | 'dinheiro'
+      formaPagamento,
       troco: formaPagamento === 'dinheiro' ? Number(troco) || null : null,
       endereco: enderecoObj,
       itens: carrinho.map((item) => ({
@@ -232,6 +233,10 @@ export default function CarrinhoPage() {
     `order_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
 
   const irParaPagamentoMP = async () => {
+    if (!nome || !telefone) {
+      alert('Informe nome e telefone antes de continuar.');
+      return;
+    }
     try {
       if (carrinho.length === 0) {
         alert('Seu carrinho está vazio.');
@@ -254,12 +259,12 @@ export default function CarrinhoPage() {
           title: item.nome,
           quantity: item.quantidade,
           unit_price: Number(item.preco),
-          currency_id: 'BRL',
+          currency_id: 'BRL' as const,
         })),
         payer: {
           name: nome || 'Cliente',
           email: user?.email || 'sandbox@test.com',
-          phone: { number: telefone?.replace(/\D/g, '')?.slice(-11) || '' },
+          phone: { number: telefone.replace(/\D/g, '').slice(-11) || '' },
         },
         external_reference: externalRef,
         shipment: endEntrega
@@ -291,8 +296,8 @@ export default function CarrinhoPage() {
         return;
       }
 
-      const data: { id?: string; preferenceId?: string } = await res.json();
-      const prefId = data?.id || data?.preferenceId;
+      const data: { id?: string; init_point?: string } = await res.json();
+      const prefId = data?.id;
       if (!prefId) {
         alert('Preferência criada sem ID.');
         return;
@@ -312,7 +317,6 @@ export default function CarrinhoPage() {
     return match ? `(${match[1]}) ${match[2]}-${match[3]}` : valor;
   };
 
-  // handler tipado para campos do novo endereço
   const handleNovoEnderecoChange =
     (campo: keyof Endereco) =>
     (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -320,13 +324,11 @@ export default function CarrinhoPage() {
       setNovoEndereco((prev) => ({ ...prev, [campo]: value }));
     };
 
-  // ========= UI =========
   return (
     <main className="min-h-screen px-4 py-8 text-white bg-black">
       <div className="max-w-3xl mx-auto">
         <h1 className="mb-6 text-3xl font-bold">🛒 Seu Carrinho</h1>
 
-        {/* Lista do carrinho */}
         {carrinho.length === 0 ? (
           <p className="text-gray-400">Seu carrinho está vazio.</p>
         ) : (
@@ -383,16 +385,14 @@ export default function CarrinhoPage() {
           type="text"
           placeholder="Nome completo"
           value={nome}
-          onChange={(e: React.ChangeEvent<HTMLInputElement>) => setNome(e.target.value)}
+          onChange={(e) => setNome(e.target.value)}
           className="w-full p-2 mb-2 text-black rounded"
         />
         <input
           type="text"
           placeholder="Telefone"
           value={telefone}
-          onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
-            setTelefone(formatarTelefone(e.target.value))
-          }
+          onChange={(e) => setTelefone(formatarTelefone(e.target.value))}
           className="w-full p-2 mb-4 text-black rounded"
         />
 
@@ -419,7 +419,7 @@ export default function CarrinhoPage() {
           </div>
         </div>
 
-        {/* Entrega: endereços / novo endereço */}
+        {/* Entrega */}
         {tipoEntrega === 'entrega' && (
           <div className="mb-4">
             {enderecos.length > 0 && (
@@ -488,7 +488,6 @@ export default function CarrinhoPage() {
                   )
                 )}
 
-                {/* Geolocalização */}
                 <div className="p-2 mt-2 rounded bg-zinc-800">
                   <button
                     onClick={detectarLocalizacao}
@@ -540,14 +539,10 @@ export default function CarrinhoPage() {
           <div className="p-4 mb-4 rounded bg-zinc-800">
             <p className="mb-2 font-medium text-green-400">Você optou por retirar no estabelecimento.</p>
             <div className="text-sm text-white">
-              <p>
-                <strong>Império Bebidas e Tabacos</strong>
-              </p>
+              <p><strong>Império Bebidas e Tabacos</strong></p>
               <p>R. Temístocles Rocha, Qd. 07 - Lt. 01, Nº 56</p>
               <p>Setor Central – Campos Belos – GO | CEP 73840-000</p>
-              <p>
-                <strong>Ref.:</strong> Próximo à Câmara Municipal
-              </p>
+              <p><strong>Ref.:</strong> Próximo à Câmara Municipal</p>
 
               <a
                 href="https://www.google.com/maps?q=-13.034359,-46.775423"
@@ -581,16 +576,13 @@ export default function CarrinhoPage() {
           <div className="flex flex-wrap items-center gap-3">
             {/* PIX */}
             <button
-              onClick={() => {
-                setFormaPagamento('pix');
-                setCartaoSubtipo('');
-              }}
+              onClick={() => { setFormaPagamento('pix'); setCartaoSubtipo(''); }}
               className={[
                 'px-4 py-2 rounded-full text-sm font-medium transition',
                 'border border-zinc-600/60 hover:border-yellow-400/70',
                 formaPagamento === 'pix'
                   ? 'bg-yellow-400 text-black shadow-[0_0_0_3px_rgba(234,179,8,0.25)]'
-                  : 'bg-zinc-800 text-white hover:bg-zinc-700',
+                  : 'bg-zinc-800 text-white hover:bg-zinc-700'
               ].join(' ')}
               aria-pressed={formaPagamento === 'pix'}
             >
@@ -610,7 +602,7 @@ export default function CarrinhoPage() {
                   'border border-zinc-600/60 hover:border-yellow-400/70',
                   formaPagamento.startsWith('cartao')
                     ? 'bg-yellow-400 text-black shadow-[0_0_0_3px_rgba(234,179,8,0.25)]'
-                    : 'bg-zinc-800 text-white hover:bg-zinc-700',
+                    : 'bg-zinc-800 text-white hover:bg-zinc-700'
                 ].join(' ')}
                 aria-pressed={formaPagamento.startsWith('cartao')}
               >
@@ -620,31 +612,25 @@ export default function CarrinhoPage() {
               {formaPagamento.startsWith('cartao') && (
                 <div className="flex gap-2">
                   <button
-                    onClick={() => {
-                      setCartaoSubtipo('credito');
-                      setFormaPagamento('cartao_credito');
-                    }}
+                    onClick={() => { setCartaoSubtipo('credito'); setFormaPagamento('cartao_credito'); }}
                     className={[
                       'px-3 py-2 rounded-full text-xs font-semibold transition',
                       'border border-sky-700/60',
                       cartaoSubtipo === 'credito'
                         ? 'bg-sky-400 text-black shadow-[0_0_0_3px_rgba(56,189,248,0.25)]'
-                        : 'bg-sky-900 text-white hover:bg-sky-800',
+                        : 'bg-sky-900 text-white hover:bg-sky-800'
                     ].join(' ')}
                   >
                     Crédito
                   </button>
                   <button
-                    onClick={() => {
-                      setCartaoSubtipo('debito');
-                      setFormaPagamento('cartao_debito');
-                    }}
+                    onClick={() => { setCartaoSubtipo('debito'); setFormaPagamento('cartao_debito'); }}
                     className={[
                       'px-3 py-2 rounded-full text-xs font-semibold transition',
                       'border border-sky-700/60',
                       cartaoSubtipo === 'debito'
                         ? 'bg-sky-400 text-black shadow-[0_0_0_3px_rgba(56,189,248,0.25)]'
-                        : 'bg-sky-900 text-white hover:bg-sky-800',
+                        : 'bg-sky-900 text-white hover:bg-sky-800'
                     ].join(' ')}
                   >
                     Débito
@@ -655,16 +641,13 @@ export default function CarrinhoPage() {
 
             {/* Dinheiro */}
             <button
-              onClick={() => {
-                setFormaPagamento('dinheiro');
-                setCartaoSubtipo('');
-              }}
+              onClick={() => { setFormaPagamento('dinheiro'); setCartaoSubtipo(''); }}
               className={[
                 'px-4 py-2 rounded-full text-sm font-medium transition',
                 'border border-zinc-600/60 hover:border-yellow-400/70',
                 formaPagamento === 'dinheiro'
                   ? 'bg-yellow-400 text-black shadow-[0_0_0_3px_rgba(234,179,8,0.25)]'
-                  : 'bg-zinc-800 text-white hover:bg-zinc-700',
+                  : 'bg-zinc-800 text-white hover:bg-zinc-700'
               ].join(' ')}
               aria-pressed={formaPagamento === 'dinheiro'}
             >
@@ -678,7 +661,7 @@ export default function CarrinhoPage() {
             type="number"
             placeholder="Troco para quanto?"
             value={troco}
-            onChange={(e: React.ChangeEvent<HTMLInputElement>) => setTroco(e.target.value)}
+            onChange={(e) => setTroco(e.target.value)}
             className="w-full p-2 mb-4 text-black border rounded border-zinc-300"
           />
         )}
