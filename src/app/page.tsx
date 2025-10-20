@@ -1,7 +1,6 @@
 'use client';
 
 /* eslint-disable @next/next/no-img-element */
-/* eslint-disable @next/next/no-html-link-for-pages */
 
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
@@ -325,7 +324,7 @@ export default function CarrinhoPage() {
     const cleaned = valor.replace(/\D/g, '');
     const match = cleaned.match(/^(\d{2})(\d{5})(\d{4})$/);
     return match ? `(${match[1]}) ${match[2]}-${match[3]}` : valor;
-  };
+    };
 
   // handler tipado para campos do novo endereço
   const handleNovoEnderecoChange =

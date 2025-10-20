@@ -4,9 +4,6 @@ import { Suspense, useEffect, useRef, useState } from 'react';
 import Script from 'next/script';
 import { useSearchParams } from 'next/navigation';
 
-export const dynamic = 'force-dynamic';
-export const revalidate = 0;
-
 /* ========= Tipos mínimos, compatíveis com o SDK ========= */
 type PaymentBrickController = { unmount: () => void };
 
@@ -15,7 +12,7 @@ type PaymentBrickOptions = {
   customization?: unknown;
   callbacks?: {
     onReady?: () => void;
-    onSubmit?: (_args: unknown) => Promise<void>; // importante: Promise<void>
+    onSubmit?: () => Promise<void>; // Promise<void> e sem args desnecessário
     onError?: (err: unknown) => void;
   };
 };
@@ -101,34 +98,30 @@ function CheckoutBricksInner() {
         const mp = new MPClass(publicKey, { locale: 'pt-BR' });
         const bricksBuilder = mp.bricks();
 
-        const controller = await bricksBuilder.create(
-          'payment',
-          'payment_brick_container',
-          {
-            initialization: { amount: 10.0, preferenceId },
-            customization: {
-              paymentMethods: {
-                creditCard: 'all',
-                debitCard: 'all',
-                ticket: 'all',
-                bankTransfer: 'all', // PIX
-              },
+        const controller = await bricksBuilder.create('payment', 'payment_brick_container', {
+          initialization: { amount: 10.0, preferenceId },
+          customization: {
+            paymentMethods: {
+              creditCard: 'all',
+              debitCard: 'all',
+              ticket: 'all',
+              bankTransfer: 'all', // PIX
             },
-            callbacks: {
-              onReady: () => {
-                // opcional
-              },
-              onSubmit: async (_args) => {
-                // Se desejar processar no backend, faça fetch para /api/mp/process-payment
-                // e lance erro em caso de falha para cair no onError.
-              },
-              onError: (err) => {
-                console.error(err);
-                setError('Erro no Payment Brick.');
-              },
+          },
+          callbacks: {
+            onReady: () => {
+              // opcional
             },
-          }
-        );
+            onSubmit: async () => {
+              // Se desejar processar no backend, faça fetch para /api/mp/process-payment
+              // e lance erro em caso de falha para cair no onError.
+            },
+            onError: (err) => {
+              console.error(err);
+              setError('Erro no Payment Brick.');
+            },
+          },
+        });
 
         if (controller && typeof (controller as PaymentBrickController).unmount === 'function') {
           bricksController = controller as PaymentBrickController;
