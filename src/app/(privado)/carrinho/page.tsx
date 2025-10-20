@@ -1,7 +1,8 @@
 'use client';
 
-import { useCart } from '@/context/CartContext';
 import { useEffect, useState } from 'react';
+import { useRouter } from 'next/navigation';
+import { getAuth } from 'firebase/auth';
 import { db } from '@/firebase/config';
 import {
   collection,
@@ -12,8 +13,7 @@ import {
   deleteDoc,
   doc,
 } from 'firebase/firestore';
-import { getAuth } from 'firebase/auth';
-import { useRouter } from 'next/navigation';
+import { useCart } from '@/context/CartContext';
 
 type ProdutoCarrinho = {
   id: string;
@@ -34,7 +34,7 @@ type Endereco = {
   cidade: string;
   pontoReferencia?: string;
   usuarioId: string;
-  // NOVOS (opcionais)
+  // opcionais (quando usuário usa GPS)
   lat?: number;
   lng?: number;
   accuracy?: number;
@@ -55,7 +55,7 @@ export default function CarrinhoPage() {
   const [enderecoSelecionado, setEnderecoSelecionado] = useState('');
   const [tipoEntrega, setTipoEntrega] = useState<'entrega' | 'retirada'>('retirada');
   const [mostrarFormulario, setMostrarFormulario] = useState(false);
-  const [locStatus, setLocStatus] = useState<string>(''); // feedback da geolocalização
+  const [locStatus, setLocStatus] = useState<string>('');
 
   const [novoEndereco, setNovoEndereco] = useState<Endereco>({
     rua: '',
@@ -81,6 +81,7 @@ export default function CarrinhoPage() {
 
   const total = carrinho.reduce((acc, item) => acc + item.preco * item.quantidade, 0);
 
+  // ========= Endereços do usuário =========
   useEffect(() => {
     if (!user) return;
     setNovoEndereco((prev) => ({ ...prev, usuarioId: user.uid }));
@@ -182,6 +183,7 @@ export default function CarrinhoPage() {
     }
   };
 
+  // ========= Finalização local (dinheiro) =========
   const finalizarPedido = async () => {
     if (!nome || !telefone) return alert('Preencha nome e telefone.');
     if (!tipoEntrega) return alert('Selecione o tipo de entrega.');
@@ -202,7 +204,7 @@ export default function CarrinhoPage() {
       tipoEntrega,
       formaPagamento, // 'pix' | 'cartao_credito' | 'cartao_debito' | 'dinheiro'
       troco: formaPagamento === 'dinheiro' ? Number(troco) || null : null,
-      endereco: enderecoObj, // contém lat/lng/accuracy quando existir
+      endereco: enderecoObj,
       itens: carrinho.map((item) => ({
         id: item.id,
         nome: item.nome,
@@ -225,12 +227,92 @@ export default function CarrinhoPage() {
     }
   };
 
+  // ========= Iniciar pagamento MP (Pix/Cartão) =========
+  const gerarExternalRef = () =>
+    `order_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+
+  const irParaPagamentoMP = async () => {
+    try {
+      if (carrinho.length === 0) {
+        alert('Seu carrinho está vazio.');
+        return;
+      }
+      if (!['pix', 'cartao_credito', 'cartao_debito'].includes(formaPagamento)) {
+        alert('Selecione Pix ou Cartão para pagar online.');
+        return;
+      }
+
+      const endEntrega =
+        tipoEntrega === 'entrega'
+          ? enderecos.find((e) => e.id === enderecoSelecionado)
+          : null;
+
+      const externalRef = gerarExternalRef();
+
+      const body = {
+        items: carrinho.map((item) => ({
+          title: item.nome,
+          quantity: item.quantidade,
+          unit_price: Number(item.preco),
+          currency_id: 'BRL',
+        })),
+        payer: {
+          name: nome || 'Cliente',
+          email: (user as any)?.email || 'sandbox@test.com',
+          phone: { number: telefone?.replace(/\D/g, '')?.slice(-11) || '' },
+        },
+        external_reference: externalRef,
+        shipment: endEntrega
+          ? {
+              receiver_address: {
+                zip_code: endEntrega.cep,
+                street_name: `${endEntrega.rua}, ${endEntrega.numero}`,
+                city_name: endEntrega.cidade,
+              },
+            }
+          : undefined,
+        back_urls: {
+          success: `${process.env.NEXT_PUBLIC_SITE_URL}/pedidos`,
+          failure: `${process.env.NEXT_PUBLIC_SITE_URL}/checkout-bricks?status=failure`,
+          pending: `${process.env.NEXT_PUBLIC_SITE_URL}/checkout-bricks?status=pending`,
+        },
+      };
+
+      const res = await fetch('/api/mp/create-preference', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      });
+
+      if (!res.ok) {
+        const t = await res.text();
+        console.error('Erro ao criar preference:', t);
+        alert('Falha ao criar preferência de pagamento.');
+        return;
+      }
+
+      const data = await res.json();
+      const prefId = data?.id || data?.preferenceId;
+      if (!prefId) {
+        alert('Preferência criada sem ID.');
+        return;
+      }
+
+      router.push(`/checkout-bricks?pref_id=${prefId}`);
+    } catch (e) {
+      console.error(e);
+      alert('Erro ao iniciar o pagamento.');
+    }
+  };
+
+  // ========= util =========
   const formatarTelefone = (valor: string) => {
     const cleaned = valor.replace(/\D/g, '');
     const match = cleaned.match(/^(\d{2})(\d{5})(\d{4})$/);
     return match ? `(${match[1]}) ${match[2]}-${match[3]}` : valor;
   };
 
+  // ========= UI =========
   return (
     <main className="min-h-screen px-4 py-8 text-white bg-black">
       <div className="max-w-3xl mx-auto">
@@ -327,7 +409,7 @@ export default function CarrinhoPage() {
           </div>
         </div>
 
-        {/* Entrega: endereços existentes / novo endereço */}
+        {/* Entrega: endereços / novo endereço */}
         {tipoEntrega === 'entrega' && (
           <div className="mb-4">
             {enderecos.length > 0 && (
@@ -385,8 +467,8 @@ export default function CarrinhoPage() {
                     value={novoEndereco[campo as keyof Endereco] ?? ''}
                     onChange={(e) => setNovoEndereco((prev) => ({ ...prev, [campo]: e.target.value }))}
                     onBlur={() => {
-                      if (campo === 'cep' && novoEndereco.cep.length === 8) {
-                        buscarCidadePorCep(novoEndereco.cep);
+                      if (campo === 'cep' && novoEndereco.cep.replace(/\D/g, '').length === 8) {
+                        buscarCidadePorCep(novoEndereco.cep.replace(/\D/g, ''));
                       }
                     }}
                     className="w-full p-2 mb-2 text-black rounded"
@@ -572,15 +654,27 @@ export default function CarrinhoPage() {
           />
         )}
 
-        {/* Total e botão */}
+        {/* Total e botões */}
         <p className="mb-4 text-lg font-bold">Total: R$ {total.toFixed(2)}</p>
+
         {carrinho.length > 0 && (
-          <button
-            onClick={finalizarPedido}
-            className="w-full py-3 text-lg font-semibold text-white bg-green-600 rounded hover:bg-green-700"
-          >
-            Finalizar Pedido
-          </button>
+          <div className="grid gap-3">
+            {formaPagamento === 'dinheiro' ? (
+              <button
+                onClick={finalizarPedido}
+                className="w-full py-3 text-lg font-semibold text-white bg-green-600 rounded hover:bg-green-700"
+              >
+                Finalizar Pedido (pagar na entrega)
+              </button>
+            ) : (
+              <button
+                onClick={irParaPagamentoMP}
+                className="w-full py-3 text-lg font-semibold text-black bg-yellow-400 rounded hover:bg-yellow-500"
+              >
+                Ir para pagamento (Mercado Pago)
+              </button>
+            )}
+          </div>
         )}
       </div>
     </main>
