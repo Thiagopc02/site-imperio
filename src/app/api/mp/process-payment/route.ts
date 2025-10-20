@@ -1,70 +1,112 @@
-// app/api/mp/process-payment/route.ts
 import { NextResponse } from 'next/server';
 
-const MP_API = process.env.MP_API || 'https://api.mercadopago.com';
-const ACCESS_TOKEN = process.env.MP_ACCESS_TOKEN;
+export const dynamic = 'force-dynamic';
+export const revalidate = 0;
+
+/** Body que vem do front para criar/capturar o pagamento */
+type ProcessPaymentBody = {
+  token: string; // token do card / pix token, etc (vindo do Brick)
+  transaction_amount: number;
+  payment_method_id: string; // 'visa' | 'master' | 'pix' | etc
+  installments?: number;
+  issuer_id?: string;
+  preference_id?: string;
+  payer?: {
+    email?: string;
+    identification?: { type?: string; number?: string };
+  };
+  additional_info?: unknown;
+};
+
+/** Campos essenciais que voltam do Mercado Pago */
+type MPCreatePaymentResponse = {
+  id: number;
+  status:
+    | 'approved'
+    | 'rejected'
+    | 'in_process'
+    | 'pending'
+    | 'cancelled'
+    | 'refunded'
+    | 'in_mediation';
+  status_detail?: string;
+  payment_method_id?: string;
+  order?: { id?: string } | null; // pode conter o preference_id em alguns fluxos
+  [k: string]: unknown; // preserva demais campos sem usar `any`
+};
 
 export async function POST(req: Request) {
   try {
+    const ACCESS_TOKEN = process.env.MP_ACCESS_TOKEN;
     if (!ACCESS_TOKEN) {
-      return NextResponse.json({ error: 'MP_ACCESS_TOKEN ausente' }, { status: 500 });
+      return NextResponse.json(
+        { error: 'ACCESS TOKEN ausente no servidor' },
+        { status: 500 }
+      );
     }
 
-    // formData vem direto do Brick
-    const body = await req.json();
+    const body = (await req.json()) as ProcessPaymentBody;
 
-    // valores adicionais que mandamos do front:
-    const {
-      transaction_amount,          // number
-      description,                 // string
-      preferenceId,                // opcional (para amarrar com a preferência e webhooks)
-    } = body;
+    // validações mínimas
+    if (
+      !body?.token ||
+      typeof body.transaction_amount !== 'number' ||
+      !body.payment_method_id
+    ) {
+      return NextResponse.json(
+        { error: 'Parâmetros inválidos' },
+        { status: 400 }
+      );
+    }
 
-    // Dica: limite global 12x; se o usuário não escolher, força 1x
-    const installments = typeof body.installments === 'number' ? body.installments : 1;
-    const finalInstallments = Math.min(Math.max(installments, 1), 12);
-
-    // Monta payload aceito por /v1/payments
-    // O próprio body do Brick já contém os campos dinâmicos
+    // monta o payload conforme docs do MP
     const payload = {
-      ...body,
-      transaction_amount,
-      description,
-      installments: finalInstallments,
-      // amarração com preferência e webhook
-      notification_url: `${process.env.NEXT_PUBLIC_SITE_URL}/api/mp/webhook`,
-      external_reference: body.external_reference ?? `order_${Date.now()}`,
-      // se quiser atrelar à preferência criada:
-      // additional_info: { ... } // opcional
+      token: body.token,
+      transaction_amount: body.transaction_amount,
+      payment_method_id: body.payment_method_id,
+      installments: body.installments ?? 1,
+      issuer_id: body.issuer_id,
+      payer: body.payer,
+      additional_info: body.additional_info,
+      // você pode adicionar statement_descriptor, notification_url, etc
     };
 
-    const res = await fetch(`${MP_API}/v1/payments`, {
+    const res = await fetch('https://api.mercadopago.com/v1/payments', {
       method: 'POST',
       headers: {
-        'Content-Type': 'application/json',
         Authorization: `Bearer ${ACCESS_TOKEN}`,
+        'Content-Type': 'application/json',
       },
       body: JSON.stringify(payload),
+      // IMPORTANTE: não usar cache em chamada de pagamento
       cache: 'no-store',
     });
 
-    const json = await res.json();
+    const json = (await res.json()) as MPCreatePaymentResponse;
 
     if (!res.ok) {
       console.error('MP /v1/payments error:', json);
-      return NextResponse.json({ error: 'Falha ao processar pagamento', details: json }, { status: 400 });
+      return NextResponse.json(
+        { error: 'Falha ao processar pagamento', details: json },
+        { status: res.status }
+      );
     }
 
-    // retorna dados para a tela decidir pra onde ir
-    return NextResponse.json({
-      id: json.id,
-      status: json.status,                 // approved | pending | rejected | etc.
-      status_detail: json.status_detail,
-      payment_method_id: json.payment_method_id,
-      preference_id: preferenceId ?? json.order?.id ?? null,
-    });
-  } catch (e: any) {
-    console.error('[process-payment] error:', e);
-    return NextResponse.json({ error: 'Erro interno' }, { status: 500 });
+    // devolve somente o necessário
+    return NextResponse.json(
+      {
+        id: json.id,
+        status: json.status,
+        status_detail: json.status_detail,
+        payment_method_id: json.payment_method_id,
+        // alguns fluxos incluem o preference/order id aqui:
+        preference_id: json.order?.id ?? null,
+      },
+      { status: 200 }
+    );
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : String(err);
+    console.error('[process-payment] error:', message);
+    return NextResponse.json({ error: 'Erro interno', message }, { status: 500 });
   }
 }
