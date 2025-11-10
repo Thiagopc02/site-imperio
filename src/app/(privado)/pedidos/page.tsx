@@ -4,9 +4,9 @@ import { useEffect, useMemo, useState } from 'react';
 import { db, auth } from '@/firebase/config';
 import { collection, onSnapshot, query, where } from 'firebase/firestore';
 import { onAuthStateChanged } from 'firebase/auth';
+import Image from 'next/image'; // ✅ NOVO
 
 /* ------------ Tipos ------------ */
-
 type PedidoItem = {
   id?: string;
   nome: string;
@@ -43,14 +43,13 @@ type Pedido = {
   endereco?: Endereco | null;
   itens: PedidoItem[];
   total: number;
-  data: FireTimestampLike; // <— tipado
+  data: FireTimestampLike;
   status: 'Em andamento' | 'Confirmado' | 'Em rota' | 'Entregue' | 'Cancelado' | string;
 };
 
 type Range = 'hoje' | 'duas_semanas' | 'quinze_dias' | 'um_mes' | 'todos';
 
 /* ------------ Helpers ------------ */
-
 const isSameLocalDay = (a: Date, b: Date) =>
   a.getFullYear() === b.getFullYear() &&
   a.getMonth() === b.getMonth() &&
@@ -97,7 +96,6 @@ function enderecoTexto(e?: Endereco | null) {
 }
 
 /* ------------ Página ------------ */
-
 export default function PedidosPage() {
   const [pedidos, setPedidos] = useState<Pedido[]>([]);
   const [range, setRange] = useState<Range>('todos');
@@ -237,7 +235,15 @@ export default function PedidosPage() {
                     const subtotal = item.preco * item.quantidade;
                     return (
                       <div key={`${item.id ?? 'i'}-${idx}`} className="flex items-center gap-3 p-3 rounded-lg bg-zinc-800/70">
-                        <img src={src} alt={item.nome} className="object-contain w-16 h-16 rounded bg-zinc-900" />
+                        {/* ✅ trocado para next/image */}
+                        <Image
+                          src={src}
+                          alt={item.nome}
+                          width={64}
+                          height={64}
+                          sizes="64px"
+                          className="object-contain w-16 h-16 rounded bg-zinc-900"
+                        />
                         <div className="flex-1 min-w-0">
                           <p className="font-medium truncate">{item.nome}</p>
                           <p className="text-xs text-gray-400">
@@ -273,7 +279,7 @@ export default function PedidosPage() {
                           )}
                         </p>
 
-                        {/* Mapa: usa coords se houver; senão, endereço textual */}
+                        {/* Mapa */}
                         {addrText && (
                           <div className="mt-2 space-y-2">
                             <a
