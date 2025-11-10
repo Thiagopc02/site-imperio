@@ -4,15 +4,15 @@ import { Suspense, useEffect, useRef, useState } from 'react';
 import Script from 'next/script';
 import { useSearchParams } from 'next/navigation';
 
-/* ========= Tipos mínimos, compatíveis com o SDK ========= */
+/* ========= Tipos mínimos para o SDK ========= */
 type PaymentBrickController = { unmount: () => void };
 
 type PaymentBrickOptions = {
-  initialization: { amount: number; preferenceId: string };
+  initialization: { amount: number }; // <<< apenas amount (sem preferenceId)
   customization?: unknown;
   callbacks?: {
     onReady?: () => void;
-    onSubmit?: () => Promise<void>; // Promise<void> e sem args desnecessário
+    onSubmit?: () => Promise<void>;
     onError?: (err: unknown) => void;
   };
 };
@@ -30,25 +30,49 @@ type MPInstance = { bricks: () => BricksBuilder };
 type MPWindow = typeof window & {
   MercadoPago?: new (key: string, opts?: { locale?: string }) => MPInstance;
 };
-/* ======================================================== */
+/* ============================================ */
 
 function CheckoutBricksInner() {
   const containerRef = useRef<HTMLDivElement | null>(null);
+
   const [sdkReady, setSdkReady] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [amount, setAmount] = useState<number | null>(null);
+  const [mountKey, setMountKey] = useState(0); // força remontagem quando carrinho muda
 
+  // (opcional) ler qualquer param de retorno (?status=success|failure|pending)
   const qs = useSearchParams();
-  const prefIdFromQS = qs.get('pref_id');
+  const status = qs.get('status');
 
-  // Se o SDK já existir (navegação/memo), marca como pronto
+  // 1) Lê o carrinho do localStorage para calcular o total
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem('carrinho');
+      const cart: Array<{ preco: number; quantidade: number }> = raw ? JSON.parse(raw) : [];
+      const total = cart.reduce((acc, i) => acc + Number(i.preco || 0) * Number(i.quantidade || 0), 0);
+      setAmount(Number.isFinite(total) ? Number(total.toFixed(2)) : 0);
+      // re-monta o brick quando o carrinho muda
+      setMountKey((k) => k + 1);
+    } catch {
+      setAmount(0);
+    }
+  }, []);
+
+  // 2) Marca SDK como pronto se já existir no window
   useEffect(() => {
     if (typeof window !== 'undefined' && (window as MPWindow).MercadoPago) {
       setSdkReady(true);
     }
   }, []);
 
+  // 3) Monta o Payment Brick **sem preferenceId** (só amount)
   useEffect(() => {
     if (!sdkReady || !containerRef.current) return;
+    if (amount === null) return; // aguardando cálculo
+    if (amount <= 0) {
+      setError('Seu carrinho está vazio.');
+      return;
+    }
 
     const publicKey = process.env.NEXT_PUBLIC_MP_PUBLIC_KEY;
     if (!publicKey) {
@@ -60,38 +84,6 @@ function CheckoutBricksInner() {
 
     (async () => {
       try {
-        // 1) Garante um preferenceId (usa o da URL ou cria um básico)
-        let preferenceId = prefIdFromQS ?? '';
-        if (!preferenceId) {
-          const prefRes = await fetch('/api/mp/create-preference', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              items: [
-                {
-                  id: 'sku-1',
-                  title: 'Exemplo',
-                  quantity: 1,
-                  unit_price: 10.0,
-                  currency_id: 'BRL',
-                },
-              ],
-            }),
-          });
-
-          if (!prefRes.ok) throw new Error('Falha ao criar preferência');
-
-          const json: { id?: string; preferenceId?: string } = await prefRes.json();
-          preferenceId = json.id ?? json.preferenceId ?? '';
-          if (!preferenceId) throw new Error('Preferência criada sem ID.');
-
-          // Atualiza a URL com o pref_id (sem recarregar)
-          const url = new URL(window.location.href);
-          url.searchParams.set('pref_id', preferenceId);
-          window.history.replaceState({}, '', url.toString());
-        }
-
-        // 2) Monta o Payment Brick
         const MPClass = (window as MPWindow).MercadoPago;
         if (!MPClass) throw new Error('SDK do Mercado Pago não carregado.');
 
@@ -99,12 +91,12 @@ function CheckoutBricksInner() {
         const bricksBuilder = mp.bricks();
 
         const controller = await bricksBuilder.create('payment', 'payment_brick_container', {
-          initialization: { amount: 10.0, preferenceId },
+          initialization: { amount }, // <<< apenas amount
           customization: {
             paymentMethods: {
               creditCard: 'all',
               debitCard: 'all',
-              ticket: 'all',
+              ticket: 'all',       // boleto
               bankTransfer: 'all', // PIX
             },
           },
@@ -113,12 +105,21 @@ function CheckoutBricksInner() {
               // opcional
             },
             onSubmit: async () => {
-              // Se desejar processar no backend, faça fetch para /api/mp/process-payment
-              // e lance erro em caso de falha para cair no onError.
+              // Aqui você pode: validar algo no backend, registrar auditoria etc.
+              // O Brick completa o pagamento; depois você redireciona para /pedidos.
+              try {
+                // Limpa carrinho local (se desejar)
+                // localStorage.removeItem('carrinho');
+                // Redireciona para /pedidos
+                window.location.href = '/pedidos';
+              } catch (err) {
+                console.error(err);
+                throw err; // dispara onError
+              }
             },
             onError: (err) => {
               console.error(err);
-              setError('Erro no Payment Brick.');
+              setError('Não foi possível processar o pagamento. Tente novamente.');
             },
           },
         });
@@ -140,7 +141,8 @@ function CheckoutBricksInner() {
         /* noop */
       }
     };
-  }, [sdkReady, prefIdFromQS]);
+    // mountKey força remontagem se carrinho/amount mudarem
+  }, [sdkReady, amount, mountKey]);
 
   return (
     <>
@@ -150,14 +152,33 @@ function CheckoutBricksInner() {
         strategy="afterInteractive"
         onLoad={() => setSdkReady(true)}
       />
+
       <div className="max-w-xl px-4 py-8 mx-auto">
         <h1 className="mb-4 text-2xl font-bold">Pagamento</h1>
+
+        {/* Informação do retorno (opcional) */}
+        {status && (
+          <div className="p-3 mb-4 text-sm border rounded bg-white/10 border-white/20">
+            Status do retorno: <strong>{status}</strong>
+          </div>
+        )}
+
         {error && (
           <div className="p-3 mb-4 text-sm text-red-700 bg-red-100 rounded">
             {error}
           </div>
         )}
-        <div id="payment_brick_container" ref={containerRef} />
+
+        {amount === null ? (
+          <div className="p-3 border rounded bg-white/5 border-white/10">Calculando total…</div>
+        ) : amount <= 0 ? (
+          <div className="p-3 border rounded bg-white/5 border-white/10">Seu carrinho está vazio.</div>
+        ) : (
+          <>
+            <p className="mb-2 text-sm opacity-80">Total: <strong>R$ {amount.toFixed(2)}</strong></p>
+            <div id="payment_brick_container" ref={containerRef} />
+          </>
+        )}
       </div>
     </>
   );
