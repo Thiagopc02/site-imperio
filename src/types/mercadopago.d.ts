@@ -1,7 +1,10 @@
-// Tipagem mínima para o SDK do Mercado Pago no window
+// Tipos mínimos do SDK do Mercado Pago que roda no navegador (Payment Bricks)
 declare global {
   interface Window {
-    MercadoPago?: new (publicKey: string, opts?: { locale?: string }) => {
+    MercadoPago?: new (
+      publicKey: string,
+      opts?: { locale?: string }
+    ) => {
       bricks(): {
         create(
           type: 'payment',
@@ -15,10 +18,10 @@ declare global {
             callbacks?: {
               onReady?: () => void;
               onError?: (err: unknown) => void;
-              onSubmit?: (args: { selectedPaymentMethod?: unknown; formData: Record<string, unknown> }) => Promise<void>;
+              onSubmit?: (args?: unknown) => Promise<void>;
             };
           }
-        ): Promise<{ unmount?: () => void }>;
+        ): Promise<{ unmount?: () => void } | void>;
       };
     };
   }
