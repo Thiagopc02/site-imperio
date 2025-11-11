@@ -58,7 +58,7 @@ function CheckoutBricksInner() {
     }
   }, []);
 
-  // Monta o Payment Brick para cartão/débito/boleto/pix (fluxo interno)
+  // Monta o Payment Brick para cartão/débito/boleto (Pix removido do Brick)
   useEffect(() => {
     if (!sdkReady || !containerRef.current) return;
     if (amount === null) return;
@@ -86,7 +86,7 @@ function CheckoutBricksInner() {
               creditCard: 'all',
               debitCard: 'all',
               ticket: 'all',
-              bankTransfer: 'all', // Pix
+              // ❌ NÃO incluir bankTransfer para não mostrar Pix dentro do Brick
             },
           },
           callbacks: {
