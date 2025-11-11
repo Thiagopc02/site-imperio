@@ -3,26 +3,25 @@
 import { Suspense, useEffect, useRef, useState } from 'react';
 import Script from 'next/script';
 
-type PaymentBrickController = { unmount: () => void };
-type PaymentBrickOptions = {
-  initialization: { amount: number };
-  customization?: unknown;
-  callbacks?: {
-    onReady?: () => void;
-    onSubmit?: () => Promise<void>;
-    onError?: (err: unknown) => void;
-  };
-};
-type BricksBuilder = {
-  create: (
-    type: 'payment',
-    containerId: string,
-    options: PaymentBrickOptions
-  ) => Promise<PaymentBrickController | void | undefined>;
-};
-type MPInstance = { bricks: () => BricksBuilder };
+/** Tipos mínimos para o Brick */
 type MPWindow = typeof window & {
-  MercadoPago?: new (key: string, opts?: { locale?: string }) => MPInstance;
+  MercadoPago?: new (key: string, opts?: { locale?: string }) => {
+    bricks(): {
+      create(
+        type: 'payment',
+        containerId: string,
+        options: {
+          initialization: { amount: number };
+          customization?: unknown;
+          callbacks?: {
+            onReady?: () => void;
+            onSubmit?: () => Promise<void>;
+            onError?: (err: unknown) => void;
+          };
+        }
+      ): Promise<{ unmount?: () => void } | void>;
+    };
+  };
 };
 
 function CheckoutBricksInner() {
@@ -33,32 +32,30 @@ function CheckoutBricksInner() {
   const [amount, setAmount] = useState<number | null>(null);
   const [mountKey, setMountKey] = useState(0);
 
-  // PIX por e-mail
-  const [pixEmail, setPixEmail] = useState('');
-  const [sendingPix, setSendingPix] = useState(false);
-  const [pixSuccessMsg, setPixSuccessMsg] = useState<string | null>(null);
-
-  // total do carrinho
+  // 1) Lê o total do carrinho
   useEffect(() => {
     try {
       const raw = localStorage.getItem('carrinho');
       const cart: Array<{ preco: number; quantidade: number }> = raw ? JSON.parse(raw) : [];
-      const total = cart.reduce((acc, i) => acc + Number(i.preco || 0) * Number(i.quantidade || 0), 0);
+      const total = cart.reduce(
+        (acc, i) => acc + Number(i.preco || 0) * Number(i.quantidade || 0),
+        0
+      );
       setAmount(Number.isFinite(total) ? Number(total.toFixed(2)) : 0);
-      setMountKey((k) => k + 1);
+      setMountKey((k) => k + 1); // força remontar o Brick se total mudar
     } catch {
       setAmount(0);
     }
   }, []);
 
-  // SDK pronto
+  // 2) Marca SDK pronto quando o script carregar
   useEffect(() => {
     if (typeof window !== 'undefined' && (window as MPWindow).MercadoPago) {
       setSdkReady(true);
     }
   }, []);
 
-  // Monta o Payment Brick para cartão/débito/boleto (Pix removido do Brick)
+  // 3) Monta o Payment Brick (Cartão/Débito/Boleto/Pix)
   useEffect(() => {
     if (!sdkReady || !containerRef.current) return;
     if (amount === null) return;
@@ -69,7 +66,7 @@ function CheckoutBricksInner() {
       return;
     }
 
-    let controller: PaymentBrickController | undefined;
+    let unmount: (() => void) | undefined;
 
     (async () => {
       try {
@@ -77,22 +74,24 @@ function CheckoutBricksInner() {
         if (!MPClass) throw new Error('SDK do Mercado Pago não carregado.');
 
         const mp = new MPClass(publicKey, { locale: 'pt-BR' });
-        const bricksBuilder = mp.bricks();
+        const bricks = mp.bricks();
 
-        const c = await bricksBuilder.create('payment', 'payment_brick_container', {
+        const controller = await bricks.create('payment', 'payment_brick_container', {
           initialization: { amount: amount || 0 },
           customization: {
             paymentMethods: {
               creditCard: 'all',
               debitCard: 'all',
               ticket: 'all',
-              // ❌ NÃO incluir bankTransfer para não mostrar Pix dentro do Brick
+              bankTransfer: 'all', // ✅ Pix dentro do Brick
             },
           },
           callbacks: {
-            onReady: () => {},
+            onReady: () => {
+              // opcional
+            },
             onSubmit: async () => {
-              // fluxo do próprio Brick (pós-sucesso)
+              // Depois do fluxo do Brick, redireciona para pedidos
               window.location.href = '/pedidos';
             },
             onError: (err) => {
@@ -102,8 +101,8 @@ function CheckoutBricksInner() {
           },
         });
 
-        if (c && typeof (c as PaymentBrickController).unmount === 'function') {
-          controller = c as PaymentBrickController;
+        if (controller && typeof controller.unmount === 'function') {
+          unmount = controller.unmount.bind(controller);
         }
       } catch (e) {
         const msg = e instanceof Error ? e.message : String(e);
@@ -113,51 +112,13 @@ function CheckoutBricksInner() {
     })();
 
     return () => {
-      try { controller?.unmount?.(); } catch {}
+      try {
+        unmount?.();
+      } catch {
+        /* noop */
+      }
     };
   }, [sdkReady, amount, mountKey]);
-
-  // Envia PIX por e-mail (não exibe QR/código na tela)
-  const handleSendPixEmail = async () => {
-    setError(null);
-    setPixSuccessMsg(null);
-
-    if (!amount || amount <= 0) {
-      setError('Carrinho vazio.');
-      return;
-    }
-    if (!pixEmail || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(pixEmail)) {
-      setError('Informe um e-mail válido para receber o PIX.');
-      return;
-    }
-
-    try {
-      setSendingPix(true);
-      const res = await fetch('/api/mp/create-pix', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ amount, email: pixEmail, description: 'Compra na Império' }),
-      });
-      const j = await res.json();
-      if (!res.ok || j.error) {
-        setError(j.error || 'Falha ao gerar PIX');
-        return;
-      }
-
-      // Mercado Pago envia o e-mail ao payer automaticamente.
-      setPixSuccessMsg('Enviamos o QR Code e o código Pix para o seu e-mail. Verifique sua caixa de entrada.');
-
-      // (opcional) abrir instruções do pagamento em nova aba
-      if (j.ticket_url) {
-        window.open(j.ticket_url as string, '_blank', 'noopener,noreferrer');
-      }
-    } catch (e) {
-      console.error(e);
-      setError('Falha ao gerar/enviar PIX. Tente novamente.');
-    } finally {
-      setSendingPix(false);
-    }
-  };
 
   return (
     <>
@@ -168,8 +129,7 @@ function CheckoutBricksInner() {
         onLoad={() => setSdkReady(true)}
       />
 
-      <div className="max-w-3xl p-4 mx-auto space-y-4">
-        {/* Brick do Mercado Pago */}
+      <div className="max-w-3xl p-4 mx-auto">
         <div className="p-4 border rounded-2xl border-white/10 bg-white/5">
           <h2 className="mb-2 text-xl font-bold">Pagamento</h2>
 
@@ -180,40 +140,20 @@ function CheckoutBricksInner() {
           )}
 
           {amount === null ? (
-            <div className="p-3 border rounded bg-white/5 border-white/10">Calculando total…</div>
+            <div className="p-3 border rounded bg-white/5 border-white/10">
+              Calculando total…
+            </div>
           ) : amount <= 0 ? (
-            <div className="p-3 border rounded bg-white/5 border-white/10">Seu carrinho está vazio.</div>
+            <div className="p-3 border rounded bg-white/5 border-white/10">
+              Seu carrinho está vazio.
+            </div>
           ) : (
             <>
-              <p className="mb-2 text-sm opacity-80">Total: <strong>R$ {amount.toFixed(2)}</strong></p>
+              <p className="mb-2 text-sm opacity-80">
+                Total: <strong>R$ {amount.toFixed(2)}</strong>
+              </p>
               <div id="payment_brick_container" ref={containerRef} />
             </>
-          )}
-        </div>
-
-        {/* PIX por e-mail (sem exibir QR/copia-e-cola) */}
-        <div className="p-4 border rounded-2xl border-white/10 bg-white/5">
-          <h3 className="mb-3 font-semibold">Receber PIX por e-mail</h3>
-
-          <label className="block mb-1 text-sm">E-mail</label>
-          <input
-            type="email"
-            value={pixEmail}
-            onChange={(e) => setPixEmail(e.target.value)}
-            placeholder="exemplo@email.com"
-            className="w-full p-2 mb-3 border rounded-lg bg-black/30 border-white/10"
-          />
-
-          <button
-            onClick={handleSendPixEmail}
-            className="w-full py-2 font-semibold text-black rounded-lg bg-emerald-500 hover:bg-emerald-600 disabled:opacity-60"
-            disabled={!amount || amount <= 0 || sendingPix}
-          >
-            {sendingPix ? 'Enviando…' : 'Enviar QRcode por e-mail'}
-          </button>
-
-          {pixSuccessMsg && (
-            <p className="mt-3 text-sm text-emerald-300">{pixSuccessMsg}</p>
           )}
         </div>
       </div>
