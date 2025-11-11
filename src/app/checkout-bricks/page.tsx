@@ -4,7 +4,6 @@ import { Suspense, useEffect, useRef, useState } from 'react';
 import Script from 'next/script';
 import Image from 'next/image';
 
-/* ===== Tipos mínimos do SDK (Payment Brick) ===== */
 type PaymentBrickController = { unmount: () => void };
 type PaymentBrickOptions = {
   initialization: { amount: number };
@@ -26,7 +25,6 @@ type MPInstance = { bricks: () => BricksBuilder };
 type MPWindow = typeof window & {
   MercadoPago?: new (key: string, opts?: { locale?: string }) => MPInstance;
 };
-/* ================================================ */
 
 function CheckoutBricksInner() {
   const containerRef = useRef<HTMLDivElement | null>(null);
@@ -36,10 +34,7 @@ function CheckoutBricksInner() {
   const [amount, setAmount] = useState<number | null>(null);
   const [mountKey, setMountKey] = useState(0);
 
-  // Detectar se o usuário selecionou "Pix" dentro do Brick
-  const [pixSelectedInBrick, setPixSelectedInBrick] = useState(false);
-
-  // PIX (QR + Copia e Cola) – geração manual
+  // PIX manual (QR + Copia e Cola)
   const [pixEmail, setPixEmail] = useState('');
   const [pixId, setPixId] = useState<number | null>(null);
   const [pixQrBase64, setPixQrBase64] = useState<string | null>(null);
@@ -47,7 +42,7 @@ function CheckoutBricksInner() {
   const [pixStatus, setPixStatus] = useState<string | null>(null);
   const [polling, setPolling] = useState(false);
 
-  // 1) Calcula total pelo carrinho local
+  // total do carrinho
   useEffect(() => {
     try {
       const raw = localStorage.getItem('carrinho');
@@ -60,14 +55,14 @@ function CheckoutBricksInner() {
     }
   }, []);
 
-  // 2) Sinaliza SDK pronto se já estiver no window
+  // SDK pronto
   useEffect(() => {
     if (typeof window !== 'undefined' && (window as MPWindow).MercadoPago) {
       setSdkReady(true);
     }
   }, []);
 
-  // 3) Monta Payment Brick (sem preferenceId)
+  // monta o Payment Brick
   useEffect(() => {
     if (!sdkReady || !containerRef.current) return;
     if (amount === null) return;
@@ -98,14 +93,13 @@ function CheckoutBricksInner() {
             paymentMethods: {
               creditCard: 'all',
               debitCard: 'all',
-              ticket: 'all',       // boleto
-              bankTransfer: 'all', // Pix via Brick (opcional)
+              ticket: 'all',
+              bankTransfer: 'all', // Pix
             },
           },
           callbacks: {
             onReady: () => {},
             onSubmit: async () => {
-              // Fluxo interno (cartão/boleto/pix do brick)
               window.location.href = '/pedidos';
             },
             onError: (err) => {
@@ -130,48 +124,7 @@ function CheckoutBricksInner() {
     };
   }, [sdkReady, amount, mountKey]);
 
-  // 4) Observa mudanças dentro do Brick para saber se "Pix" foi selecionado
-  useEffect(() => {
-    const root = containerRef.current;
-    if (!root) return;
-
-    const recompute = () => {
-      // Estratégia simples: procurar inputs radio e ver qual está checado,
-      // lendo o texto do label/elemento pai.
-      const radios = root.querySelectorAll<HTMLInputElement>('input[type="radio"]');
-      let selectedText = '';
-      radios.forEach((r) => {
-        if (r.checked) {
-          // tenta achar um texto visível próximo
-          const label = r.closest('label');
-          const text = (label?.textContent || r.parentElement?.textContent || '').toLowerCase();
-          if (text) selectedText = text;
-        }
-      });
-      setPixSelectedInBrick(selectedText.includes('pix'));
-    };
-
-    // Ouve eventos de change dentro do container
-    const onChange = (e: Event) => {
-      if ((e.target as HTMLInputElement)?.type === 'radio') recompute();
-    };
-    root.addEventListener('change', onChange);
-
-    // Tenta computar no início (às vezes o Brick já vem com algo marcado)
-    const t = setTimeout(recompute, 600);
-
-    // Fallback observador de mutações (quando o Brick re-renderiza internamente)
-    const mo = new MutationObserver(() => recompute());
-    mo.observe(root, { childList: true, subtree: true, attributes: true });
-
-    return () => {
-      root.removeEventListener('change', onChange);
-      clearTimeout(t);
-      mo.disconnect();
-    };
-  }, [containerRef, mountKey]);
-
-  // ====== PIX: criar pagamento (QR + Copia e Cola) ======
+  // Gera PIX (QR + Copia e Cola)
   const handleCreatePix = async () => {
     setError(null);
     setPixId(null);
@@ -207,7 +160,7 @@ function CheckoutBricksInner() {
     setPolling(true);
   };
 
-  // Polling de status do PIX
+  // polling de status
   useEffect(() => {
     if (!polling || !pixId) return;
     const it = setInterval(async () => {
@@ -251,7 +204,7 @@ function CheckoutBricksInner() {
       />
 
       <div className="max-w-3xl p-4 mx-auto space-y-4">
-        {/* Bloco do Payment Brick */}
+        {/* Brick do Mercado Pago */}
         <div className="p-4 border rounded-2xl border-white/10 bg-white/5">
           <h2 className="mb-2 text-xl font-bold">Pagamento</h2>
 
@@ -273,70 +226,68 @@ function CheckoutBricksInner() {
           )}
         </div>
 
-        {/* Bloco de PIX manual — aparece somente quando o usuário seleciona Pix no Brick */}
-        {pixSelectedInBrick && (
-          <div className="p-4 border rounded-2xl border-white/10 bg-white/5">
-            <h3 className="mb-3 font-semibold">Pix (QR + Copia e Cola)</h3>
+        {/* PIX manual imediatamente abaixo do Brick */}
+        <div className="p-4 border rounded-2xl border-white/10 bg-white/5">
+          <h3 className="mb-3 font-semibold">Pix (QR + Copia e Cola)</h3>
 
-            <label className="block mb-1 text-sm">E-mail para receber o comprovante</label>
-            <input
-              type="email"
-              value={pixEmail}
-              onChange={(e) => setPixEmail(e.target.value)}
-              placeholder="exemplo@email.com"
-              className="w-full p-2 mb-3 border rounded-lg bg-black/30 border-white/10"
-            />
+          <label className="block mb-1 text-sm">E-mail para receber o comprovante</label>
+          <input
+            type="email"
+            value={pixEmail}
+            onChange={(e) => setPixEmail(e.target.value)}
+            placeholder="exemplo@email.com"
+            className="w-full p-2 mb-3 border rounded-lg bg-black/30 border-white/10"
+          />
 
-            <button
-              onClick={handleCreatePix}
-              className="w-full py-2 font-semibold text-black rounded-lg bg-emerald-500 hover:bg-emerald-600"
-              disabled={!amount || amount <= 0}
-            >
-              Gerar QRcode
-            </button>
+          <button
+            onClick={handleCreatePix}
+            className="w-full py-2 font-semibold text-black rounded-lg bg-emerald-500 hover:bg-emerald-600"
+            disabled={!amount || amount <= 0}
+          >
+            Gerar QRcode
+          </button>
 
-            {(pixQrBase64 || pixCode) && (
-              <div className="mt-4 space-y-3">
-                {pixQrBase64 && (
-                  <div className="flex flex-col items-center">
-                    <Image
-                      src={`data:image/png;base64,${pixQrBase64}`}
-                      alt="QR Code PIX"
-                      width={192}
-                      height={192}
-                      sizes="192px"
-                      className="object-contain w-48 h-48 bg-white rounded"
-                    />
-                    <span className="mt-1 text-xs opacity-70">Escaneie no app do seu banco</span>
-                  </div>
-                )}
-
-                {pixCode && (
-                  <div>
-                    <label className="text-sm">Copia e Cola</label>
-                    <textarea
-                      readOnly
-                      className="w-full p-2 text-xs border rounded bg-black/30 border-white/10"
-                      rows={4}
-                      value={pixCode}
-                    />
-                    <button
-                      onClick={() => copyToClipboard(pixCode)}
-                      className="px-3 py-1 mt-2 font-semibold text-black bg-yellow-400 rounded"
-                    >
-                      Copiar código
-                    </button>
-                  </div>
-                )}
-
-                <div className="text-sm opacity-80">
-                  Status: <strong>{pixStatus || '—'}</strong>
-                  {polling && <span className="opacity-60"> • aguardando confirmação…</span>}
+          {(pixQrBase64 || pixCode) && (
+            <div className="mt-4 space-y-3">
+              {pixQrBase64 && (
+                <div className="flex flex-col items-center">
+                  <Image
+                    src={`data:image/png;base64,${pixQrBase64}`}
+                    alt="QR Code PIX"
+                    width={192}
+                    height={192}
+                    sizes="192px"
+                    className="object-contain w-48 h-48 bg-white rounded"
+                  />
+                  <span className="mt-1 text-xs opacity-70">Escaneie no app do seu banco</span>
                 </div>
+              )}
+
+              {pixCode && (
+                <div>
+                  <label className="text-sm">Copia e Cola</label>
+                  <textarea
+                    readOnly
+                    className="w-full p-2 text-xs border rounded bg-black/30 border-white/10"
+                    rows={4}
+                    value={pixCode}
+                  />
+                  <button
+                    onClick={() => copyToClipboard(pixCode)}
+                    className="px-3 py-1 mt-2 font-semibold text-black bg-yellow-400 rounded"
+                  >
+                    Copiar código
+                  </button>
+                </div>
+              )}
+
+              <div className="text-sm opacity-80">
+                Status: <strong>{pixStatus || '—'}</strong>
+                {polling && <span className="opacity-60"> • aguardando confirmação…</span>}
               </div>
-            )}
-          </div>
-        )}
+            </div>
+          )}
+        </div>
       </div>
     </>
   );
