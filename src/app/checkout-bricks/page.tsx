@@ -2,7 +2,6 @@
 
 import { Suspense, useEffect, useRef, useState } from 'react';
 import Script from 'next/script';
-import Image from 'next/image';
 
 type PaymentBrickController = { unmount: () => void };
 type PaymentBrickOptions = {
@@ -34,13 +33,10 @@ function CheckoutBricksInner() {
   const [amount, setAmount] = useState<number | null>(null);
   const [mountKey, setMountKey] = useState(0);
 
-  // PIX manual (QR + Copia e Cola)
+  // PIX por e-mail
   const [pixEmail, setPixEmail] = useState('');
-  const [pixId, setPixId] = useState<number | null>(null);
-  const [pixQrBase64, setPixQrBase64] = useState<string | null>(null);
-  const [pixCode, setPixCode] = useState<string | null>(null);
-  const [pixStatus, setPixStatus] = useState<string | null>(null);
-  const [polling, setPolling] = useState(false);
+  const [sendingPix, setSendingPix] = useState(false);
+  const [pixSuccessMsg, setPixSuccessMsg] = useState<string | null>(null);
 
   // total do carrinho
   useEffect(() => {
@@ -62,14 +58,10 @@ function CheckoutBricksInner() {
     }
   }, []);
 
-  // monta o Payment Brick
+  // Monta o Payment Brick para cartão/débito/boleto/pix (fluxo interno)
   useEffect(() => {
     if (!sdkReady || !containerRef.current) return;
     if (amount === null) return;
-    if (amount <= 0) {
-      setError('Seu carrinho está vazio.');
-      return;
-    }
 
     const publicKey = process.env.NEXT_PUBLIC_MP_PUBLIC_KEY;
     if (!publicKey) {
@@ -88,7 +80,7 @@ function CheckoutBricksInner() {
         const bricksBuilder = mp.bricks();
 
         const c = await bricksBuilder.create('payment', 'payment_brick_container', {
-          initialization: { amount },
+          initialization: { amount: amount || 0 },
           customization: {
             paymentMethods: {
               creditCard: 'all',
@@ -100,6 +92,7 @@ function CheckoutBricksInner() {
           callbacks: {
             onReady: () => {},
             onSubmit: async () => {
+              // fluxo do próprio Brick (pós-sucesso)
               window.location.href = '/pedidos';
             },
             onError: (err) => {
@@ -124,73 +117,45 @@ function CheckoutBricksInner() {
     };
   }, [sdkReady, amount, mountKey]);
 
-  // Gera PIX (QR + Copia e Cola)
-  const handleCreatePix = async () => {
+  // Envia PIX por e-mail (não exibe QR/código na tela)
+  const handleSendPixEmail = async () => {
     setError(null);
-    setPixId(null);
-    setPixQrBase64(null);
-    setPixCode(null);
-    setPixStatus(null);
-    setPolling(false);
+    setPixSuccessMsg(null);
 
     if (!amount || amount <= 0) {
       setError('Carrinho vazio.');
       return;
     }
     if (!pixEmail || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(pixEmail)) {
-      setError('Informe um e-mail válido para gerar o PIX.');
+      setError('Informe um e-mail válido para receber o PIX.');
       return;
     }
 
-    const res = await fetch('/api/mp/create-pix', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ amount, email: pixEmail, description: 'Compra na Império' }),
-    });
-    const j = await res.json();
-    if (!res.ok || j.error) {
-      setError(j.error || 'Falha ao gerar PIX');
-      return;
-    }
-
-    setPixId(j.id || null);
-    setPixQrBase64(j.qr_code_base64 || null);
-    setPixCode(j.qr_code || null);
-    setPixStatus(j.status || 'pending');
-    setPolling(true);
-  };
-
-  // polling de status
-  useEffect(() => {
-    if (!polling || !pixId) return;
-    const it = setInterval(async () => {
-      try {
-        const r = await fetch(`/api/mp/payment-status?id=${pixId}`);
-        const j = await r.json();
-        if (j?.status) setPixStatus(j.status);
-
-        if (j?.status === 'approved') {
-          clearInterval(it);
-          setPolling(false);
-          // localStorage.removeItem('carrinho');
-          window.location.href = '/pedidos';
-        }
-      } catch (e) {
-        console.error(e);
-      }
-    }, 5000);
-    return () => clearInterval(it);
-  }, [polling, pixId]);
-
-  const copyToClipboard = async (text: string) => {
     try {
-      await navigator.clipboard.writeText(text);
-      alert('Código PIX copiado!');
-    } catch {
-      const ta = document.createElement('textarea');
-      ta.value = text; document.body.appendChild(ta);
-      ta.select(); document.execCommand('copy'); document.body.removeChild(ta);
-      alert('Código PIX copiado!');
+      setSendingPix(true);
+      const res = await fetch('/api/mp/create-pix', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ amount, email: pixEmail, description: 'Compra na Império' }),
+      });
+      const j = await res.json();
+      if (!res.ok || j.error) {
+        setError(j.error || 'Falha ao gerar PIX');
+        return;
+      }
+
+      // Mercado Pago envia o e-mail ao payer automaticamente.
+      setPixSuccessMsg('Enviamos o QR Code e o código Pix para o seu e-mail. Verifique sua caixa de entrada.');
+
+      // (opcional) abrir instruções do pagamento em nova aba
+      if (j.ticket_url) {
+        window.open(j.ticket_url as string, '_blank', 'noopener,noreferrer');
+      }
+    } catch (e) {
+      console.error(e);
+      setError('Falha ao gerar/enviar PIX. Tente novamente.');
+    } finally {
+      setSendingPix(false);
     }
   };
 
@@ -226,11 +191,11 @@ function CheckoutBricksInner() {
           )}
         </div>
 
-        {/* PIX manual imediatamente abaixo do Brick */}
+        {/* PIX por e-mail (sem exibir QR/copia-e-cola) */}
         <div className="p-4 border rounded-2xl border-white/10 bg-white/5">
-          <h3 className="mb-3 font-semibold">Pix (QR + Copia e Cola)</h3>
+          <h3 className="mb-3 font-semibold">Receber PIX por e-mail</h3>
 
-          <label className="block mb-1 text-sm">E-mail para receber o comprovante</label>
+          <label className="block mb-1 text-sm">E-mail</label>
           <input
             type="email"
             value={pixEmail}
@@ -240,52 +205,15 @@ function CheckoutBricksInner() {
           />
 
           <button
-            onClick={handleCreatePix}
-            className="w-full py-2 font-semibold text-black rounded-lg bg-emerald-500 hover:bg-emerald-600"
-            disabled={!amount || amount <= 0}
+            onClick={handleSendPixEmail}
+            className="w-full py-2 font-semibold text-black rounded-lg bg-emerald-500 hover:bg-emerald-600 disabled:opacity-60"
+            disabled={!amount || amount <= 0 || sendingPix}
           >
-            Gerar QRcode
+            {sendingPix ? 'Enviando…' : 'Enviar QRcode por e-mail'}
           </button>
 
-          {(pixQrBase64 || pixCode) && (
-            <div className="mt-4 space-y-3">
-              {pixQrBase64 && (
-                <div className="flex flex-col items-center">
-                  <Image
-                    src={`data:image/png;base64,${pixQrBase64}`}
-                    alt="QR Code PIX"
-                    width={192}
-                    height={192}
-                    sizes="192px"
-                    className="object-contain w-48 h-48 bg-white rounded"
-                  />
-                  <span className="mt-1 text-xs opacity-70">Escaneie no app do seu banco</span>
-                </div>
-              )}
-
-              {pixCode && (
-                <div>
-                  <label className="text-sm">Copia e Cola</label>
-                  <textarea
-                    readOnly
-                    className="w-full p-2 text-xs border rounded bg-black/30 border-white/10"
-                    rows={4}
-                    value={pixCode}
-                  />
-                  <button
-                    onClick={() => copyToClipboard(pixCode)}
-                    className="px-3 py-1 mt-2 font-semibold text-black bg-yellow-400 rounded"
-                  >
-                    Copiar código
-                  </button>
-                </div>
-              )}
-
-              <div className="text-sm opacity-80">
-                Status: <strong>{pixStatus || '—'}</strong>
-                {polling && <span className="opacity-60"> • aguardando confirmação…</span>}
-              </div>
-            </div>
+          {pixSuccessMsg && (
+            <p className="mt-3 text-sm text-emerald-300">{pixSuccessMsg}</p>
           )}
         </div>
       </div>
