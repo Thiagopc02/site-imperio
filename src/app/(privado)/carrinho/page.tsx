@@ -85,7 +85,7 @@ export default function CarrinhoPage() {
     usuarioId: '',
   });
 
-  // Pagamento: agora só distinguimos “dinheiro” (local) ou “online” (Mercado Pago)
+  // Pagamento: toggle entre dinheiro x online (Mercado Pago)
   const [pagarComDinheiro, setPagarComDinheiro] = useState<boolean>(false);
   const [troco, setTroco] = useState<string>('');
 
@@ -231,9 +231,7 @@ export default function CarrinhoPage() {
     if (carrinho.length === 0) return alert('Seu carrinho está vazio.');
     if (!nome || !telefone) return alert('Preencha nome e telefone.');
     if (!tipoEntrega) return alert('Selecione o tipo de entrega.');
-    if (pagarComDinheiro && troco.trim() === '') {
-      return alert('Informe o valor do troco (ou 0 se não precisar).');
-    }
+    if (troco.trim() === '') return alert('Informe o valor do troco (ou 0 se não precisar).');
 
     let enderecoObj: Endereco | null = null;
     if (tipoEntrega === 'entrega') {
@@ -300,7 +298,7 @@ export default function CarrinhoPage() {
         nome,
         telefone,
         tipoEntrega,
-        formaPagamento: 'online' as const, // será decidido no Checkout (Pix/Cartão/Boleto)
+        formaPagamento: 'online' as const, // será decidido no Checkout
         troco: null as number | null,
         endereco: endEntrega ?? null,
         itens: carrinho.map((item) => ({
@@ -318,7 +316,6 @@ export default function CarrinhoPage() {
 
       await setDoc(doc(db, 'pedidos', externalRef), pedidoRascunho, { merge: true });
 
-      // Salva o carrinho no localStorage (o Checkout Bricks lê de lá)
       if (typeof window !== 'undefined') {
         localStorage.setItem('carrinho', JSON.stringify(carrinho));
       }
@@ -343,7 +340,7 @@ export default function CarrinhoPage() {
             {carrinho.map((item, index) => (
               <div
                 key={`${item.id}-${index}`}
-                className="flex items-center justify-between p-4 rounded shadow bg-neutral-900"
+                className="flex items-center justify-between p-4 transition shadow-sm rounded-xl bg-neutral-900/80 ring-1 ring-white/10 hover:ring-yellow-500/40"
               >
                 <div className="flex items-center gap-4">
                   <img
@@ -396,7 +393,7 @@ export default function CarrinhoPage() {
           placeholder="Nome completo"
           value={nome}
           onChange={(e: React.ChangeEvent<HTMLInputElement>) => setNome(e.target.value)}
-          className="w-full p-2 mb-2 text-black rounded"
+          className="w-full p-3 mb-2 text-black rounded-lg"
         />
         <input
           type="text"
@@ -405,7 +402,7 @@ export default function CarrinhoPage() {
           onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
             setTelefone(formatarTelefone(e.target.value))
           }
-          className="w-full p-2 mb-4 text-black rounded"
+          className="w-full p-3 mb-4 text-black rounded-lg"
         />
 
         {/* Tipo de entrega */}
@@ -414,7 +411,7 @@ export default function CarrinhoPage() {
           <div className="flex gap-4">
             <button
               onClick={() => setTipoEntrega('retirada')}
-              className={`px-4 py-2 rounded ${
+              className={`px-4 py-2 rounded-lg ${
                 tipoEntrega === 'retirada' ? 'bg-yellow-500 text-black' : 'bg-zinc-700 text-white'
               }`}
             >
@@ -422,7 +419,7 @@ export default function CarrinhoPage() {
             </button>
             <button
               onClick={() => setTipoEntrega('entrega')}
-              className={`px-4 py-2 rounded ${
+              className={`px-4 py-2 rounded-lg ${
                 tipoEntrega === 'entrega' ? 'bg-yellow-500 text-black' : 'bg-zinc-700 text-white'
               }`}
             >
@@ -439,10 +436,10 @@ export default function CarrinhoPage() {
                 {enderecos.map((endereco) => (
                   <div
                     key={endereco.id}
-                    className={`p-3 rounded border ${
+                    className={`p-3 rounded-xl ring-1 ${
                       enderecoSelecionado === endereco.id
-                        ? 'border-yellow-500 bg-zinc-800'
-                        : 'border-zinc-700 bg-zinc-900'
+                        ? 'ring-yellow-500 bg-zinc-800'
+                        : 'ring-white/10 bg-zinc-900'
                     }`}
                   >
                     <p className="text-sm font-semibold">
@@ -479,7 +476,7 @@ export default function CarrinhoPage() {
             )}
 
             {mostrarFormulario || enderecos.length === 0 ? (
-              <div className="p-4 mt-4 border border-yellow-500 rounded bg-zinc-900">
+              <div className="p-4 mt-4 rounded-xl ring-1 ring-yellow-500 bg-zinc-900">
                 <p className="mb-2 text-yellow-400">Preencha o novo endereço:</p>
                 {(['cep', 'rua', 'numero', 'bairro', 'cidade', 'complemento', 'pontoReferencia'] as const).map(
                   (campo) => (
@@ -497,13 +494,13 @@ export default function CarrinhoPage() {
                           if (cepLimpo.length === 8) buscarCidadePorCep(cepLimpo);
                         }
                       }}
-                      className="w-full p-2 mb-2 text-black rounded"
+                      className="w-full p-3 mb-2 text-black rounded-lg"
                     />
                   )
                 )}
 
                 {/* Geolocalização */}
-                <div className="p-2 mt-2 rounded bg-zinc-800">
+                <div className="p-3 mt-2 rounded-lg bg-zinc-800">
                   <button
                     onClick={detectarLocalizacao}
                     className="px-3 py-2 text-sm font-semibold text-black rounded bg-emerald-400 hover:bg-emerald-500"
@@ -531,7 +528,7 @@ export default function CarrinhoPage() {
 
                 <button
                   onClick={salvarEndereco}
-                  className="w-full py-2 mt-3 font-semibold text-black bg-yellow-400 rounded hover:bg-yellow-500"
+                  className="w-full py-3 mt-3 font-semibold text-black bg-yellow-400 rounded-lg hover:bg-yellow-500"
                 >
                   Salvar Endereço
                 </button>
@@ -540,7 +537,7 @@ export default function CarrinhoPage() {
               enderecos.length < 3 && (
                 <button
                   onClick={() => setMostrarFormulario(true)}
-                  className="px-4 py-2 mt-4 text-sm font-semibold text-blue-400 border border-blue-400 rounded hover:bg-blue-900"
+                  className="px-4 py-2 mt-4 text-sm font-semibold text-blue-400 border border-blue-400 rounded-lg hover:bg-blue-900"
                 >
                   + Adicionar novo endereço
                 </button>
@@ -551,7 +548,7 @@ export default function CarrinhoPage() {
 
         {/* Retirada: info com mapa fixo da loja */}
         {tipoEntrega === 'retirada' && (
-          <div className="p-4 mb-4 rounded bg-zinc-800">
+          <div className="p-4 mb-6 rounded-xl bg-zinc-800 ring-1 ring-white/10">
             <p className="mb-2 font-medium text-green-400">Você optou por retirar no estabelecimento.</p>
             <div className="text-sm text-white">
               <p><strong>Império Bebidas e Tabacos</strong></p>
@@ -621,15 +618,16 @@ export default function CarrinhoPage() {
           </div>
         </div>
 
-        {/* Bloco explicativo quando é online (MP) */}
+        {/* Bloco explicativo quando é online (MP) — sem botão interno (evita duplicação) */}
         {!pagarComDinheiro && (
-          <div className="p-4 mb-6 border rounded bg-zinc-900 border-zinc-700">
-            <p className="text-sm">
-              <strong>Pagar com PIX / Cartão Crédito ou Débito / Boleto</strong>
+          <div className="p-4 mb-6 rounded-xl bg-gradient-to-b from-zinc-900 to-zinc-950 ring-1 ring-white/10">
+            <p className="text-sm/6">
+              <strong>Pagar com PIX / Cartão Crédito ou Débito / Boleto</strong><br />
+              Você escolhe o método na próxima etapa (Checkout do Mercado Pago).
             </p>
 
             {/* Bandeiras (adicione os arquivos correspondentes em /public/bandeiras/...) */}
-            <div className="flex flex-wrap items-center gap-2 mt-2">
+            <div className="flex flex-wrap items-center gap-3 mt-3 transition opacity-80 hover:opacity-100">
               <img src="/bandeiras/pix.svg" alt="Pix" className="h-6" />
               <img src="/bandeiras/visa.svg" alt="Visa" className="h-6" />
               <img src="/bandeiras/mastercard.svg" alt="Mastercard" className="h-6" />
@@ -638,14 +636,6 @@ export default function CarrinhoPage() {
               <img src="/bandeiras/amex.svg" alt="American Express" className="h-6" />
               <img src="/bandeiras/boleto.svg" alt="Boleto" className="h-6" />
             </div>
-
-            <button
-              onClick={irParaPagamentoMP}
-              className="inline-flex items-center gap-2 px-4 py-3 mt-4 text-base font-semibold text-white rounded bg-sky-500 hover:bg-sky-600"
-            >
-              <img src="/mercadopago-logo.svg" alt="Mercado Pago" className="h-5" />
-              Ir para Pagamento (Mercado Pago)
-            </button>
           </div>
         )}
 
@@ -657,7 +647,7 @@ export default function CarrinhoPage() {
               placeholder="Troco para quanto?"
               value={troco}
               onChange={(e: React.ChangeEvent<HTMLInputElement>) => setTroco(e.target.value)}
-              className="w-full p-2 mb-2 text-black border rounded border-zinc-300"
+              className="w-full p-3 mb-2 text-black border rounded-lg border-zinc-300"
             />
             <p className="text-xs text-zinc-400">
               Se não precisar de troco, informe <strong>0</strong>.
@@ -665,29 +655,31 @@ export default function CarrinhoPage() {
           </div>
         )}
 
-        {/* Total e botões */}
-        <p className="mb-4 text-lg font-bold">Total: R$ {total.toFixed(2)}</p>
+        {/* Total e CTA ÚNICO */}
+        <div className="sticky z-10 bottom-4">
+          <div className="p-3 rounded-xl bg-zinc-900/80 ring-1 ring-white/10 backdrop-blur">
+            <p className="mb-3 text-lg font-bold">
+              Total: <span className="text-yellow-400">R$ {total.toFixed(2)}</span>
+            </p>
 
-        {carrinho.length > 0 && (
-          <div className="grid gap-3">
-            {pagarComDinheiro ? (
+            {carrinho.length > 0 && (
               <button
-                onClick={finalizarPedidoDinheiro}
-                className="w-full py-3 text-lg font-semibold text-white bg-green-600 rounded hover:bg-green-700"
+                onClick={pagarComDinheiro ? finalizarPedidoDinheiro : irParaPagamentoMP}
+                className={[
+                  'w-full py-3 text-lg font-semibold rounded-lg transition',
+                  pagarComDinheiro
+                    ? 'text-white bg-green-600 hover:bg-green-700'
+                    : 'text-white bg-sky-500 hover:bg-sky-600',
+                ].join(' ')}
+                title={pagarComDinheiro ? 'Finalizar e pagar em dinheiro na entrega' : 'Ir para o Checkout do Mercado Pago'}
               >
-                Finalizar Pedido (pagar na entrega)
-              </button>
-            ) : (
-              <button
-                onClick={irParaPagamentoMP}
-                className="w-full py-3 text-lg font-semibold text-white rounded bg-sky-500 hover:bg-sky-600"
-                title="Você escolherá Pix, Cartão ou Boleto na próxima etapa"
-              >
-                Ir para Pagamento (Mercado Pago)
+                {pagarComDinheiro
+                  ? 'Finalizar Pedido (pagar na entrega)'
+                  : 'Ir para Pagamento (Mercado Pago)'}
               </button>
             )}
           </div>
-        )}
+        </div>
       </div>
     </main>
   );
