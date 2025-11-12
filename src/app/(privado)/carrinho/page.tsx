@@ -585,7 +585,7 @@ export default function CarrinhoPage() {
         <div className="mb-6">
           <label className="block mb-2 font-semibold">Forma de pagamento:</label>
 
-          {/* Alternador simples: Dinheiro ou Online (Mercado Pago) */}
+          {/* Alternador: Dinheiro x Online */}
           <div className="flex flex-wrap items-center gap-3">
             <button
               onClick={() => setPagarComDinheiro(false)}
@@ -618,23 +618,22 @@ export default function CarrinhoPage() {
           </div>
         </div>
 
-        {/* Bloco explicativo quando é online (MP) — sem botão interno (evita duplicação) */}
+        {/* Bloco explicativo (ONLINE) centralizado, com as imagens da pasta /public */}
         {!pagarComDinheiro && (
-          <div className="p-4 mb-6 rounded-xl bg-gradient-to-b from-zinc-900 to-zinc-950 ring-1 ring-white/10">
+          <div className="p-5 mb-6 text-center rounded-xl bg-gradient-to-b from-zinc-900 to-zinc-950 ring-1 ring-white/10">
             <p className="text-sm/6">
               <strong>Pagar com PIX / Cartão Crédito ou Débito / Boleto</strong><br />
               Você escolhe o método na próxima etapa (Checkout do Mercado Pago).
             </p>
 
-            {/* Bandeiras (adicione os arquivos correspondentes em /public/bandeiras/...) */}
-            <div className="flex flex-wrap items-center gap-3 mt-3 transition opacity-80 hover:opacity-100">
-              <img src="/bandeiras/pix.svg" alt="Pix" className="h-6" />
-              <img src="/bandeiras/visa.svg" alt="Visa" className="h-6" />
-              <img src="/bandeiras/mastercard.svg" alt="Mastercard" className="h-6" />
-              <img src="/bandeiras/elo.svg" alt="Elo" className="h-6" />
-              <img src="/bandeiras/hipercard.svg" alt="Hipercard" className="h-6" />
-              <img src="/bandeiras/amex.svg" alt="American Express" className="h-6" />
-              <img src="/bandeiras/boleto.svg" alt="Boleto" className="h-6" />
+            <div className="flex flex-wrap items-center justify-center mt-4 gap-x-4 gap-y-3 opacity-90 hover:opacity-100">
+              <img src="/pix-carrinho.png" alt="Pix" className="h-6" />
+              <img src="/visa-carrinho.png" alt="Visa" className="h-6" />
+              <img src="/mastercard-carrinho.png" alt="Mastercard" className="h-6" />
+              <img src="/elo-carrinho.png" alt="Elo" className="h-6" />
+              <img src="/hipercard-carrinho.svg" alt="Hipercard" className="h-6" />
+              <img src="/american-express-carrinho.svg" alt="American Express" className="h-6" />
+              <img src="/boleto-carrinho.svg" alt="Boleto" className="h-6" />
             </div>
           </div>
         )}
