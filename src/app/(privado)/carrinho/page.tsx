@@ -128,10 +128,6 @@ export default function CarrinhoPage() {
   }, [userId]);
 
   /* ===================== Helpers ===================== */
-  const baseUrl =
-    process.env.NEXT_PUBLIC_SITE_URL ??
-    (typeof window !== 'undefined' ? window.location.origin : '');
-
   const formatarTelefone = (valor: string) => {
     const cleaned = valor.replace(/\D/g, '');
     const match = cleaned.match(/^(\d{2})(\d{5})(\d{4})$/);
@@ -282,6 +278,7 @@ export default function CarrinhoPage() {
   const gerarExternalRef = () =>
     `order_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
 
+  // >>> NOVO FLUXO: sem create-preference. Redireciona para /checkout-bricks
   const irParaPagamentoMP = async () => {
     try {
       if (carrinho.length === 0) {
@@ -304,7 +301,7 @@ export default function CarrinhoPage() {
 
       const externalRef = gerarExternalRef();
 
-      // (opcional, mas recomendado) cria rascunho do pedido para já aparecer na dashboard
+      // rascunho do pedido (será atualizado via webhook)
       const pedidoRascunho = {
         uid: userId || '',
         nome,
@@ -327,63 +324,20 @@ export default function CarrinhoPage() {
         })),
         total,
         data: new Date().toISOString(),
-        status: 'Aguardando pagamento', // será atualizado pelo webhook
+        status: 'Aguardando pagamento',
+        // guarda a referência para facilitar conciliação se quiser
+        external_reference: externalRef,
       };
 
       await setDoc(doc(db, 'pedidos', externalRef), pedidoRascunho, { merge: true });
 
-      const telefoneNum = telefone.replace(/\D/g, '').slice(-11);
-
-      const body = {
-        items: carrinho.map((item) => ({
-          title: item.nome,
-          quantity: item.quantidade,
-          unit_price: Number(item.preco),
-          currency_id: 'BRL' as const,
-        })),
-        payer: {
-          name: nome || 'Cliente',
-          email: userEmail ?? 'sandbox@test.com',
-          phone: { number: telefoneNum || '' },
-        },
-        external_reference: externalRef, // ESSENCIAL
-        shipment: endEntrega
-          ? {
-              receiver_address: {
-                zip_code: endEntrega.cep,
-                street_name: `${endEntrega.rua}, ${endEntrega.numero}`,
-                city_name: endEntrega.cidade,
-              },
-            }
-          : undefined,
-        back_urls: {
-          success: `${baseUrl}/pedidos`,
-          failure: `${baseUrl}/checkout-bricks?status=failure`,
-          pending: `${baseUrl}/checkout-bricks?status=pending`,
-        },
-      };
-
-      const res = await fetch('/api/mp/create-preference', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(body),
-      });
-
-      if (!res.ok) {
-        const t = await res.text();
-        console.error('Erro ao criar preference:', t);
-        alert('Falha ao criar preferência de pagamento.');
-        return;
+      // Salva o carrinho no localStorage (o Checkout Bricks lê de lá)
+      if (typeof window !== 'undefined') {
+        localStorage.setItem('carrinho', JSON.stringify(carrinho));
       }
 
-      const data: { id?: string; preferenceId?: string } = await res.json();
-      const prefId = data?.id || data?.preferenceId;
-      if (!prefId) {
-        alert('Preferência criada sem ID.');
-        return;
-      }
-
-      router.push(`/checkout-bricks?pref_id=${prefId}`);
+      // Vai para a página do Payment Brick
+      router.push('/checkout-bricks');
     } catch (e) {
       console.error(e);
       alert('Erro ao iniciar o pagamento.');
