@@ -116,8 +116,15 @@ function CheckoutBricksInner() {
               setError(null);
 
               try {
-                const formData =
-                  (args as { formData?: unknown } | undefined)?.formData ?? {};
+                const formData = (args as { formData?: unknown } | undefined)?.formData ?? {};
+
+                // 🔴 IMPORTANTE: o Bricks não envia transaction_amount.
+                // Enviamos junto a quantia que foi usada na initialization.
+                const payload = {
+                  ...(formData as Record<string, unknown>),
+                  transaction_amount: Number(amount || 0),
+                  description: 'Pedido - Império Distribuidora',
+                };
 
                 // timeout para não estourar o tempo máximo do Brick
                 const aborter = new AbortController();
@@ -126,7 +133,7 @@ function CheckoutBricksInner() {
                 const resp = await fetch('/api/mp/process-payment', {
                   method: 'POST',
                   headers: { 'Content-Type': 'application/json' },
-                  body: JSON.stringify(formData),
+                  body: JSON.stringify(payload),
                   signal: aborter.signal,
                 }).catch((err) => {
                   throw err?.name === 'AbortError'

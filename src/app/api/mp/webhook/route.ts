@@ -2,18 +2,17 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { admin, afs } from '@/firebase/admin';
 
-// Garantir runtime Node e nada estático
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
-/** Notificação básica que o MP envia para webhooks */
+/** Notificação padrão enviada pelo Mercado Pago (formato "novo") */
 type MPNotification = {
-  action?: string;              // ex: "payment.created" | "payment.updated"
-  type?: string;                // ex: "payment"
-  data?: { id?: string | number };
+  action?: string;                 // ex: "payment.created" | "payment.updated"
+  type?: string;                   // ex: "payment"
+  data?: { id?: string | number }; // id do pagamento
 };
 
-/** Alguns campos que precisamos do pagamento no MP */
+/** Campos que realmente usamos do /v1/payments/{id} */
 type MPPayment = {
   id: number;
   status:
@@ -41,6 +40,9 @@ type MPPayment = {
     | 'ticket'
     | 'bank_transfer'
     | string;
+
+  /** ESSENCIAL para amarrar ao documento do pedido no Firestore */
+  external_reference?: string | null;
 };
 
 /** Lê o body sem quebrar se vier vazio/`text/plain` */
@@ -67,13 +69,11 @@ async function getPayment(paymentId: string): Promise<MPPayment | null> {
     const url = `https://api.mercadopago.com/v1/payments/${encodeURIComponent(paymentId)}`;
     const res = await fetch(url, {
       method: 'GET',
-      headers: {
-        Authorization: `Bearer ${token}`,
-      },
+      headers: { Authorization: `Bearer ${token}` },
     });
     if (!res.ok) return null;
+
     const data = (await res.json()) as unknown;
-    // validação simples de formato
     if (typeof (data as { id?: unknown }).id === 'number') {
       return data as MPPayment;
     }
@@ -116,55 +116,83 @@ function mapFormaPagamento(p: MPPayment | null):
   return undefined;
 }
 
+/** Extrai o ID do pagamento tanto do body quanto de querystring antiga (?id=&topic=) */
+async function extractPaymentId(req: NextRequest): Promise<string | null> {
+  // 1) Formato novo (payload JSON)
+  const payload = await parseBody(req);
+  const idFromBody = payload?.data?.id ?? null;
+  if (idFromBody != null && String(idFromBody).trim()) {
+    return String(idFromBody).trim();
+  }
+
+  // 2) Formato antigo (?id=123&topic=payment)
+  const search = req.nextUrl.searchParams;
+  const topic = (search.get('topic') || search.get('type') || '').toLowerCase();
+  const idQS = search.get('id');
+  if ((topic === 'payment' || topic === 'payments') && idQS) {
+    return idQS.trim();
+  }
+
+  return null;
+}
+
 export async function POST(req: NextRequest) {
   try {
-    const payload = await parseBody(req);
+    // Sempre responder 200 (o MP reenvia em caso de 5xx)
+    const paymentId = await extractPaymentId(req);
+    if (!paymentId) {
+      // Loga o raw quando vier sem id para ajudar debug
+      const raw = await parseBody(req);
+      await afs.collection('mp_logs').add({
+        msg: 'Webhook sem paymentId',
+        raw,
+        recebidoEm: admin.firestore.FieldValue.serverTimestamp(),
+      });
+      return NextResponse.json({ ok: true, ignored: true });
+    }
 
-    // Sempre responda 200 (não quebrar o webhook)
-    if (!payload) return NextResponse.json({ ok: true });
+    // Enriquecer: buscar o pagamento
+    const payment = await getPayment(paymentId);
 
-    const paymentId = String(payload.data?.id ?? '').trim();
-    // Tenta enriquecer com dados do pagamento
-    const payment = paymentId ? await getPayment(paymentId) : null;
+    // Decidir qual doc atualizar:
+    // Preferimos o external_reference (é o mesmo id do doc criado no carrinho),
+    // senão caímos no fallback de usar o próprio paymentId.
+    const docId = (payment?.external_reference || '').trim() || String(paymentId);
 
     const statusPainel = mapPaymentStatus(payment);
     const forma = mapFormaPagamento(payment);
-    const valor = typeof payment?.transaction_amount === 'number'
-      ? payment!.transaction_amount
-      : undefined;
+    const valor =
+      typeof payment?.transaction_amount === 'number' ? payment.transaction_amount : undefined;
 
-    // Usaremos o paymentId como docId. Se não vier, cria um id fallback.
-    const docId = paymentId || `mp_${Date.now()}`;
-
-    // Atualiza (ou cria) o pedido associado ao pagamento
+    // Atualiza/cria o pedido correspondente
     await afs.collection('pedidos').doc(docId).set(
       {
         status: statusPainel,
         formaPagamento: forma ?? null,
-        mpPaymentId: paymentId || null,
+        mpPaymentId: paymentId,
         mpStatus: payment?.status ?? null,
         mpStatusDetail: payment?.status_detail ?? null,
-        // Não incrementa total a menos que você queira; aqui só sobrepõe se existir valor
         ...(typeof valor === 'number' ? { total: valor } : {}),
         atualizadoEm: admin.firestore.FieldValue.serverTimestamp(),
       },
-      { merge: true },
+      { merge: true }
     );
 
-    // Log completo para auditoria
+    // Log detalhado para auditoria
     await afs.collection('mp_logs').doc(docId).set(
       {
-        raw: payload,
+        source: 'webhook',
+        paymentId,
         payment: payment ?? null,
         recebidoEm: admin.firestore.FieldValue.serverTimestamp(),
       },
-      { merge: true },
+      { merge: true }
     );
 
     return NextResponse.json({ ok: true });
   } catch (e) {
     console.error('MP webhook error', e);
-    // Nunca devolva 500 para não gerar retries infinitos
+    // Nunca devolva 5xx para não gerar retries infinitos
     return NextResponse.json({ ok: false }, { status: 200 });
   }
 }
