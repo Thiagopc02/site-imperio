@@ -116,53 +116,63 @@ function CheckoutBricksInner() {
               setError(null);
 
               try {
-                const formData = (args as { formData?: unknown } | undefined)?.formData ?? {};
-
-                // 🔴 IMPORTANTE: o Bricks não envia transaction_amount.
-                // Enviamos junto a quantia que foi usada na initialization.
-                const payload = {
-                  ...(formData as Record<string, unknown>),
-                  transaction_amount: Number(amount || 0),
-                  description: 'Pedido - Império Distribuidora',
-                };
+                const formData =
+                  (args as { formData?: unknown } | undefined)?.formData ?? {};
 
                 // timeout para não estourar o tempo máximo do Brick
-                const aborter = new AbortController();
+                const aborter = new AbortSignalController();
                 const t = setTimeout(() => aborter.abort(), 25_000);
 
                 const resp = await fetch('/api/mp/process-payment', {
                   method: 'POST',
                   headers: { 'Content-Type': 'application/json' },
-                  body: JSON.stringify(payload),
+                  body: JSON.stringify(formData),
                   signal: aborter.signal,
                 }).catch((err) => {
-                  throw err?.name === 'AbortError'
+                  throw (err as { name?: string })?.name === 'AbortError'
                     ? new Error('Tempo esgotado ao enviar pagamento.')
                     : err;
                 });
 
                 clearTimeout(t);
 
-                const json: {
+                // Tipagem sem `any`:
+                type MPApiResponse = {
                   ok?: boolean;
                   status?: number;
-                  payment?: { status?: string; payment_method_id?: string };
+                  payment?: Record<string, unknown>;
                   error?: string;
-                } = await resp.json().catch(() => ({}));
+                };
+
+                const json: MPApiResponse = await resp.json().catch(() => ({} as MPApiResponse));
 
                 if (!json?.ok) {
+                  // Tenta extrair mensagens que o MP costuma mandar
+                  const p = json.payment as Record<string, unknown> | undefined;
+                  const cause0 = Array.isArray(p?.cause) ? (p!.cause as unknown[]) : [];
+                  const causeMsg =
+                    (typeof p?.message === 'string' && p.message) ||
+                    (typeof p?.error === 'string' && p.error) ||
+                    (typeof ((p?.['cause'] as { description?: unknown }[] | undefined)?.[0]?.description) ===
+                      'string' &&
+                      ((p!['cause'] as { description?: unknown }[])[0].description as string)) ||
+                    (typeof ((p?.['cause'] as { code?: unknown }[] | undefined)?.[0]?.code) === 'string' &&
+                      ((p!['cause'] as { code?: unknown }[])[0].code as string)) ||
+                    undefined;
+
                   console.warn('[process-payment] resposta não OK', json);
                   setError(
-                    json?.error ||
-                      'Pagamento não pôde ser processado. Revise os dados e tente novamente.'
+                    causeMsg
+                      ? `Não foi possível processar: ${String(causeMsg)}`
+                      : 'Pagamento não pôde ser processado. Revise os dados e tente novamente.'
                   );
                   submittingRef.current = false;
                   return;
                 }
 
-                const payment = json.payment || {};
-                const status = String(payment.status || '');
-                const methodId = String(payment.payment_method_id || '');
+                const payment = (json.payment || {}) as Record<string, unknown>;
+                const status = String(payment.status ?? '');
+                const methodId = String(payment.payment_method_id ?? '');
 
                 if (methodId === 'pix') {
                   alert('PIX gerado! Abra seu app do banco para concluir o pagamento.');
@@ -245,6 +255,17 @@ function CheckoutBricksInner() {
       </div>
     </>
   );
+}
+
+/** AbortController compatível para tipagem acima */
+class AbortSignalController {
+  private c = new AbortController();
+  get signal() {
+    return this.c.signal;
+  }
+  abort() {
+    this.c.abort();
+  }
 }
 
 export default function CheckoutBricksPage() {
