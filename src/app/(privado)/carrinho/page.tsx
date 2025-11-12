@@ -85,11 +85,8 @@ export default function CarrinhoPage() {
     usuarioId: '',
   });
 
-  // Pagamento
-  const [formaPagamento, setFormaPagamento] = useState<
-    'pix' | 'cartao_credito' | 'cartao_debito' | 'dinheiro' | ''
-  >('');
-  const [cartaoSubtipo, setCartaoSubtipo] = useState<'credito' | 'debito' | ''>('');
+  // Pagamento: agora só distinguimos “dinheiro” (local) ou “online” (Mercado Pago)
+  const [pagarComDinheiro, setPagarComDinheiro] = useState<boolean>(false);
   const [troco, setTroco] = useState<string>('');
 
   const auth = getAuth();
@@ -230,12 +227,13 @@ export default function CarrinhoPage() {
   };
 
   /* ===================== Finalização local (dinheiro) ===================== */
-  const finalizarPedido = async () => {
+  const finalizarPedidoDinheiro = async () => {
     if (carrinho.length === 0) return alert('Seu carrinho está vazio.');
     if (!nome || !telefone) return alert('Preencha nome e telefone.');
     if (!tipoEntrega) return alert('Selecione o tipo de entrega.');
-    if (!formaPagamento) return alert('Selecione a forma de pagamento.');
-    if (formaPagamento === 'dinheiro' && !troco) return alert('Informe o valor do troco.');
+    if (pagarComDinheiro && troco.trim() === '') {
+      return alert('Informe o valor do troco (ou 0 se não precisar).');
+    }
 
     let enderecoObj: Endereco | null = null;
     if (tipoEntrega === 'entrega') {
@@ -249,8 +247,8 @@ export default function CarrinhoPage() {
       nome,
       telefone,
       tipoEntrega,
-      formaPagamento,
-      troco: formaPagamento === 'dinheiro' ? Number(troco) || null : null,
+      formaPagamento: 'dinheiro' as const,
+      troco: Number(troco || '0'),
       endereco: enderecoObj,
       itens: carrinho.map((item) => ({
         id: item.id,
@@ -274,19 +272,14 @@ export default function CarrinhoPage() {
     }
   };
 
-  /* ===================== Iniciar pagamento MP (Pix/Cartão) ===================== */
+  /* ===================== Iniciar pagamento MP (online) ===================== */
   const gerarExternalRef = () =>
     `order_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
 
-  // >>> NOVO FLUXO: sem create-preference. Redireciona para /checkout-bricks
   const irParaPagamentoMP = async () => {
     try {
       if (carrinho.length === 0) {
         alert('Seu carrinho está vazio.');
-        return;
-      }
-      if (!['pix', 'cartao_credito', 'cartao_debito'].includes(formaPagamento)) {
-        alert('Selecione Pix ou Cartão para pagar online.');
         return;
       }
       if (!nome || !telefone) {
@@ -307,12 +300,7 @@ export default function CarrinhoPage() {
         nome,
         telefone,
         tipoEntrega,
-        formaPagamento:
-          formaPagamento === 'pix'
-            ? 'Pix'
-            : formaPagamento === 'cartao_credito'
-            ? 'Cartão - Crédito'
-            : 'Cartão - Débito',
+        formaPagamento: 'online' as const, // será decidido no Checkout (Pix/Cartão/Boleto)
         troco: null as number | null,
         endereco: endEntrega ?? null,
         itens: carrinho.map((item) => ({
@@ -325,7 +313,6 @@ export default function CarrinhoPage() {
         total,
         data: new Date().toISOString(),
         status: 'Aguardando pagamento',
-        // guarda a referência para facilitar conciliação se quiser
         external_reference: externalRef,
       };
 
@@ -336,7 +323,6 @@ export default function CarrinhoPage() {
         localStorage.setItem('carrinho', JSON.stringify(carrinho));
       }
 
-      // Vai para a página do Payment Brick
       router.push('/checkout-bricks');
     } catch (e) {
       console.error(e);
@@ -599,112 +585,84 @@ export default function CarrinhoPage() {
         )}
 
         {/* Forma de pagamento */}
-        <div className="mb-4">
+        <div className="mb-6">
           <label className="block mb-2 font-semibold">Forma de pagamento:</label>
 
+          {/* Alternador simples: Dinheiro ou Online (Mercado Pago) */}
           <div className="flex flex-wrap items-center gap-3">
-            {/* PIX */}
             <button
-              onClick={() => {
-                setFormaPagamento('pix');
-                setCartaoSubtipo('');
-              }}
+              onClick={() => setPagarComDinheiro(false)}
               className={[
                 'px-4 py-2 rounded-full text-sm font-medium transition',
-                'border border-zinc-600/60 hover:border-yellow-400/70',
-                formaPagamento === 'pix'
-                  ? 'bg-yellow-400 text-black shadow-[0_0_0_3px_rgba(234,179,8,0.25)]'
-                  : 'bg-zinc-800 text-white hover:bg-zinc-700',
+                'border border-sky-700/60',
+                !pagarComDinheiro
+                  ? 'bg-sky-500 text-black shadow-[0_0_0_3px_rgba(59,130,246,0.25)]'
+                  : 'bg-sky-900 text-white hover:bg-sky-800',
               ].join(' ')}
-              aria-pressed={formaPagamento === 'pix'}
+              aria-pressed={!pagarComDinheiro}
+              title="Pix / Cartão Crédito ou Débito / Boleto (Mercado Pago)"
             >
-              🔳 PIX
+              💠 Pagar Online (Mercado Pago)
             </button>
 
-            {/* Cartão + subopções */}
-            <div className="flex items-center gap-2">
-              <button
-                onClick={() => {
-                  const novoSub = cartaoSubtipo || 'credito';
-                  setCartaoSubtipo(novoSub);
-                  setFormaPagamento(novoSub === 'credito' ? 'cartao_credito' : 'cartao_debito');
-                }}
-                className={[
-                  'px-4 py-2 rounded-full text-sm font-medium transition',
-                  'border border-zinc-600/60 hover:border-yellow-400/70',
-                  formaPagamento.startsWith('cartao')
-                    ? 'bg-yellow-400 text-black shadow-[0_0_0_3px_rgba(234,179,8,0.25)]'
-                    : 'bg-zinc-800 text-white hover:bg-zinc-700',
-                ].join(' ')}
-                aria-pressed={formaPagamento.startsWith('cartao')}
-              >
-                💳 Cartão
-              </button>
-
-              {formaPagamento.startsWith('cartao') && (
-                <div className="flex gap-2">
-                  <button
-                    onClick={() => {
-                      setCartaoSubtipo('credito');
-                      setFormaPagamento('cartao_credito');
-                    }}
-                    className={[
-                      'px-3 py-2 rounded-full text-xs font-semibold transition',
-                      'border border-sky-700/60',
-                      cartaoSubtipo === 'credito'
-                        ? 'bg-sky-400 text-black shadow-[0_0_0_3px_rgba(56,189,248,0.25)]'
-                        : 'bg-sky-900 text-white hover:bg-sky-800',
-                    ].join(' ')}
-                  >
-                    Crédito
-                  </button>
-                  <button
-                    onClick={() => {
-                      setCartaoSubtipo('debito');
-                      setFormaPagamento('cartao_debito');
-                    }}
-                    className={[
-                      'px-3 py-2 rounded-full text-xs font-semibold transition',
-                      'border border-sky-700/60',
-                      cartaoSubtipo === 'debito'
-                        ? 'bg-sky-400 text-black shadow-[0_0_0_3px_rgba(56,189,248,0.25)]'
-                        : 'bg-sky-900 text-white hover:bg-sky-800',
-                    ].join(' ')}
-                  >
-                    Débito
-                  </button>
-                </div>
-              )}
-            </div>
-
-            {/* Dinheiro */}
             <button
-              onClick={() => {
-                setFormaPagamento('dinheiro');
-                setCartaoSubtipo('');
-              }}
+              onClick={() => setPagarComDinheiro(true)}
               className={[
                 'px-4 py-2 rounded-full text-sm font-medium transition',
-                'border border-zinc-600/60 hover:border-yellow-400/70',
-                formaPagamento === 'dinheiro'
+                'border border-yellow-600/60',
+                pagarComDinheiro
                   ? 'bg-yellow-400 text-black shadow-[0_0_0_3px_rgba(234,179,8,0.25)]'
-                  : 'bg-zinc-800 text-white hover:bg-zinc-700',
+                  : 'bg-yellow-900 text-white hover:bg-yellow-700',
               ].join(' ')}
-              aria-pressed={formaPagamento === 'dinheiro'}
+              aria-pressed={pagarComDinheiro}
             >
-              💵 Dinheiro
+              💵 Pagar na Entrega (Dinheiro)
             </button>
           </div>
         </div>
 
-        {formaPagamento === 'dinheiro' && (
-          <input
-            type="number"
-            placeholder="Troco para quanto?"
-            value={troco}
-            onChange={(e: React.ChangeEvent<HTMLInputElement>) => setTroco(e.target.value)}
-            className="w-full p-2 mb-4 text-black border rounded border-zinc-300"
-          />
+        {/* Bloco explicativo quando é online (MP) */}
+        {!pagarComDinheiro && (
+          <div className="p-4 mb-6 border rounded bg-zinc-900 border-zinc-700">
+            <p className="text-sm">
+              <strong>Pagar com PIX / Cartão Crédito ou Débito / Boleto</strong>
+            </p>
+
+            {/* Bandeiras (adicione os arquivos correspondentes em /public/bandeiras/...) */}
+            <div className="flex flex-wrap items-center gap-2 mt-2">
+              <img src="/bandeiras/pix.svg" alt="Pix" className="h-6" />
+              <img src="/bandeiras/visa.svg" alt="Visa" className="h-6" />
+              <img src="/bandeiras/mastercard.svg" alt="Mastercard" className="h-6" />
+              <img src="/bandeiras/elo.svg" alt="Elo" className="h-6" />
+              <img src="/bandeiras/hipercard.svg" alt="Hipercard" className="h-6" />
+              <img src="/bandeiras/amex.svg" alt="American Express" className="h-6" />
+              <img src="/bandeiras/boleto.svg" alt="Boleto" className="h-6" />
+            </div>
+
+            <button
+              onClick={irParaPagamentoMP}
+              className="inline-flex items-center gap-2 px-4 py-3 mt-4 text-base font-semibold text-white rounded bg-sky-500 hover:bg-sky-600"
+            >
+              <img src="/mercadopago-logo.svg" alt="Mercado Pago" className="h-5" />
+              Ir para Pagamento (Mercado Pago)
+            </button>
+          </div>
+        )}
+
+        {/* Quando é dinheiro, pede troco */}
+        {pagarComDinheiro && (
+          <div className="mb-6">
+            <input
+              type="number"
+              placeholder="Troco para quanto?"
+              value={troco}
+              onChange={(e: React.ChangeEvent<HTMLInputElement>) => setTroco(e.target.value)}
+              className="w-full p-2 mb-2 text-black border rounded border-zinc-300"
+            />
+            <p className="text-xs text-zinc-400">
+              Se não precisar de troco, informe <strong>0</strong>.
+            </p>
+          </div>
         )}
 
         {/* Total e botões */}
@@ -712,9 +670,9 @@ export default function CarrinhoPage() {
 
         {carrinho.length > 0 && (
           <div className="grid gap-3">
-            {formaPagamento === 'dinheiro' ? (
+            {pagarComDinheiro ? (
               <button
-                onClick={finalizarPedido}
+                onClick={finalizarPedidoDinheiro}
                 className="w-full py-3 text-lg font-semibold text-white bg-green-600 rounded hover:bg-green-700"
               >
                 Finalizar Pedido (pagar na entrega)
@@ -722,9 +680,10 @@ export default function CarrinhoPage() {
             ) : (
               <button
                 onClick={irParaPagamentoMP}
-                className="w-full py-3 text-lg font-semibold text-black bg-yellow-400 rounded hover:bg-yellow-500"
+                className="w-full py-3 text-lg font-semibold text-white rounded bg-sky-500 hover:bg-sky-600"
+                title="Você escolherá Pix, Cartão ou Boleto na próxima etapa"
               >
-                Ir para pagamento (Mercado Pago)
+                Ir para Pagamento (Mercado Pago)
               </button>
             )}
           </div>

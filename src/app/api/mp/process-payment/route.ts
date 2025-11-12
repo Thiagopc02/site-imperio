@@ -4,19 +4,34 @@ import { NextRequest, NextResponse } from 'next/server';
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
-type MPCreatePaymentIn = {
-  transaction_amount: number;
-  token?: string;
+type MPBricksFormData = {
+  transaction_amount?: number;
   description?: string;
   installments?: number;
-  payment_method_id: string; // 'pix' | 'credit_card' | ...
+  payment_method_id?: string;
   issuer_id?: string | number;
+  token?: string;
   payer?: {
     email?: string;
     first_name?: string;
     last_name?: string;
     identification?: { type?: string; number?: string };
   };
+};
+
+// resposta “genérica” de /v1/payments que nos importa
+type MPPaymentResponse = {
+  id?: number;
+  status?: string;
+  status_detail?: string;
+  payment_method_id?: string;
+  payment_type_id?: string;
+  transaction_amount?: number;
+  // campos de erro
+  message?: string;
+  error?: string;
+  cause?: Array<{ code?: string | number; description?: string }>;
+  [k: string]: unknown;
 };
 
 async function parseJson(req: NextRequest) {
@@ -30,49 +45,53 @@ async function parseJson(req: NextRequest) {
   }
 }
 
-function withTimeout<T>(p: Promise<T>, ms = 25000) {
+function withTimeout<T>(p: Promise<T>, ms = 25_000) {
   return Promise.race([
     p,
     new Promise<T>((_, rej) => setTimeout(() => rej(new Error('timeout')), ms)),
   ]);
 }
 
-// Gera um X-Idempotency-Key estável o suficiente para a criação do pagamento
-function makeIdempotencyKey(body: MPCreatePaymentIn) {
-  const email = (body?.payer?.email || '').toLowerCase().trim();
-  const amt = Number(body?.transaction_amount || 0).toFixed(2);
-  // Se vier um header do cliente, honramos; senão, geramos um.
-  const base = `${email || 'anon'}:${amt}:${Date.now()}:${Math.random()
-    .toString(36)
-    .slice(2, 10)}`;
-  // MP aceita string arbitrária; mantemos curta.
-  return `imp-${base}`;
-}
-
 export async function POST(req: NextRequest) {
   try {
-    const body = (await parseJson(req)) as MPCreatePaymentIn | null;
+    const body = (await parseJson(req)) as MPBricksFormData | null;
     if (!body) {
-      return NextResponse.json({ ok: false, error: 'empty-body' }, { status: 200 });
+      return NextResponse.json({ ok: false, message: 'empty-body' }, { status: 200 });
     }
 
     const accessToken = process.env.MP_ACCESS_TOKEN?.trim();
     if (!accessToken) {
-      return NextResponse.json({ ok: false, error: 'missing-token' }, { status: 200 });
+      return NextResponse.json({ ok: false, message: 'missing-token' }, { status: 200 });
     }
 
-    // Monta payload aceito pela API de payments
-    const payload: MPCreatePaymentIn & { binary_mode: boolean; description: string } = {
+    const amount = Number(body.transaction_amount ?? 0);
+    const payerEmail =
+      (body.payer?.email || '').toString().trim() || 'comprador-teste@example.com';
+
+    const baseUrl =
+      process.env.NEXT_PUBLIC_SITE_URL?.replace(/\/$/, '') ||
+      'https://imperiodistribuidora3015.com.br';
+
+    const payload: MPBricksFormData & {
+      binary_mode: boolean;
+      notification_url: string;
+      transaction_amount: number;
+      payer: NonNullable<MPBricksFormData['payer']>;
+    } = {
       ...body,
-      transaction_amount: Number(body.transaction_amount || 0),
+      transaction_amount: Number.isFinite(amount) && amount > 0 ? amount : 0.01,
       description: body.description || 'Pedido - Império Distribuidora',
-      binary_mode: true, // evitar "pendente" por análise de risco
+      binary_mode: true,
+      notification_url: `${baseUrl}/api/mp/webhook`,
+      payer: {
+        ...(body.payer || {}),
+        email: payerEmail,
+      },
     };
 
     const idemKey =
-      req.headers.get('x-idempotency-key')?.trim() || makeIdempotencyKey(payload);
+      `${payerEmail}-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
 
-    // Chamada à API do Mercado Pago
     const mpResp = await withTimeout(
       fetch('https://api.mercadopago.com/v1/payments', {
         method: 'POST',
@@ -82,22 +101,36 @@ export async function POST(req: NextRequest) {
           'X-Idempotency-Key': idemKey,
         },
         body: JSON.stringify(payload),
-      })
+      }),
+      25_000
     );
 
-    const data = (await mpResp.json().catch(() => ({}))) as unknown;
-    const ok = mpResp.ok && (mpResp.status === 201 || mpResp.status === 200);
+    const data: MPPaymentResponse = await mpResp.json().catch(
+      () => ({} as MPPaymentResponse)
+    );
 
-    // Sempre retornamos 200 para o Bricks não travar o fluxo
-    return NextResponse.json({
-      ok,
-      status: mpResp.status,
-      payment: data,
-    });
+    const ok =
+      mpResp.ok &&
+      (mpResp.status === 201 || mpResp.status === 200) &&
+      typeof data === 'object';
+
+    return NextResponse.json(
+      {
+        ok,
+        status: mpResp.status,
+        payment: data,
+        error: ok
+          ? undefined
+          : data?.message ||
+            data?.error ||
+            data?.cause?.[0]?.description ||
+            String(data?.cause?.[0]?.code ?? ''),
+      },
+      { status: 200 }
+    );
   } catch (e: unknown) {
-    // Se der timeout ou outro erro, retornamos 200 com ok:false
-    const msg = e instanceof Error ? e.message : String(e);
-    return NextResponse.json({ ok: false, error: msg }, { status: 200 });
+    const message = e instanceof Error ? e.message : String(e);
+    return NextResponse.json({ ok: false, error: message }, { status: 200 });
   }
 }
 
