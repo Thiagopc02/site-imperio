@@ -1,92 +1,78 @@
 // src/app/api/mp/webhook/route.ts
 import { NextRequest, NextResponse } from 'next/server';
-import * as admin from 'firebase-admin';
+import { admin, afs } from '@/firebase/admin';
 
-// Inicialização do admin (mantenha igual ao que já usa no projeto)
-if (!admin.apps.length) {
-  admin.initializeApp({
-    credential: admin.credential.cert(
-      JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT_KEY as string)
-    ),
-  });
-}
-const afs = admin.firestore();
+// Garante Node.js runtime (Firebase Admin não roda em Edge)
+export const runtime = 'nodejs';
+// Evita qualquer tentativa de estático/prerender
+export const dynamic = 'force-dynamic';
 
-type MpPayment = {
-  id: number;
-  status: 'approved' | 'pending' | 'rejected' | string;
-  status_detail?: string;
-  external_reference?: string | null;
-  payer?: { email?: string | null };
-  transaction_amount?: number;
-  payment_type_id?: string | null; // credit_card, debit_card, pix, etc
-  additional_info?: unknown;
-  metadata?: Record<string, unknown> | null;
+type MPNotification = {
+  action?: string;          // ex: "payment.created" | "payment.updated"
+  type?: string;            // ex: "payment"
+  data?: { id?: string | number }; // id do pagamento/merchant order (depende do tipo)
 };
+
+// parser tolerante (não quebra se o body vier vazio / inválido)
+async function parseBody(req: NextRequest): Promise<MPNotification | null> {
+  try {
+    const ct = req.headers.get('content-type') || '';
+    if (ct.includes('application/json')) {
+      return (await req.json()) as MPNotification;
+    }
+    // fallback para texto (alguns provedores mandam `text/plain`)
+    const text = await req.text();
+    if (!text) return null;
+    return JSON.parse(text) as MPNotification;
+  } catch {
+    return null;
+  }
+}
 
 export async function POST(req: NextRequest) {
   try {
-    // Mercado Pago envia info nos query params
-    const sp = req.nextUrl.searchParams;
-    const type = sp.get('type');
-    const paymentId = sp.get('data.id');
+    const payload = await parseBody(req);
+    // Nunca quebre o webhook: responda 200 mesmo sem payload
+    if (!payload) return NextResponse.json({ ok: true });
 
-    if (type !== 'payment' || !paymentId) {
-      // alguns eventos podem vir diferentes; ignore o que não precisamos
-      return NextResponse.json({ ok: true, ignored: true }, { status: 200 });
-    }
+    const paymentId = String(payload.data?.id ?? '');
+    const statusInterno =
+      payload.action?.startsWith('payment.') || payload.type === 'payment'
+        ? 'Aguardando pagamento (Pix)'
+        : 'Em andamento';
 
-    // Busca o pagamento na API do MP
-    const mpRes = await fetch(`https://api.mercadopago.com/v1/payments/${paymentId}`, {
-      headers: {
-        Authorization: `Bearer ${process.env.MP_ACCESS_TOKEN}`, // token secreto
+    // Aqui você provavelmente vai correlacionar o paymentId com o seu pedido.
+    // Como nem sempre temos o pedidoId no webhook, vamos gravar por paymentId
+    // e o painel pode cruzar por esse campo.
+    const docId = paymentId || `mp_${Date.now()}`;
+
+    // Atualiza (ou cria) um doc de pedido com status
+    await afs.collection('pedidos').doc(docId).set(
+      {
+        status: statusInterno,
+        atualizadoEm: admin.firestore.FieldValue.serverTimestamp(),
       },
-    });
+      { merge: true },
+    );
 
-    if (!mpRes.ok) {
-      const t = await mpRes.text();
-      console.error('MP get payment FAIL:', t);
-      return NextResponse.json({ error: 'mp-fetch-failed' }, { status: 500 });
-    }
-
-    const payment = (await mpRes.json()) as MpPayment;
-
-    const pedidoId = (payment.external_reference ?? '').toString();
-    if (!pedidoId) {
-      // sem external_reference não sabemos quem é o pedido
-      console.warn('Webhook sem external_reference. Payment:', payment.id);
-      return NextResponse.json({ ok: true, missingExternalRef: true }, { status: 200 });
-    }
-
-    // Mapeia status do MP para status interno
-    let statusInterno: string = 'Em andamento';
-    if (payment.status === 'approved') statusInterno = 'Pago';
-    else if (payment.status === 'pending') statusInterno = 'Aguardando pagamento (Pix)';
-
-    // Base do documento do pedido (merge)
-    const baseDoc = {
-      mp: {
-        id: payment.id,
-        status: payment.status,
-        status_detail: payment.status_detail ?? null,
-        payment_type_id: payment.payment_type_id ?? null,
+    // Log do raw (útil na auditoria/diagnóstico)
+    await afs.collection('mp_logs').doc(docId).set(
+      {
+        raw: payload,
+        recebidoEm: admin.firestore.FieldValue.serverTimestamp(),
       },
-      status: statusInterno,
-      atualizadoEm: admin.firestore.FieldValue.serverTimestamp(),
-    };
+      { merge: true },
+    );
 
-    // Atualiza/cria o pedido pelo ID (external_reference)
-    await afs.collection('pedidos').doc(pedidoId).set(baseDoc, { merge: true });
-
-    // (Opcional) log técnico
-    await afs.collection('mp_logs').doc(String(payment.id)).set({
-      payment,
-      recebidoEm: admin.firestore.FieldValue.serverTimestamp(),
-    });
-
-    return NextResponse.json({ ok: true }, { status: 200 });
+    return NextResponse.json({ ok: true });
   } catch (e) {
-    console.error('MP webhook error:', e);
-    return NextResponse.json({ error: 'webhook-fail' }, { status: 500 });
+    console.error('MP webhook error', e);
+    // Importante: não retornar 500 para não gerar re-tentativas infinitas no provedor
+    return NextResponse.json({ ok: false }, { status: 200 });
   }
+}
+
+// Evita erro quando alguém (ou a Vercel) fizer GET nessa rota
+export async function GET() {
+  return NextResponse.json({ ok: true, route: 'mp/webhook' });
 }

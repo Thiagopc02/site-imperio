@@ -1,6 +1,6 @@
 {
   "compilerOptions": {
-    "target": "esnext",
+    "target": "es2022",
     "lib": ["dom", "dom.iterable", "esnext"],
     "allowJs": false,
     "skipLibCheck": true,
@@ -15,21 +15,13 @@
     "isolatedModules": true,
     "jsx": "preserve",
     "incremental": true,
-    "baseUrl": "./src",
+
+    "baseUrl": ".",                 // 👈 raiz do projeto
     "paths": {
-      "@/*": ["*"],
-      "@/components/*": ["components/*"],
-      "@/context/*": ["context/*"],
-      "@/firebase/*": ["firebase/*"],
-      "@/services/*": ["services/*"],
-      "@/types/*": ["types/*"],
-      "@/app/*": ["app/*"]
+      "@/*": ["src/*"]              // 👈 '@/firebase/admin' => 'src/firebase/admin'
     },
-    "plugins": [
-      {
-        "name": "next"
-      }
-    ]
+
+    "plugins": [{ "name": "next" }]
   },
   "include": [
     "next-env.d.ts",
