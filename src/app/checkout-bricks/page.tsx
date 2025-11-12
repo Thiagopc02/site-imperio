@@ -3,23 +3,36 @@
 import { Suspense, useEffect, useRef, useState } from 'react';
 import Script from 'next/script';
 
-/** Tipos mínimos para o Brick */
-type MPWindow = typeof window & {
-  MercadoPago?: new (key: string, opts?: { locale?: string }) => {
+/** Tipagens enxutas do SDK v2 que realmente usamos */
+type MPBrickController = { unmount?: () => void } | void;
+
+type MPWindow = Window & {
+  MercadoPago?: new (
+    publicKey: string,
+    opts?: { locale?: string }
+  ) => {
     bricks(): {
       create(
         type: 'payment',
         containerId: string,
-        options: {
+        opts: {
           initialization: { amount: number };
-          customization?: unknown;
+          customization?: {
+            paymentMethods?: {
+              creditCard?: 'all';
+              debitCard?: 'all';
+              ticket?: 'all';
+              bankTransfer?: 'all'; // Pix
+            };
+            visual?: { hidePaymentButton?: boolean };
+          };
           callbacks?: {
             onReady?: () => void;
-            onSubmit?: () => Promise<void>;
-            onError?: (err: unknown) => void;
+            onError?: (e: unknown) => void;
+            onSubmit?: (args?: unknown) => Promise<void>; // SDK passa unknown
           };
         }
-      ): Promise<{ unmount?: () => void } | void>;
+      ): Promise<MPBrickController>;
     };
   };
 };
@@ -28,9 +41,12 @@ function CheckoutBricksInner() {
   const containerRef = useRef<HTMLDivElement | null>(null);
 
   const [sdkReady, setSdkReady] = useState(false);
-  const [error, setError] = useState<string | null>(null);
   const [amount, setAmount] = useState<number | null>(null);
   const [mountKey, setMountKey] = useState(0);
+  const [error, setError] = useState<string | null>(null);
+
+  // trava anti duplo-envio
+  const submittingRef = useRef(false);
 
   // 1) Lê o total do carrinho
   useEffect(() => {
@@ -41,8 +57,9 @@ function CheckoutBricksInner() {
         (acc, i) => acc + Number(i.preco || 0) * Number(i.quantidade || 0),
         0
       );
-      setAmount(Number.isFinite(total) ? Number(total.toFixed(2)) : 0);
-      setMountKey((k) => k + 1); // força remontar o Brick se total mudar
+      const n = Number.isFinite(total) ? Number(total.toFixed(2)) : 0;
+      setAmount(n);
+      setMountKey((k) => k + 1);
     } catch {
       setAmount(0);
     }
@@ -55,10 +72,9 @@ function CheckoutBricksInner() {
     }
   }, []);
 
-  // 3) Monta o Payment Brick (Cartão/Débito/Boleto/Pix)
+  // 3) Monta o Payment Brick
   useEffect(() => {
-    if (!sdkReady || !containerRef.current) return;
-    if (amount === null) return;
+    if (!sdkReady || amount === null || !containerRef.current) return;
 
     const publicKey = process.env.NEXT_PUBLIC_MP_PUBLIC_KEY;
     if (!publicKey) {
@@ -76,38 +92,105 @@ function CheckoutBricksInner() {
         const mp = new MPClass(publicKey, { locale: 'pt-BR' });
         const bricks = mp.bricks();
 
-        const controller = await bricks.create('payment', 'payment_brick_container', {
+        const ctrl = await bricks.create('payment', 'payment_brick_container', {
           initialization: { amount: amount || 0 },
           customization: {
             paymentMethods: {
               creditCard: 'all',
               debitCard: 'all',
               ticket: 'all',
-              bankTransfer: 'all', // ✅ Pix dentro do Brick
+              bankTransfer: 'all', // Pix
             },
+            visual: { hidePaymentButton: false },
           },
           callbacks: {
-            onReady: () => {
-              // opcional
+            onReady: () => {},
+            onError: (e) => {
+              console.error('[Bricks onError]', e);
+              setError('Não foi possível iniciar o pagamento. Tente novamente.');
             },
-            onSubmit: async () => {
-              // Depois do fluxo do Brick, redireciona para pedidos
-              window.location.href = '/pedidos';
-            },
-            onError: (err) => {
-              console.error(err);
-              setError('Não foi possível processar o pagamento. Tente novamente.');
+            // aceita unknown e extrai formData com cast seguro
+            onSubmit: async (args?: unknown) => {
+              if (submittingRef.current) return;
+              submittingRef.current = true;
+              setError(null);
+
+              try {
+                const formData =
+                  (args as { formData?: unknown } | undefined)?.formData ?? {};
+
+                // timeout para não estourar o tempo máximo do Brick
+                const aborter = new AbortController();
+                const t = setTimeout(() => aborter.abort(), 25_000);
+
+                const resp = await fetch('/api/mp/process-payment', {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify(formData),
+                  signal: aborter.signal,
+                }).catch((err) => {
+                  throw err?.name === 'AbortError'
+                    ? new Error('Tempo esgotado ao enviar pagamento.')
+                    : err;
+                });
+
+                clearTimeout(t);
+
+                const json: {
+                  ok?: boolean;
+                  status?: number;
+                  payment?: { status?: string; payment_method_id?: string };
+                  error?: string;
+                } = await resp.json().catch(() => ({}));
+
+                if (!json?.ok) {
+                  console.warn('[process-payment] resposta não OK', json);
+                  setError(
+                    json?.error ||
+                      'Pagamento não pôde ser processado. Revise os dados e tente novamente.'
+                  );
+                  submittingRef.current = false;
+                  return;
+                }
+
+                const payment = json.payment || {};
+                const status = String(payment.status || '');
+                const methodId = String(payment.payment_method_id || '');
+
+                if (methodId === 'pix') {
+                  alert('PIX gerado! Abra seu app do banco para concluir o pagamento.');
+                } else if (status === 'approved') {
+                  alert('Pagamento aprovado! Obrigado pela compra.');
+                } else if (status === 'in_process' || status === 'pending') {
+                  alert('Pagamento em análise/pendente. Você receberá a confirmação em instantes.');
+                } else if (status === 'rejected') {
+                  setError('Pagamento recusado. Tente outro método ou cartão.');
+                  submittingRef.current = false;
+                  return;
+                }
+
+                // sucesso
+                window.location.href = '/pedidos';
+              } catch (e) {
+                console.error('[onSubmit error]', e);
+                setError(
+                  e instanceof Error ? e.message : 'Falha ao enviar o pagamento. Tente novamente.'
+                );
+              } finally {
+                submittingRef.current = false;
+              }
             },
           },
         });
 
-        if (controller && typeof controller.unmount === 'function') {
-          unmount = controller.unmount.bind(controller);
+        // evitar "any": convertemos o retorno para tipo conhecido
+        const safeCtrl = ctrl as unknown as { unmount?: () => void } | void;
+        if (safeCtrl && typeof safeCtrl.unmount === 'function') {
+          unmount = safeCtrl.unmount.bind(safeCtrl);
         }
       } catch (e) {
-        const msg = e instanceof Error ? e.message : String(e);
-        console.error(e);
-        setError(msg);
+        console.error('[mount bricks error]', e);
+        setError(e instanceof Error ? e.message : String(e));
       }
     })();
 
@@ -133,25 +216,21 @@ function CheckoutBricksInner() {
         <div className="p-4 border rounded-2xl border-white/10 bg-white/5">
           <h2 className="mb-2 text-xl font-bold">Pagamento</h2>
 
-          {error && (
-            <div className="p-3 mb-4 text-sm text-red-700 bg-red-100 rounded">
-              {error}
-            </div>
-          )}
+          {error && <div className="p-3 mb-4 text-sm text-red-700 bg-red-100 rounded">{error}</div>}
 
           {amount === null ? (
-            <div className="p-3 border rounded bg-white/5 border-white/10">
-              Calculando total…
-            </div>
+            <div className="p-3 border rounded bg-white/5 border-white/10">Calculando total…</div>
           ) : amount <= 0 ? (
             <div className="p-3 border rounded bg-white/5 border-white/10">
               Seu carrinho está vazio.
             </div>
           ) : (
             <>
-              <p className="mb-2 text-sm opacity-80">
+              <p className="mb-3 text-sm opacity-80">
                 Total: <strong>R$ {amount.toFixed(2)}</strong>
               </p>
+
+              {/* container que o Bricks usa */}
               <div id="payment_brick_container" ref={containerRef} />
             </>
           )}

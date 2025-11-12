@@ -1,30 +1,21 @@
-import { NextResponse } from 'next/server';
-import { MercadoPagoConfig, Payment } from 'mercadopago';
+// src/app/api/mp/payment-status/route.ts
+import { NextRequest, NextResponse } from 'next/server';
+export const runtime = 'nodejs';
+export const dynamic = 'force-dynamic';
 
-export async function GET(req: Request) {
+export async function GET(req: NextRequest) {
   try {
-    const { searchParams } = new URL(req.url);
-    const id = searchParams.get('id');
+    const id = req.nextUrl.searchParams.get('id');
+    const tok = process.env.MP_ACCESS_TOKEN;
+    if (!id || !tok) return NextResponse.json({ ok: false }, { status: 200 });
 
-    if (!id) {
-      return NextResponse.json({ error: 'missing id' }, { status: 400 });
-    }
-    if (!process.env.MP_ACCESS_TOKEN) {
-      return NextResponse.json({ error: 'MP_ACCESS_TOKEN not set' }, { status: 500 });
-    }
-
-    const client = new MercadoPagoConfig({ accessToken: process.env.MP_ACCESS_TOKEN! });
-    const paymentClient = new Payment(client);
-
-    const payment = await paymentClient.get({ id: Number(id) });
-
-    return NextResponse.json({
-      id: payment?.id ?? null,
-      status: payment?.status ?? null,              // approved | pending | rejected | cancelled ...
-      status_detail: payment?.status_detail ?? null // pending_waiting_transfer | accredited ...
+    const r = await fetch(`https://api.mercadopago.com/v1/payments/${id}`, {
+      headers: { Authorization: `Bearer ${tok}` },
+      cache: 'no-store',
     });
-  } catch (e: unknown) {
-    console.error('payment-status error', e);
-    return NextResponse.json({ error: 'payment-status failed' }, { status: 500 });
+    const json = await r.json().catch(() => ({}));
+    return NextResponse.json({ ok: r.ok, status: r.status, payment: json });
+  } catch {
+    return NextResponse.json({ ok: false }, { status: 200 });
   }
 }

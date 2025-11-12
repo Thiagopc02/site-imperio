@@ -1,112 +1,107 @@
-import { NextResponse } from 'next/server';
+// src/app/api/mp/process-payment/route.ts
+import { NextRequest, NextResponse } from 'next/server';
 
+// O SDK do MP e o fetch para /v1/payments exigem Node.js (não use Edge)
+export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
-export const revalidate = 0;
 
-/** Body que vem do front para criar/capturar o pagamento */
-type ProcessPaymentBody = {
-  token: string; // token do card / pix token, etc (vindo do Brick)
+/** Payload esperado pela API /v1/payments do Mercado Pago */
+type MPCreatePaymentIn = {
   transaction_amount: number;
-  payment_method_id: string; // 'visa' | 'master' | 'pix' | etc
+  token?: string; // token de cartão (não é usado para Pix/Boleto)
+  description?: string;
   installments?: number;
-  issuer_id?: string;
-  preference_id?: string;
-  payer?: {
-    email?: string;
+  payment_method_id: string; // 'pix' | 'bolbradesco' | 'credit_card' | ...
+  issuer_id?: string | number;
+  payer: {
+    email: string;
+    first_name?: string;
+    last_name?: string;
     identification?: { type?: string; number?: string };
   };
-  additional_info?: unknown;
 };
 
-/** Campos essenciais que voltam do Mercado Pago */
-type MPCreatePaymentResponse = {
-  id: number;
-  status:
-    | 'approved'
-    | 'rejected'
-    | 'in_process'
-    | 'pending'
-    | 'cancelled'
-    | 'refunded'
-    | 'in_mediation';
-  status_detail?: string;
-  payment_method_id?: string;
-  order?: { id?: string } | null; // pode conter o preference_id em alguns fluxos
-  [k: string]: unknown; // preserva demais campos sem usar `any`
+/** Payload que de fato enviaremos (com pequenas normalizações) */
+type MPCreatePaymentPayload = MPCreatePaymentIn & {
+  binary_mode: boolean;
 };
 
-export async function POST(req: Request) {
+async function parseJson<T = unknown>(req: NextRequest): Promise<T | null> {
   try {
-    const ACCESS_TOKEN = process.env.MP_ACCESS_TOKEN;
-    if (!ACCESS_TOKEN) {
-      return NextResponse.json(
-        { error: 'ACCESS TOKEN ausente no servidor' },
-        { status: 500 }
-      );
+    const ct = req.headers.get('content-type') || '';
+    if (ct.includes('application/json')) return (await req.json()) as T;
+    const text = await req.text();
+    return text ? (JSON.parse(text) as T) : null;
+  } catch {
+    return null;
+  }
+}
+
+function withTimeout<T>(p: Promise<T>, ms = 25_000): Promise<T> {
+  return Promise.race([
+    p,
+    new Promise<T>((_, rej) => setTimeout(() => rej(new Error('timeout')), ms)),
+  ]);
+}
+
+export async function POST(req: NextRequest) {
+  try {
+    // 1) Lê o corpo vindo do Brick
+    const body = await parseJson<MPCreatePaymentIn>(req);
+    if (!body) {
+      // Nunca devolva 4xx/5xx pro Brick — sempre 200 com um "ok: false"
+      return NextResponse.json({ ok: false, error: 'empty-body' }, { status: 200 });
     }
 
-    const body = (await req.json()) as ProcessPaymentBody;
-
-    // validações mínimas
-    if (
-      !body?.token ||
-      typeof body.transaction_amount !== 'number' ||
-      !body.payment_method_id
-    ) {
-      return NextResponse.json(
-        { error: 'Parâmetros inválidos' },
-        { status: 400 }
-      );
+    // 2) Access Token do servidor (NUNCA use a public key aqui)
+    const accessToken = process.env.MP_ACCESS_TOKEN;
+    if (!accessToken) {
+      return NextResponse.json({ ok: false, error: 'missing-token' }, { status: 200 });
     }
 
-    // monta o payload conforme docs do MP
-    const payload = {
-      token: body.token,
-      transaction_amount: body.transaction_amount,
-      payment_method_id: body.payment_method_id,
-      installments: body.installments ?? 1,
-      issuer_id: body.issuer_id,
-      payer: body.payer,
-      additional_info: body.additional_info,
-      // você pode adicionar statement_descriptor, notification_url, etc
+    // 3) Normaliza e monta o payload final
+    const payload: MPCreatePaymentPayload = {
+      ...body,
+      transaction_amount: Number(body.transaction_amount || 0),
+      description: body.description || 'Pedido - Império Distribuidora',
+      binary_mode: true, // evita ficar em "pending" por análise de risco
     };
 
-    const res = await fetch('https://api.mercadopago.com/v1/payments', {
-      method: 'POST',
-      headers: {
-        Authorization: `Bearer ${ACCESS_TOKEN}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify(payload),
-      // IMPORTANTE: não usar cache em chamada de pagamento
-      cache: 'no-store',
-    });
+    // 4) Chama a API de Payments do Mercado Pago
+    const headers: HeadersInit = {
+      Authorization: `Bearer ${accessToken}`,
+      'Content-Type': 'application/json',
+    };
 
-    const json = (await res.json()) as MPCreatePaymentResponse;
+    const mpResp = await withTimeout(
+      fetch('https://api.mercadopago.com/v1/payments', {
+        method: 'POST',
+        headers,
+        body: JSON.stringify(payload),
+      })
+    );
 
-    if (!res.ok) {
-      console.error('MP /v1/payments error:', json);
-      return NextResponse.json(
-        { error: 'Falha ao processar pagamento', details: json },
-        { status: res.status }
-      );
-    }
+    const data = (await mpResp.json().catch(() => ({}))) as unknown;
 
-    // devolve somente o necessário
+    // Sucesso costuma ser 201; algumas contas retornam 200
+    const ok = mpResp.ok && (mpResp.status === 201 || mpResp.status === 200);
+
     return NextResponse.json(
       {
-        id: json.id,
-        status: json.status,
-        status_detail: json.status_detail,
-        payment_method_id: json.payment_method_id,
-        // alguns fluxos incluem o preference/order id aqui:
-        preference_id: json.order?.id ?? null,
+        ok,
+        status: mpResp.status,
+        payment: data,
       },
       { status: 200 }
     );
-  } catch (err: unknown) {
-    const message = err instanceof Error ? err.message : String(err);
-    console.error('[process-payment] error:', message);
-    return NextResponse.json({ error: 'Erro interno', message }, { status: 500 });
+  } catch (e) {
+    // IMPORTANTE: SEMPRE status 200 pro Brick não “congelar”
+    const msg = e instanceof Error ? e.message : String(e);
+    return NextResponse.json({ ok: false, error: msg }, { status: 200 });
   }
+}
+
+// Ping de saúde / evita erro em GET
+export async function GET() {
+  return NextResponse.json({ ok: true, route: 'mp/process-payment' });
 }
