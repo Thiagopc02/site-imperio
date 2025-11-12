@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { getAuth, onAuthStateChanged, signOut, User } from 'firebase/auth';
+import { getAuth, onAuthStateChanged, signOut, type User } from 'firebase/auth';
 import { db } from '@/firebase/config';
 import {
   collection,
@@ -14,7 +14,9 @@ import {
   query,
   updateDoc,
   serverTimestamp,
-  Unsubscribe,
+  type Unsubscribe,
+  type DocumentData,
+  type QuerySnapshot,
 } from 'firebase/firestore';
 import {
   FaCheckCircle,
@@ -31,9 +33,10 @@ import {
   FaWhatsapp,
 } from 'react-icons/fa';
 
-/* ---------- Tipos ---------- */
+/* ===================== Tipos ===================== */
 
 type Item = { id?: string; nome?: string; quantidade?: number; preco?: number };
+
 type Endereco = {
   rua?: string;
   numero?: string;
@@ -46,10 +49,16 @@ type Endereco = {
   lng?: number | null;
 };
 
-/** Timestamp “like” recebido do Firestore quando serializado */
+/** Timestamp-like vindo do Firestore quando serializado */
 type FireTimestampLike = { seconds?: number } | Date | null | undefined;
 
-type StatusFilter = 'todos' | 'andamento' | 'confirmado' | 'rota' | 'entregue' | 'cancelado';
+type StatusFilter =
+  | 'todos'
+  | 'andamento'
+  | 'confirmado'
+  | 'rota'
+  | 'entregue'
+  | 'cancelado';
 
 type Pedido = {
   id: string;
@@ -63,12 +72,20 @@ type Pedido = {
   itens?: Item[];
   endereco?: Endereco | null;
 
-  /** campos para envio ao grupo do WhatsApp */
+  /** flags p/ envio ao grupo do WhatsApp */
   grupoEnviado?: boolean;
   grupoEnviadoEm?: FireTimestampLike;
 };
 
-/* ---------- Helpers ---------- */
+type ClienteResumo = {
+  uid: string;
+  nome: string;
+  pedidos: number;
+  gastoTotal: number;
+  ultimaCompra: Date | null;
+};
+
+/* ===================== Helpers ===================== */
 
 const money = (n: number) => `R$ ${Number(n || 0).toFixed(2)}`;
 
@@ -86,13 +103,13 @@ const fmtDateTime = (d: Date) =>
 const enderecoTexto = (e?: Endereco | null) =>
   e ? [e.rua, e.numero, e.bairro, e.cidade, e.cep, 'Brasil'].filter(Boolean).join(', ') : '';
 
+const normalizeEmail = (raw: string) =>
+  raw.normalize('NFKC').replace(/[\u200B-\u200D\uFEFF]/g, '').trim().toLowerCase();
+
 const ALLOWED_EMAILS = new Set<string>([
   'thiagotorresdeoliveira9@gmail.com',
   'thiagotorres5517@gmail.com',
 ]);
-
-const normalizeEmail = (raw: string) =>
-  raw.normalize('NFKC').replace(/[\u200B-\u200D\uFEFF]/g, '').trim().toLowerCase();
 
 async function hasAdminRole(uid: string): Promise<boolean> {
   try {
@@ -100,53 +117,46 @@ async function hasAdminRole(uid: string): Promise<boolean> {
     if (s.exists()) {
       const d = s.data() as Record<string, unknown>;
       if (d['ativo'] === true) return true;
-      if (d['papel'] === 'administrador') return true;
-      if (d['role'] === 'admin') return true;
+      if (d['papel'] === 'administrador' || d['role'] === 'admin') return true;
     }
-  } catch {}
+  } catch (_e) {}
   try {
     const s = await getDoc(doc(db, 'admin', uid));
     if (s.exists()) {
       const d = s.data() as Record<string, unknown>;
-      if (d['papel'] === 'administrador' || d['role'] === 'admin' || d['ativo'] === true) return true;
+      if (d['ativo'] === true) return true;
+      if (d['papel'] === 'administrador' || d['role'] === 'admin') return true;
     }
-  } catch {}
+  } catch (_e) {}
   try {
     const s = await getDoc(doc(db, 'usuarios', uid));
     if (s.exists()) {
       const d = s.data() as Record<string, unknown>;
       if (d['papel'] === 'administrador' || d['role'] === 'admin') return true;
     }
-  } catch {}
+  } catch (_e) {}
   try {
     const s = await getDoc(doc(db, 'usuários', uid));
     if (s.exists()) {
       const d = s.data() as Record<string, unknown>;
       if (d['papel'] === 'administrador' || d['role'] === 'admin') return true;
     }
-  } catch {}
+  } catch (_e) {}
   return false;
 }
 
-type ClienteResumo = {
-  uid: string;
-  nome: string;
-  pedidos: number;
-  gastoTotal: number;
-  ultimaCompra: Date | null;
-};
-
-/* ---------- Página ---------- */
+/* ===================== Página ===================== */
 
 export default function PedidosDetalhadosPage() {
   const router = useRouter();
+
   const [user, setUser] = useState<User | null>(null);
   const [isAdmin, setIsAdmin] = useState<boolean | null>(null);
 
   const [pedidos, setPedidos] = useState<Pedido[]>([]);
   const unsubRef = useRef<Unsubscribe | null>(null);
 
-  const [q, setQ] = useState('');
+  const [q, setQ] = useState<string>('');
   const [days, setDays] = useState<7 | 30 | 90 | 0>(30);
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('todos');
 
@@ -173,42 +183,50 @@ export default function PedidosDetalhadosPage() {
       let admin = ALLOWED_EMAILS.has(normalizeEmail(u.email || ''));
       if (!admin) admin = await hasAdminRole(u.uid);
       setIsAdmin(admin);
+
       if (!admin) {
         setPedidos([]);
         return;
       }
 
       const qy = query(collection(db, 'pedidos'), orderBy('data', 'desc'));
-      unsubRef.current = onSnapshot(qy, (snap) => {
-        const arr: Pedido[] = [];
-        snap.forEach((d) => {
-          const raw = d.data() as Record<string, unknown>;
-          arr.push({
-            id: d.id,
-            uid: String(raw['uid'] ?? ''),
-            nome: typeof raw['nome'] === 'string' ? raw['nome'] : undefined,
-            total: typeof raw['total'] === 'number' ? raw['total'] : undefined,
-            status: typeof raw['status'] === 'string' ? raw['status'] : undefined,
-            data: (raw['data'] as FireTimestampLike) ?? null,
-            tipoEntrega:
-              raw['tipoEntrega'] === 'entrega' || raw['tipoEntrega'] === 'retirada'
-                ? (raw['tipoEntrega'] as 'entrega' | 'retirada')
-                : undefined,
-            formaPagamento:
-              raw['formaPagamento'] === 'pix' ||
-              raw['formaPagamento'] === 'cartao_credito' ||
-              raw['formaPagamento'] === 'cartao_debito' ||
-              raw['formaPagamento'] === 'dinheiro'
-                ? (raw['formaPagamento'] as Pedido['formaPagamento'])
-                : undefined,
-            itens: Array.isArray(raw['itens']) ? (raw['itens'] as Item[]) : undefined,
-            endereco: (raw['endereco'] as Endereco) ?? null,
-            grupoEnviado: raw['grupoEnviado'] === true,
-            grupoEnviadoEm: (raw['grupoEnviadoEm'] as FireTimestampLike) ?? null,
+      unsubRef.current = onSnapshot(
+        qy,
+        (snap: QuerySnapshot<DocumentData>) => {
+          const arr: Pedido[] = [];
+          snap.forEach((d) => {
+            const raw = d.data() as Record<string, unknown>;
+            arr.push({
+              id: d.id,
+              uid: String(raw['uid'] ?? ''),
+              nome: typeof raw['nome'] === 'string' ? raw['nome'] : undefined,
+              total: typeof raw['total'] === 'number' ? raw['total'] : undefined,
+              status: typeof raw['status'] === 'string' ? raw['status'] : undefined,
+              data: (raw['data'] as FireTimestampLike) ?? null,
+              tipoEntrega:
+                raw['tipoEntrega'] === 'entrega' || raw['tipoEntrega'] === 'retirada'
+                  ? (raw['tipoEntrega'] as 'entrega' | 'retirada')
+                  : undefined,
+              formaPagamento:
+                raw['formaPagamento'] === 'pix' ||
+                raw['formaPagamento'] === 'cartao_credito' ||
+                raw['formaPagamento'] === 'cartao_debito' ||
+                raw['formaPagamento'] === 'dinheiro'
+                  ? (raw['formaPagamento'] as Pedido['formaPagamento'])
+                  : undefined,
+              itens: Array.isArray(raw['itens']) ? (raw['itens'] as Item[]) : undefined,
+              endereco: (raw['endereco'] as Endereco) ?? null,
+              grupoEnviado: raw['grupoEnviado'] === true,
+              grupoEnviadoEm: (raw['grupoEnviadoEm'] as FireTimestampLike) ?? null,
+            });
           });
-        });
-        setPedidos(arr);
-      });
+          setPedidos(arr);
+        },
+        // erro de snapshot — não quebrar a UI
+        (_error: unknown) => {
+          setPedidos([]);
+        }
+      );
     });
 
     return () => {
@@ -241,7 +259,8 @@ export default function PedidosDetalhadosPage() {
       .join('\n');
 
     const endTxt = enderecoTexto(p.endereco);
-    const hasCoords = typeof p.endereco?.lat === 'number' && typeof p.endereco?.lng === 'number';
+    const hasCoords =
+      typeof p.endereco?.lat === 'number' && typeof p.endereco?.lng === 'number';
     const mapsUrl = hasCoords
       ? `https://www.google.com/maps/search/?api=1&query=${p.endereco!.lat},${p.endereco!.lng}`
       : endTxt
@@ -251,7 +270,9 @@ export default function PedidosDetalhadosPage() {
     const cabecalho = `*NOVO PEDIDO* #${p.id}`;
     const cliente = `*Cliente:* ${p.nome || '—'}`;
     const entrega =
-      p.tipoEntrega === 'retirada' ? '*Entrega:* Retirada no balcão' : '*Entrega:* Entrega em domicílio';
+      p.tipoEntrega === 'retirada'
+        ? '*Entrega:* Retirada no balcão'
+        : '*Entrega:* Entrega em domicílio';
     const pagamento =
       p.formaPagamento === 'pix'
         ? 'PIX'
@@ -281,10 +302,12 @@ export default function PedidosDetalhadosPage() {
         grupoEnviado: true,
         grupoEnviadoEm: serverTimestamp(),
       });
-    } catch {
-      /* silencioso */
+    } catch (_e) {
+      // silencioso
     }
   }
+
+  /* ===================== Derivados ===================== */
 
   const pedidosFiltrados = useMemo(() => {
     let arr = [...pedidos];
@@ -315,7 +338,7 @@ export default function PedidosDetalhadosPage() {
       arr = arr.filter((p) => {
         const inId = p.id.toLowerCase().includes(needle);
         const inNome = (p.nome || '').toLowerCase().includes(needle);
-        const inForma = (p.formaPagamento || '').toLowerCase().includes(needle);
+        const inForma = (p.formaPagamento || '').toLowerCase().includes(needle); // <- fix aqui
         const inAddr = enderecoTexto(p.endereco).toLowerCase().includes(needle);
         return inId || inNome || inForma || inAddr;
       });
@@ -345,6 +368,8 @@ export default function PedidosDetalhadosPage() {
     }
     return map;
   }, [pedidos]);
+
+  /* ===================== Render ===================== */
 
   if (user === null) {
     return <div className="p-6 text-white">Carregando autenticação…</div>;
@@ -428,7 +453,7 @@ export default function PedidosDetalhadosPage() {
           <FaSearch className="absolute -translate-y-1/2 left-2 top-1/2 text-neutral-400" />
           <input
             value={q}
-            onChange={(e) => setQ(e.target.value)}
+            onChange={(e: React.ChangeEvent<HTMLInputElement>) => setQ(e.target.value)}
             placeholder="Buscar por ID, cliente, pagamento ou endereço…"
             className="py-2 pl-8 pr-3 text-sm border rounded outline-none w-80 bg-zinc-900 border-zinc-700"
           />
@@ -595,7 +620,7 @@ export default function PedidosDetalhadosPage() {
 
                 {/* Ações */}
                 <div className="flex flex-wrap items-center gap-2 mt-4">
-                  {/* Botão WhatsApp com glow */}
+                  {/* WhatsApp com glow */}
                   <div
                     className="relative group"
                     onMouseEnter={() => setHoverId(p.id)}
@@ -675,13 +700,14 @@ export default function PedidosDetalhadosPage() {
       </div>
 
       <p className="mt-4 text-xs text-gray-400">
-        Mostrando {pedidosFiltrados.length} pedido(s) {days ? `nos últimos ${days} dias.` : 'no período selecionado.'}
+        Mostrando {pedidosFiltrados.length} pedido(s){' '}
+        {days ? `nos últimos ${days} dias.` : 'no período selecionado.'}
       </p>
     </main>
   );
 }
 
-/* ---------- Componentes ---------- */
+/* ===================== Componentes ===================== */
 
 function ActionBtn({
   children,
