@@ -1,104 +1,74 @@
+// src/app/api/mp/create-preference/route.ts
 import { NextRequest, NextResponse } from 'next/server';
 
 const MP_API = 'https://api.mercadopago.com/checkout/preferences';
-const ACCESS_TOKEN = process.env.MP_ACCESS_TOKEN || '';
 
-type Currency = 'BRL';
-
-interface Item {
+type ItemBody = {
   title: string;
   quantity: number;
   unit_price: number;
-  currency_id: Currency;
-}
-interface Payer {
-  name?: string;
-  email?: string;
-  phone?: { number?: string };
-}
-interface BackUrls {
-  success: string;
-  failure: string;
-  pending: string;
-}
-interface ReceiverAddress {
-  zip_code: string;
-  street_name: string;
-  city_name: string;
-}
-interface Shipment {
-  receiver_address: ReceiverAddress;
-}
-interface CreatePrefBody {
-  items: Item[];
-  payer?: Payer;
-  external_reference?: string;
-  shipment?: Shipment;
-  back_urls?: Partial<BackUrls>;
-}
+  currency_id: 'BRL';
+};
 
 export async function POST(req: NextRequest) {
   try {
-    if (!ACCESS_TOKEN) {
-      return NextResponse.json(
-        { error: 'Missing MP_ACCESS_TOKEN' },
-        { status: 500 }
-      );
-    }
-
-    const body = (await req.json()) as CreatePrefBody;
-
-    if (!Array.isArray(body.items) || body.items.length === 0) {
-      return NextResponse.json({ error: 'Invalid items' }, { status: 400 });
-    }
-
-    const baseUrl = process.env.NEXT_PUBLIC_SITE_URL ?? '';
-    const back_urls: BackUrls = {
-      success: `${baseUrl}/pedidos`,
-      failure: `${baseUrl}/checkout-bricks?status=failure`,
-      pending: `${baseUrl}/checkout-bricks?status=pending`,
-      ...(body.back_urls ?? {}),
+    const body = (await req.json()) as {
+      items: ItemBody[];
+      payer: { name?: string; email?: string; phone?: { number?: string } };
+      external_reference: string;              // obrigatório pra casarmos no webhook
+      shipment?: {
+        receiver_address: {
+          zip_code: string;
+          street_name: string;
+          city_name: string;
+        };
+      };
+      back_urls: { success: string; failure: string; pending: string };
     };
 
+    const baseUrl =
+      process.env.NEXT_PUBLIC_SITE_URL ??
+      (typeof window === 'undefined' ? '' : window.location.origin);
+
+    // URL do webhook que o MP vai chamar
+    const notificationUrl = `${baseUrl}/api/mp/webhook`;
+
     const payload = {
-      ...body,
+      items: body.items,
+      payer: body.payer,
+      external_reference: body.external_reference,
+      back_urls: body.back_urls,
       auto_return: 'approved' as const,
-      back_urls,
-      statement_descriptor: process.env.MP_STATEMENT_DESCRIPTOR ?? 'IMPERIO',
-      notification_url:
-        process.env.MP_NOTIFICATION_URL ?? undefined, // se quiser usar webhook
+      notification_url: notificationUrl,
+      // metadados opcionais que usaremos no webhook (ajuda a montar o pedido)
+      metadata: {
+        email: body.payer?.email ?? null,
+        phone: body.payer?.phone?.number ?? null,
+      },
+      shipments: body.shipment ? { receiver_address: body.shipment.receiver_address } : undefined,
     };
 
     const res = await fetch(MP_API, {
       method: 'POST',
       headers: {
-        Authorization: `Bearer ${ACCESS_TOKEN}`,
         'Content-Type': 'application/json',
+        // token secreto (não público)
+        Authorization: `Bearer ${process.env.MP_ACCESS_TOKEN}`,
       },
       body: JSON.stringify(payload),
     });
 
-    const data = (await res.json()) as {
-      id?: string;
-      init_point?: string;
-      sandbox_init_point?: string;
-      [k: string]: unknown;
-    };
-
     if (!res.ok) {
-      console.error('MP create preference FAILED', res.status, data);
-      return NextResponse.json(
-        { error: 'MP error', details: data },
-        { status: 500 }
-      );
+      const t = await res.text();
+      console.error('MP create-preference FAIL:', t);
+      return NextResponse.json({ error: 'create-preference-failed' }, { status: 400 });
     }
 
-    return NextResponse.json({
-      id: data.id,
-      init_point: data.init_point ?? data.sandbox_init_point,
-    });
-  } catch (err: unknown) {
-    console.error('create-preference route error', err);
-    return NextResponse.json({ error: 'Server error' }, { status: 500 });
+    const data = await res.json();
+    // Mercado Pago responde com "id" (preference id)
+    return NextResponse.json({ id: data.id }, { status: 200 });
+  } catch (e) {
+    console.error('create-preference Error', e);
+    return NextResponse.json({ error: 'server-error' }, { status: 500 });
   }
 }

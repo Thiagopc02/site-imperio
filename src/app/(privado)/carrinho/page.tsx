@@ -14,6 +14,7 @@ import {
   where,
   deleteDoc,
   doc,
+  setDoc,
   type DocumentData,
   type QuerySnapshot,
 } from 'firebase/firestore';
@@ -100,7 +101,7 @@ export default function CarrinhoPage() {
     [carrinho]
   );
 
-  // Le o usuário (também no SSR -> noop) e assina Firestore de endereços
+  // Lê usuário e assina endereços
   useEffect(() => {
     const unsub = onAuthStateChanged(auth, (u) => {
       const uid = u?.uid ?? null;
@@ -115,8 +116,8 @@ export default function CarrinhoPage() {
     if (!userId) return;
     setNovoEndereco((prev) => ({ ...prev, usuarioId: userId }));
 
-    const q = query(collection(db, 'enderecos'), where('usuarioId', '==', userId));
-    const unsubscribe = onSnapshot(q, (snapshot: QuerySnapshot<DocumentData>) => {
+    const qy = query(collection(db, 'enderecos'), where('usuarioId', '==', userId));
+    const unsubscribe = onSnapshot(qy, (snapshot: QuerySnapshot<DocumentData>) => {
       const lista: Endereco[] = [];
       snapshot.forEach((docu) =>
         lista.push({ id: docu.id, ...(docu.data() as Omit<Endereco, 'id'>) })
@@ -291,6 +292,10 @@ export default function CarrinhoPage() {
         alert('Selecione Pix ou Cartão para pagar online.');
         return;
       }
+      if (!nome || !telefone) {
+        alert('Preencha nome e telefone.');
+        return;
+      }
 
       const endEntrega =
         tipoEntrega === 'entrega'
@@ -298,6 +303,36 @@ export default function CarrinhoPage() {
           : null;
 
       const externalRef = gerarExternalRef();
+
+      // (opcional, mas recomendado) cria rascunho do pedido para já aparecer na dashboard
+      const pedidoRascunho = {
+        uid: userId || '',
+        nome,
+        telefone,
+        tipoEntrega,
+        formaPagamento:
+          formaPagamento === 'pix'
+            ? 'Pix'
+            : formaPagamento === 'cartao_credito'
+            ? 'Cartão - Crédito'
+            : 'Cartão - Débito',
+        troco: null as number | null,
+        endereco: endEntrega ?? null,
+        itens: carrinho.map((item) => ({
+          id: item.id,
+          nome: item.nome,
+          tipo: item.tipo || 'unidade',
+          quantidade: item.quantidade,
+          preco: item.preco,
+        })),
+        total,
+        data: new Date().toISOString(),
+        status: 'Aguardando pagamento', // será atualizado pelo webhook
+      };
+
+      await setDoc(doc(db, 'pedidos', externalRef), pedidoRascunho, { merge: true });
+
+      const telefoneNum = telefone.replace(/\D/g, '').slice(-11);
 
       const body = {
         items: carrinho.map((item) => ({
@@ -309,9 +344,9 @@ export default function CarrinhoPage() {
         payer: {
           name: nome || 'Cliente',
           email: userEmail ?? 'sandbox@test.com',
-          phone: { number: telefone?.replace(/\D/g, '')?.slice(-11) || '' },
+          phone: { number: telefoneNum || '' },
         },
-        external_reference: externalRef,
+        external_reference: externalRef, // ESSENCIAL
         shipment: endEntrega
           ? {
               receiver_address: {
