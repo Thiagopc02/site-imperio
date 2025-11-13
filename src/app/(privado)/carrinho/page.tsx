@@ -15,6 +15,7 @@ import {
   deleteDoc,
   doc,
   setDoc,
+  serverTimestamp,
   type DocumentData,
   type QuerySnapshot,
 } from 'firebase/firestore';
@@ -256,8 +257,10 @@ export default function CarrinhoPage() {
         preco: item.preco,
       })),
       total,
-      data: new Date().toISOString(),
+      data: serverTimestamp(),            //  <-- Timestamp correto
+      atualizadoEm: serverTimestamp(),
       status: 'Em andamento',
+      mpPaymentId: null as string | null, // preenchido se migrar para online
     };
 
     try {
@@ -298,7 +301,7 @@ export default function CarrinhoPage() {
         nome,
         telefone,
         tipoEntrega,
-        formaPagamento: 'online' as const, // será decidido no Checkout
+        formaPagamento: 'online' as const, // definido no Checkout
         troco: null as number | null,
         endereco: endEntrega ?? null,
         itens: carrinho.map((item) => ({
@@ -309,15 +312,24 @@ export default function CarrinhoPage() {
           preco: item.preco,
         })),
         total,
-        data: new Date().toISOString(),
+        data: serverTimestamp(),         //  <-- Timestamp correto
+        atualizadoEm: serverTimestamp(),
         status: 'Aguardando pagamento',
-        external_reference: externalRef,
+        external_reference: externalRef, //  <-- lido pelo webhook
+        mpPaymentId: null as string | null,
       };
 
       await setDoc(doc(db, 'pedidos', externalRef), pedidoRascunho, { merge: true });
 
+      // guarda informações para a página /checkout-bricks compor a preferência/pagamento
       if (typeof window !== 'undefined') {
         localStorage.setItem('carrinho', JSON.stringify(carrinho));
+        localStorage.setItem('mp_external_reference', externalRef);
+        if (userEmail) localStorage.setItem('mp_payer_email', userEmail);
+        localStorage.setItem('pedido_nome', nome);
+        localStorage.setItem('pedido_telefone', telefone);
+        localStorage.setItem('pedido_total', String(total));
+        localStorage.setItem('pedido_tipoEntrega', tipoEntrega);
       }
 
       router.push('/checkout-bricks');
@@ -618,7 +630,7 @@ export default function CarrinhoPage() {
           </div>
         </div>
 
-        {/* Bloco explicativo (ONLINE) centralizado, com as imagens da pasta /public */}
+        {/* Bloco explicativo (ONLINE) */}
         {!pagarComDinheiro && (
           <div className="p-5 mb-6 text-center rounded-xl bg-gradient-to-b from-zinc-900 to-zinc-950 ring-1 ring-white/10">
             <p className="text-sm/6">

@@ -1,5 +1,7 @@
 'use client';
 
+/* eslint-disable @next/next/no-img-element */
+
 import { useEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
@@ -17,6 +19,7 @@ import {
   type Unsubscribe,
   type DocumentData,
   type QuerySnapshot,
+  type Timestamp,
 } from 'firebase/firestore';
 import {
   FaCheckCircle,
@@ -49,8 +52,12 @@ type Endereco = {
   lng?: number | null;
 };
 
-/** Timestamp-like vindo do Firestore quando serializado */
-type FireTimestampLike = { seconds?: number } | Date | null | undefined;
+type FireTimestampLike =
+  | Timestamp
+  | { seconds?: number; nanoseconds?: number }
+  | Date
+  | null
+  | undefined;
 
 type StatusFilter =
   | 'todos'
@@ -71,8 +78,6 @@ type Pedido = {
   formaPagamento?: 'pix' | 'cartao_credito' | 'cartao_debito' | 'dinheiro';
   itens?: Item[];
   endereco?: Endereco | null;
-
-  /** flags p/ envio ao grupo do WhatsApp */
   grupoEnviado?: boolean;
   grupoEnviadoEm?: FireTimestampLike;
 };
@@ -90,15 +95,23 @@ type ClienteResumo = {
 const money = (n: number) => `R$ ${Number(n || 0).toFixed(2)}`;
 
 const toDate = (v: FireTimestampLike): Date => {
+  if (!v) return new Date(NaN);
   if (v instanceof Date) return v;
-  if (v && typeof v === 'object' && typeof (v as { seconds?: number }).seconds === 'number') {
+  // Firestore Timestamp
+  if (typeof (v as Timestamp).toDate === 'function') {
+    return (v as Timestamp).toDate();
+  }
+  // objeto-like com seconds
+  if (typeof v === 'object' && typeof (v as { seconds?: number }).seconds === 'number') {
     return new Date((v as { seconds: number }).seconds * 1000);
   }
   return new Date(NaN);
 };
 
 const fmtDateTime = (d: Date) =>
-  isNaN(+d) ? '—' : d.toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' });
+  Number.isNaN(+d)
+    ? '—'
+    : d.toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' });
 
 const enderecoTexto = (e?: Endereco | null) =>
   e ? [e.rua, e.numero, e.bairro, e.cidade, e.cep, 'Brasil'].filter(Boolean).join(', ') : '';
@@ -112,36 +125,24 @@ const ALLOWED_EMAILS = new Set<string>([
 ]);
 
 async function hasAdminRole(uid: string): Promise<boolean> {
-  try {
-    const s = await getDoc(doc(db, 'administrador', uid));
-    if (s.exists()) {
+  const tryCol = async (col: string) => {
+    try {
+      const s = await getDoc(doc(db, col, uid));
+      if (!s.exists()) return false;
       const d = s.data() as Record<string, unknown>;
-      if (d['ativo'] === true) return true;
-      if (d['papel'] === 'administrador' || d['role'] === 'admin') return true;
+      return (
+        d['ativo'] === true ||
+        d['papel'] === 'administrador' ||
+        d['role'] === 'admin'
+      );
+    } catch {
+      return false;
     }
-  } catch (_e) {}
-  try {
-    const s = await getDoc(doc(db, 'admin', uid));
-    if (s.exists()) {
-      const d = s.data() as Record<string, unknown>;
-      if (d['ativo'] === true) return true;
-      if (d['papel'] === 'administrador' || d['role'] === 'admin') return true;
-    }
-  } catch (_e) {}
-  try {
-    const s = await getDoc(doc(db, 'usuarios', uid));
-    if (s.exists()) {
-      const d = s.data() as Record<string, unknown>;
-      if (d['papel'] === 'administrador' || d['role'] === 'admin') return true;
-    }
-  } catch (_e) {}
-  try {
-    const s = await getDoc(doc(db, 'usuários', uid));
-    if (s.exists()) {
-      const d = s.data() as Record<string, unknown>;
-      if (d['papel'] === 'administrador' || d['role'] === 'admin') return true;
-    }
-  } catch (_e) {}
+  };
+  if (await tryCol('administrador')) return true;
+  if (await tryCol('admin')) return true;
+  if (await tryCol('usuarios')) return true;
+  if (await tryCol('usuários')) return true;
   return false;
 }
 
@@ -180,7 +181,7 @@ export default function PedidosDetalhadosPage() {
         return;
       }
 
-      let admin = ALLOWED_EMAILS.has(normalizeEmail(u.email || ''));
+      let admin = ALLOWED_EMAILS.has(normalizeEmail(u.email ?? ''));
       if (!admin) admin = await hasAdminRole(u.uid);
       setIsAdmin(admin);
 
@@ -222,8 +223,7 @@ export default function PedidosDetalhadosPage() {
           });
           setPedidos(arr);
         },
-        // erro de snapshot — não quebrar a UI
-        (_error: unknown) => {
+        () => {
           setPedidos([]);
         }
       );
@@ -255,14 +255,16 @@ export default function PedidosDetalhadosPage() {
   /** Abre o WhatsApp com mensagem pronta e marca o pedido como enviado ao grupo */
   async function enviarParaGrupo(p: Pedido) {
     const itensTxt = (p.itens || [])
-      .map((i) => `• ${i.nome || '—'} — ${i.quantidade || 0} × ${money(i.preco || 0)}`)
+      .map((i) => `• ${String(i.nome || '—')} — ${Number(i.quantidade || 0)} × ${money(Number(i.preco || 0))}`)
       .join('\n');
 
     const endTxt = enderecoTexto(p.endereco);
     const hasCoords =
       typeof p.endereco?.lat === 'number' && typeof p.endereco?.lng === 'number';
     const mapsUrl = hasCoords
-      ? `https://www.google.com/maps/search/?api=1&query=${p.endereco!.lat},${p.endereco!.lng}`
+      ? `https://www.google.com/maps/search/?api=1&query=${String(p.endereco!.lat)},${String(
+          p.endereco!.lng
+        )}`
       : endTxt
       ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(endTxt)}`
       : '';
@@ -302,8 +304,8 @@ export default function PedidosDetalhadosPage() {
         grupoEnviado: true,
         grupoEnviadoEm: serverTimestamp(),
       });
-    } catch (_e) {
-      // silencioso
+    } catch {
+      /* silencioso */
     }
   }
 
@@ -338,7 +340,7 @@ export default function PedidosDetalhadosPage() {
       arr = arr.filter((p) => {
         const inId = p.id.toLowerCase().includes(needle);
         const inNome = (p.nome || '').toLowerCase().includes(needle);
-        const inForma = (p.formaPagamento || '').toLowerCase().includes(needle); // <- fix aqui
+        const inForma = (p.formaPagamento || '').toLowerCase().includes(needle);
         const inAddr = enderecoTexto(p.endereco).toLowerCase().includes(needle);
         return inId || inNome || inForma || inAddr;
       });
@@ -511,8 +513,7 @@ export default function PedidosDetalhadosPage() {
                     {resumoCliente && (
                       <ul className="mt-2 text-sm text-gray-300">
                         <li>
-                          Compras:{' '}
-                          <strong className="text-white">{resumoCliente.pedidos}</strong>
+                          Compras: <strong className="text-white">{resumoCliente.pedidos}</strong>
                         </li>
                         <li>
                           Gasto total:{' '}
@@ -537,12 +538,12 @@ export default function PedidosDetalhadosPage() {
                       <ul className="space-y-2">
                         {p.itens.map((it, idx) => (
                           <li
-                            key={idx}
+                            key={`${p.id}-it-${idx}`}
                             className="flex justify-between gap-2 pb-1 text-sm border-b border-zinc-800"
                           >
-                            <span className="text-gray-200">{it.nome || '—'}</span>
+                            <span className="text-gray-200">{String(it.nome || '—')}</span>
                             <span className="text-gray-400">
-                              {it.quantidade || 0} × {money(it.preco || 0)}
+                              {Number(it.quantidade || 0)} × {money(Number(it.preco || 0))}
                             </span>
                           </li>
                         ))}
@@ -573,7 +574,7 @@ export default function PedidosDetalhadosPage() {
                       <>
                         <p className="mt-1 text-sm">
                           <span className="text-gray-400">Endereço:</span>{' '}
-                          {enderecoTexto(p.endereco) || '—'}
+                          {addressText || '—'}
                         </p>
 
                         {hasCoords ? (
@@ -583,7 +584,9 @@ export default function PedidosDetalhadosPage() {
                               className="w-full h-48"
                               loading="lazy"
                               referrerPolicy="no-referrer-when-downgrade"
-                              src={`https://www.google.com/maps?q=${p.endereco!.lat},${p.endereco!.lng}&z=16&output=embed`}
+                              src={`https://www.google.com/maps?q=${String(
+                                p.endereco!.lat
+                              )},${String(p.endereco!.lng)}&z=16&output=embed`}
                             />
                           </div>
                         ) : null}
@@ -591,7 +594,9 @@ export default function PedidosDetalhadosPage() {
                         <div className="mt-2">
                           {hasCoords ? (
                             <a
-                              href={`https://www.google.com/maps/search/?api=1&query=${p.endereco!.lat},${p.endereco!.lng}`}
+                              href={`https://www.google.com/maps/search/?api=1&query=${String(
+                                p.endereco!.lat
+                              )},${String(p.endereco!.lng)}`}
                               target="_blank"
                               rel="noreferrer"
                               className="inline-flex items-center px-3 py-1.5 text-xs font-semibold rounded bg-violet-600 hover:bg-violet-700"
@@ -709,6 +714,8 @@ export default function PedidosDetalhadosPage() {
 
 /* ===================== Componentes ===================== */
 
+type ActionTone = 'success' | 'info' | 'ok' | 'danger';
+
 function ActionBtn({
   children,
   onClick,
@@ -720,11 +727,11 @@ function ActionBtn({
   onClick: () => void;
   disabled?: boolean;
   title?: string;
-  tone?: 'success' | 'info' | 'ok' | 'danger';
+  tone?: ActionTone;
 }) {
   const base =
     'inline-flex items-center gap-1 px-2.5 py-1.5 text-xs font-semibold rounded transition-colors';
-  const map: Record<string, string> = {
+  const map: Record<ActionTone, string> = {
     success: 'bg-green-600 hover:bg-green-700 text-white',
     info: 'bg-blue-600 hover:bg-blue-700 text-white',
     ok: 'bg-emerald-600 hover:bg-emerald-700 text-white',

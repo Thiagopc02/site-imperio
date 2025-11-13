@@ -4,14 +4,13 @@ import { NextRequest, NextResponse } from 'next/server';
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
-/** Tipos mínimos do payload aceito pela API de Preferences */
+/** Tipos mínimos */
 type MPPreferenceItem = {
   title: string;
   quantity: number;
   unit_price: number;
   currency_id?: 'BRL' | string;
 };
-
 type MPPreferenceBody = {
   items: MPPreferenceItem[];
   payer?: {
@@ -20,38 +19,59 @@ type MPPreferenceBody = {
     phone?: { number?: string };
   };
   external_reference?: string;
-  shipment?: unknown;
-  back_urls?: {
-    success?: string;
-    failure?: string;
-    pending?: string;
-  };
+  shipments?: unknown;
+  back_urls?: { success?: string; failure?: string; pending?: string };
+  notification_url?: string;
+  metadata?: Record<string, unknown>;
 };
 
-function isJson(req: NextRequest) {
-  const ct = req.headers.get('content-type') || '';
+function jsonOrText(req: NextRequest) {
+  const ct = (req.headers.get('content-type') || '').toLowerCase();
   return ct.includes('application/json');
+}
+
+function genExternalRef() {
+  return `order_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
 }
 
 export async function POST(req: NextRequest) {
   try {
-    // Garante JSON mesmo se o cliente enviou como texto
-    const raw = isJson(req) ? await req.json().catch(() => null) : JSON.parse(await req.text());
-    const body = (raw ?? null) as MPPreferenceBody | null;
+    const raw = jsonOrText(req) ? await req.json().catch(() => null) : JSON.parse(await req.text());
+    const bodyIn = (raw ?? null) as MPPreferenceBody | null;
 
-    const accessToken = process.env.MP_ACCESS_TOKEN;
-
-    // validações básicas para evitar chamadas inúteis ao MP
+    const accessToken = process.env.MP_ACCESS_TOKEN?.trim();
     if (!accessToken) {
-      return NextResponse.json(
-        { ok: false, error: 'missing-token' },
-        // 200 poderia “mascarar” erro. Preferimos 400 para o seu front cair no branch de erro.
-        { status: 400 }
-      );
+      return NextResponse.json({ ok: false, error: 'missing-token' }, { status: 400 });
     }
-    if (!body || !Array.isArray(body.items) || body.items.length === 0) {
+    if (!bodyIn || !Array.isArray(bodyIn.items) || bodyIn.items.length === 0) {
       return NextResponse.json({ ok: false, error: 'invalid-body' }, { status: 400 });
     }
+
+    // Base URL do site (para webhook e back_urls)
+    const baseUrl =
+      process.env.NEXT_PUBLIC_SITE_URL?.replace(/\/$/, '') ||
+      'https://imperiodistribuidora3015.com.br';
+
+    // Tenta extrair external_reference do body, query (?ref=) ou gera
+    const refFromQS = req.nextUrl.searchParams.get('ref') || undefined;
+    const external_reference =
+      (bodyIn.external_reference || refFromQS || '').trim() || genExternalRef();
+
+    const preference: MPPreferenceBody = {
+      ...bodyIn,
+      external_reference,
+      notification_url: `${baseUrl}/api/webhook`,
+      back_urls: {
+        success: `${baseUrl}/pedidos?status=success&ref=${encodeURIComponent(external_reference)}`,
+        failure: `${baseUrl}/pedidos?status=failure&ref=${encodeURIComponent(external_reference)}`,
+        pending: `${baseUrl}/pedidos?status=pending&ref=${encodeURIComponent(external_reference)}`,
+        ...(bodyIn.back_urls || {}),
+      },
+      metadata: {
+        ...(bodyIn.metadata || {}),
+        source: 'checkout-preference',
+      },
+    };
 
     const mpResp = await fetch('https://api.mercadopago.com/checkout/preferences', {
       method: 'POST',
@@ -59,12 +79,11 @@ export async function POST(req: NextRequest) {
         Authorization: `Bearer ${accessToken}`,
         'Content-Type': 'application/json',
       },
-      body: JSON.stringify(body),
+      body: JSON.stringify(preference),
+      cache: 'no-store',
     });
 
-    const data: unknown = await mpResp.json().catch(() => ({}));
-
-    // Quando der erro no MP, devolvemos 400 para o seu front exibir mensagem correta
+    const data = await mpResp.json().catch(() => ({}));
     if (!mpResp.ok) {
       return NextResponse.json(
         { ok: false, status: mpResp.status, preference: data },
@@ -72,14 +91,14 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // Em sucesso, o objeto possui "id" da preferência
-    const pref = data as { id?: string };
+    const pref = data as { id?: string; init_point?: string; sandbox_init_point?: string };
     return NextResponse.json(
       {
         ok: true,
-        status: mpResp.status,
-        id: pref.id, // seu front pode ler .id ou .preferenceId
         preferenceId: pref.id,
+        id: pref.id,
+        init_point: pref.init_point || pref.sandbox_init_point,
+        external_reference,
         preference: data,
       },
       { status: 200 }

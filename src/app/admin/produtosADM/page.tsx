@@ -3,23 +3,23 @@
 import Link from 'next/link';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { getAuth, onAuthStateChanged, User, signOut } from 'firebase/auth';
+import { getAuth, onAuthStateChanged, signOut, type User } from 'firebase/auth';
 import { db } from '@/firebase/config';
 import {
-  addDoc,
   collection,
-  deleteDoc,
   doc,
   getDoc,
   onSnapshot,
   orderBy,
   query,
   updateDoc,
-  Unsubscribe,
-  deleteField,
+  serverTimestamp,
+  type DocumentData,
+  type FirestoreError,
+  type Unsubscribe,
 } from 'firebase/firestore';
 
-/* ----------------- Config de Admin ----------------- */
+/* ====== Gate de Admin (mesma base dos outros) ====== */
 const ALLOWED_EMAILS = new Set<string>([
   'thiagotorres5517@gmail.com',
   'thiagotorresdeoliveira9@gmail.com',
@@ -28,7 +28,6 @@ const ALLOWED_EMAILS = new Set<string>([
 const normalizeEmail = (raw: string) =>
   raw.normalize('NFKC').replace(/[\u200B-\u200D\uFEFF]/g, '').trim().toLowerCase();
 
-/** helpers de tipo p/ evitar `any` */
 type AdminDoc = { ativo?: boolean; papel?: string; role?: string };
 const isAdminDoc = (x: unknown): x is AdminDoc => typeof x === 'object' && x !== null;
 
@@ -51,80 +50,100 @@ async function hasAdminRole(uid: string): Promise<boolean> {
   return false;
 }
 
-/* ----------------- Tipos ----------------- */
-type Produto = {
-  id?: string;
-  nome: string;
-  descrição: string;
-  categoria: string;
-  imagem: string; // nome do arquivo em /public/produtos/
-  precoUnidade?: number;
-  precoCaixa?: number;
-  itensPorCaixa?: number;
-  destaque: boolean;
-  disponivelPor: ('unidade' | 'caixa')[];
-  emFalta?: boolean;
+/* ====== Tipos ====== */
+type Endereco = {
+  rua?: string; numero?: string; bairro?: string; cidade?: string; cep?: string;
+  complemento?: string; pontoReferencia?: string; lat?: number; lng?: number; accuracy?: number;
 };
 
-type ProdutoDoc = Partial<Produto>;
-const isProdutoDoc = (x: unknown): x is ProdutoDoc => typeof x === 'object' && x !== null;
+type Item = {
+  id: string; nome: string; tipo?: string; quantidade: number; preco: number;
+};
 
-/* ----------------- Categorias (inclui Tabacaria) ----------------- */
-const CATEGORIAS = [
-  'Refrescos e Sucos',
-  'Fermentados',
-  'Destilados',
-  'Adega',
-  'Águas',
-  'Balas e Gomas',
-  'Chocolates',
-  'Copão de 770ml',
-  'Tabacaria',
-];
+type MPTransactionData = {
+  qr_code?: string;
+  qr_code_base64?: string;
+  ticket_url?: string;     // boleto
+  external_resource_url?: string;
+};
 
-/* ----------------- Página ----------------- */
-export default function AdminProdutosPage() {
+type MPPointOfInteraction = { transaction_data?: MPTransactionData };
+type MPCardInfo = { last_four_digits?: string; holder_name?: string; };
+type MPCharge = { card?: MPCardInfo };
+type MPPayment = {
+  id?: string | number;
+  status?: string;               // approved, pending, rejected...
+  payment_type_id?: string;      // credit_card, debit_card, pix, ticket (boleto)
+  transaction_amount?: number;
+  statement_descriptor?: string;
+  date_approved?: string | null;
+  point_of_interaction?: MPPointOfInteraction;
+  charges_details?: MPCharge[];
+};
+
+type Pedido = {
+  id: string;
+  uid: string;
+  nome: string;
+  telefone?: string;
+  email?: string;
+  tipoEntrega: 'entrega' | 'retirada';
+  formaPagamento?: string;
+  status: string;
+  troco?: number | null;
+  total: number;
+  itens: Item[];
+  endereco?: Endereco | null;
+  createdAt?: unknown;   // Firestore Timestamp
+  data?: string;         // ISO legacy
+  mp_payment_id?: string | number | null;
+  mp_snapshot?: MPPayment | null; // comprovante salvo via webhook
+};
+
+/* ====== Utils ====== */
+function tsOrIsoToMillis(p: Pick<Pedido, 'createdAt' | 'data'>): number {
+  const ts = p.createdAt as { seconds?: number; nanoseconds?: number } | undefined;
+  if (ts && typeof ts.seconds === 'number') {
+    return ts.seconds * 1000 + (ts.nanoseconds ? ts.nanoseconds / 1e6 : 0);
+  }
+  if (p.data) {
+    const t = Date.parse(p.data);
+    if (!Number.isNaN(t)) return t;
+  }
+  return 0;
+}
+
+const STATUS = [
+  'Aguardando pagamento',
+  'Pago',
+  'Em andamento',
+  'Em rota',
+  'Entregue',
+  'Cancelado',
+] as const;
+
+function money(n: number | undefined) {
+  return `R$ ${(n ?? 0).toFixed(2)}`.replace('.', ',');
+}
+
+/* ====== Página ====== */
+export default function AdminPedidosPage() {
   const router = useRouter();
   const [user, setUser] = useState<User | null>(null);
   const [isAdmin, setIsAdmin] = useState<boolean | null>(null);
-  const [errMsg, setErrMsg] = useState<string | null>(null);
+  const [err, setErr] = useState<string | null>(null);
 
-  const [produtos, setProdutos] = useState<Produto[]>([]);
+  const [pedidos, setPedidos] = useState<Pedido[]>([]);
   const unsubRef = useRef<Unsubscribe | null>(null);
 
-  // form
-  const [editingId, setEditingId] = useState<string | null>(null);
-  const [nome, setNome] = useState('');
-  const [descricao, setDescricao] = useState('');
-  const [categoria, setCategoria] = useState('');
-  const [imagem, setImagem] = useState('');
-  const [precoUnidade, setPrecoUnidade] = useState<string>('');
-  const [precoCaixa, setPrecoCaixa] = useState<string>('');
-  const [itensPorCaixa, setItensPorCaixa] = useState<string>('');
-  const [destaque, setDestaque] = useState(false);
-  const [dispUnidade, setDispUnidade] = useState(true);
-  const [dispCaixa, setDispCaixa] = useState(false);
+  const [periodo, setPeriodo] = useState<'7d' | '30d' | '90d' | 'all'>('7d');
+  const [q, setQ] = useState('');
 
-  const resetForm = () => {
-    setEditingId(null);
-    setNome('');
-    setDescricao('');
-    setCategoria('');
-    setImagem('');
-    setPrecoUnidade('');
-    setPrecoCaixa('');
-    setItensPorCaixa('');
-    setDestaque(false);
-    setDispUnidade(true);
-    setDispCaixa(false);
-  };
-
-  /* auth + gate */
   useEffect(() => {
     const auth = getAuth();
     const unsub = onAuthStateChanged(auth, async (u) => {
       setUser(u);
-      setErrMsg(null);
+      setErr(null);
 
       if (!u) {
         setIsAdmin(null);
@@ -139,40 +158,47 @@ export default function AdminProdutosPage() {
       setIsAdmin(admin);
 
       if (!admin) {
-        setProdutos([]);
+        setPedidos([]);
         if (unsubRef.current) unsubRef.current();
         return;
       }
 
       try {
-        const qy = query(collection(db, 'produtos'), orderBy('nome', 'asc'));
+        const qy = query(collection(db, 'pedidos'), orderBy('createdAt', 'desc'));
         unsubRef.current = onSnapshot(
           qy,
           (snap) => {
-            const list: Produto[] = [];
+            const arr: Pedido[] = [];
             snap.forEach((d) => {
-              const raw = d.data() as unknown;
-              const data = isProdutoDoc(raw) ? raw : {};
-              list.push({
+              const data = d.data() as DocumentData;
+
+              arr.push({
                 id: d.id,
-                nome: data.nome ?? '',
-                descrição: data.descrição ?? '',
-                categoria: data.categoria ?? '',
-                imagem: data.imagem ?? '',
-                precoUnidade: typeof data.precoUnidade === 'number' ? data.precoUnidade : Number(data.precoUnidade ?? 0),
-                precoCaixa: typeof data.precoCaixa === 'number' ? data.precoCaixa : Number(data.precoCaixa ?? 0),
-                itensPorCaixa: typeof data.itensPorCaixa === 'number' ? data.itensPorCaixa : Number(data.itensPorCaixa ?? 0),
-                destaque: !!data.destaque,
-                disponivelPor: (Array.isArray(data.disponivelPor) ? data.disponivelPor : ['unidade']) as ('unidade' | 'caixa')[],
-                emFalta: !!data.emFalta,
+                uid: String(data.uid ?? ''),
+                nome: String(data.nome ?? ''),
+                telefone: data.telefone ? String(data.telefone) : '',
+                email: data.email ? String(data.email) : (data.payerEmail ? String(data.payerEmail) : ''),
+                tipoEntrega: (data.tipoEntrega === 'entrega' ? 'entrega' : 'retirada'),
+                formaPagamento: data.formaPagamento ? String(data.formaPagamento) : (data.payment_type ? String(data.payment_type) : ''),
+                status: String(data.status ?? 'Aguardando pagamento'),
+                troco: typeof data.troco === 'number' ? data.troco : null,
+                total: Number(data.total ?? 0),
+                itens: Array.isArray(data.itens) ? (data.itens as Item[]) : [],
+                endereco: (data.endereco as Endereco | null) ?? null,
+                createdAt: data.createdAt ?? serverTimestamp(),
+                data: data.data ? String(data.data) : undefined,
+                mp_payment_id: data.mp_payment_id ?? null,
+                mp_snapshot: (data.mp_snapshot as MPPayment | null) ?? null,
               });
             });
-            setProdutos(list);
+
+            arr.sort((a, b) => tsOrIsoToMillis(b) - tsOrIsoToMillis(a));
+            setPedidos(arr);
           },
-          () => setErrMsg('Sem permissão para ler produtos. Revise regras do Firestore.')
+          (e: FirestoreError) => setErr(`Erro ao listar pedidos: ${e.message}`)
         );
-      } catch {
-        setErrMsg('Falha ao carregar produtos.');
+      } catch (e) {
+        setErr('Falha ao carregar pedidos.');
       }
     });
 
@@ -182,119 +208,40 @@ export default function AdminProdutosPage() {
     };
   }, [router]);
 
-  const isValid = useMemo(() => {
-    const disp: string[] = [];
-    if (dispUnidade) disp.push('unidade');
-    if (dispCaixa) disp.push('caixa');
-    const precosOk =
-      (!dispUnidade || parseFloat(precoUnidade || '0') > 0) &&
-      (!dispCaixa || parseFloat(precoCaixa || '0') > 0);
-    return Boolean(nome.trim() && categoria && imagem.trim() && disp.length > 0 && precosOk);
-  }, [nome, categoria, imagem, dispUnidade, dispCaixa, precoUnidade, precoCaixa]);
-
-  async function handleSubmit(e: React.FormEvent) {
-    e.preventDefault();
-
-    if (!isValid) {
-      setErrMsg('Preencha os campos obrigatórios e os preços conforme a disponibilidade.');
-      return;
+  const agora = Date.now();
+  const cutoff = useMemo(() => {
+    switch (periodo) {
+      case '7d': return agora - 7 * 24 * 3600 * 1000;
+      case '30d': return agora - 30 * 24 * 3600 * 1000;
+      case '90d': return agora - 90 * 24 * 3600 * 1000;
+      default: return 0;
     }
-    setErrMsg(null);
+  }, [agora, periodo]);
 
-    const disp: ('unidade' | 'caixa')[] = [];
-    if (dispUnidade) disp.push('unidade');
-    if (dispCaixa) disp.push('caixa');
+  const filtrados = useMemo(() => {
+    const qlc = q.trim().toLowerCase();
+    return pedidos.filter((p) => {
+      const t = tsOrIsoToMillis(p);
+      if (cutoff && t && t < cutoff) return false;
+      if (!qlc) return true;
 
-    const base = {
-      nome: nome.trim(),
-      descrição: descricao.trim(),
-      categoria,
-      imagem: imagem.trim(),
-      destaque,
-      disponivelPor: disp,
-    };
+      const alvo = [
+        p.id, p.nome, p.email, p.telefone, p.formaPagamento, p.status,
+        p.endereco?.rua, p.endereco?.bairro, p.endereco?.cidade, p.endereco?.cep,
+      ].filter(Boolean).join(' ').toLowerCase();
 
+      return alvo.includes(qlc);
+    });
+  }, [pedidos, cutoff, q]);
+
+  async function mudarStatus(id: string, status: string) {
     try {
-      if (editingId) {
-        const payload: Record<string, unknown> = {
-          ...base,
-          emFalta: false,
-        };
-
-        payload.precoUnidade = dispUnidade
-          ? Number(parseFloat(precoUnidade || '0').toFixed(2))
-          : deleteField();
-
-        if (dispCaixa) {
-          payload.precoCaixa = Number(parseFloat(precoCaixa || '0').toFixed(2));
-          const it = Number.parseInt(itensPorCaixa || '0', 10);
-          payload.itensPorCaixa = it > 0 ? it : deleteField();
-        } else {
-          payload.precoCaixa = deleteField();
-          payload.itensPorCaixa = deleteField();
-        }
-
-        await updateDoc(doc(db, 'produtos', editingId), payload);
-      } else {
-        const createPayload: Record<string, unknown> = {
-          ...base,
-          emFalta: false,
-        };
-        if (dispUnidade) {
-          createPayload.precoUnidade = Number(parseFloat(precoUnidade || '0').toFixed(2));
-        }
-        if (dispCaixa) {
-          createPayload.precoCaixa = Number(parseFloat(precoCaixa || '0').toFixed(2));
-          const it = Number.parseInt(itensPorCaixa || '0', 10);
-          if (it > 0) createPayload.itensPorCaixa = it;
-        }
-
-        await addDoc(collection(db, 'produtos'), createPayload);
-      }
-
-      resetForm();
-    } catch (err: unknown) {
-      console.error(err);
-      const msg = (typeof err === 'object' && err && 'message' in err) ? String((err as { message: unknown }).message) : '';
-      setErrMsg(`Erro ao salvar: ${msg || 'verifique as regras do Firestore.'}`);
-    }
-  }
-
-  function startEdit(p: Produto) {
-    setEditingId(p.id || null);
-    setNome(p.nome || '');
-    setDescricao(p.descrição || '');
-    setCategoria(p.categoria || '');
-    setImagem(p.imagem || '');
-    setPrecoUnidade(p.precoUnidade ? String(p.precoUnidade) : '');
-    setPrecoCaixa(p.precoCaixa ? String(p.precoCaixa) : '');
-    setItensPorCaixa(p.itensPorCaixa ? String(p.itensPorCaixa) : '');
-    setDestaque(!!p.destaque);
-    setDispUnidade((p.disponivelPor || []).includes('unidade'));
-    setDispCaixa((p.disponivelPor || []).includes('caixa'));
-  }
-
-  async function removeProduct(id?: string) {
-    if (!id) return;
-    const ok = confirm('Deseja excluir este produto?');
-    if (!ok) return;
-    try {
-      await deleteDoc(doc(db, 'produtos', id));
-      if (editingId === id) resetForm();
-    } catch (err) {
-      console.error(err);
-      setErrMsg('Não foi possível excluir. Revise as permissões.');
-    }
-  }
-
-  async function toggleFalta(p: Produto) {
-    if (!p.id) return;
-    try {
-      await updateDoc(doc(db, 'produtos', p.id), { emFalta: !p.emFalta });
-    } catch (err: unknown) {
-      console.error(err);
-      const msg = (typeof err === 'object' && err && 'message' in err) ? String((err as { message: unknown }).message) : '';
-      setErrMsg(`Não foi possível atualizar estoque: ${msg}`);
+      await updateDoc(doc(db, 'pedidos', id), {
+        status,
+        statusUpdatedAt: serverTimestamp(),
+      });
+    } catch {
+      alert('Não foi possível atualizar o status.');
     }
   }
 
@@ -325,8 +272,8 @@ export default function AdminProdutosPage() {
     <div className="min-h-screen p-6 text-white bg-black">
       {/* Topbar */}
       <div className="flex flex-wrap items-center gap-3 mb-6">
-        <h1 className="text-2xl font-bold text-yellow-400">Gerenciar Produtos</h1>
-        <span className="text-sm text-gray-400">Cadastro, edição e exclusão</span>
+        <h1 className="text-2xl font-bold text-yellow-400">Pedidos (detalhado)</h1>
+        <span className="text-sm text-gray-400">Itens, cliente, localização e comprovante</span>
 
         <Link
           href="/admin/dashboard"
@@ -355,265 +302,211 @@ export default function AdminProdutosPage() {
         </div>
       </div>
 
-      {errMsg && (
+      {err && (
         <div className="p-3 mb-4 text-sm text-red-200 border rounded bg-red-600/20 border-red-600/40">
-          {errMsg}
+          {err}
         </div>
       )}
 
-      {/* Formulário + Lista */}
-      <div className="grid grid-cols-1 gap-6 mb-8 lg:grid-cols-3">
-        {/* Form */}
-        <form onSubmit={handleSubmit} className="col-span-1 p-6 shadow bg-zinc-900 rounded-xl">
-          <h2 className="mb-4 text-lg font-semibold text-white">
-            {editingId ? 'Editar produto' : 'Novo produto'}
-          </h2>
+      {/* Filtros */}
+      <div className="flex flex-wrap items-center gap-2 mb-4">
+        {(['7d', '30d', '90d', 'all'] as const).map((p) => (
+          <button
+            key={p}
+            onClick={() => setPeriodo(p)}
+            className={[
+              'px-3 py-1.5 rounded-full text-sm',
+              periodo === p ? 'bg-yellow-400 text-black' : 'bg-zinc-800 text-white hover:bg-zinc-700',
+            ].join(' ')}
+          >
+            {p === '7d' ? '7 dias' : p === '30d' ? '30 dias' : p === '90d' ? '90 dias' : 'Todos'}
+          </button>
+        ))}
+        <input
+          value={q}
+          onChange={(e) => setQ(e.target.value)}
+          placeholder="Buscar por ID, cliente, pagamento, endereço…"
+          className="flex-1 min-w-[220px] px-3 py-2 text-sm text-white border rounded bg-zinc-900 border-zinc-700"
+        />
+      </div>
 
-          <label className="block mb-3">
-            <span className="text-sm text-gray-300">Nome *</span>
-            <input
-              value={nome}
-              onChange={(e) => setNome(e.target.value)}
-              className="w-full px-3 py-2 mt-1 text-sm text-white border rounded outline-none bg-zinc-800 border-zinc-700"
-              placeholder="Ex.: Seda King 33 Folhas"
-              required
-            />
-          </label>
+      {/* Lista */}
+      {filtrados.length === 0 ? (
+        <p className="text-sm text-gray-400">
+          Nenhum pedido encontrado {periodo !== 'all' ? 'no período selecionado' : ''}.
+        </p>
+      ) : (
+        <div className="grid grid-cols-1 gap-4">
+          {filtrados.map((p) => {
+            const tx = p.mp_snapshot?.point_of_interaction?.transaction_data;
+            const card = p.mp_snapshot?.charges_details?.[0]?.card;
+            const isPix = p.mp_snapshot?.payment_type_id === 'pix' || /pix/i.test(p.formaPagamento ?? '');
+            const isBoleto = p.mp_snapshot?.payment_type_id === 'ticket' || /boleto/i.test(p.formaPagamento ?? '');
+            const isCard = p.mp_snapshot?.payment_type_id?.includes('card') || /cart[aã]o/i.test(p.formaPagamento ?? '');
 
-          <label className="block mb-3">
-            <span className="text-sm text-gray-300">Descrição</span>
-            <textarea
-              value={descricao}
-              onChange={(e) => setDescricao(e.target.value)}
-              className="w-full px-3 py-2 mt-1 text-sm text-white border rounded outline-none bg-zinc-800 border-zinc-700"
-              rows={3}
-              placeholder="Detalhes do produto…"
-            />
-          </label>
-
-          <label className="block mb-3">
-            <span className="text-sm text-gray-300">Categoria *</span>
-            <select
-              value={categoria}
-              onChange={(e) => setCategoria(e.target.value)}
-              className="w-full px-3 py-2 mt-1 text-sm text-white border rounded outline-none bg-zinc-800 border-zinc-700"
-              required
-            >
-              <option value="">Selecione…</option>
-              {CATEGORIAS.map((c) => (
-                <option key={c} value={c}>
-                  {c}
-                </option>
-              ))}
-            </select>
-          </label>
-
-          <div className="grid grid-cols-2 gap-3">
-            <label className="block">
-              <span className="text-sm text-gray-300">Disponível por</span>
-              <div className="flex items-center gap-3 mt-2">
-                <label className="inline-flex items-center gap-2 text-sm">
-                  <input
-                    type="checkbox"
-                    checked={dispUnidade}
-                    onChange={(e) => setDispUnidade(e.target.checked)}
-                  />
-                  Unidade
-                </label>
-                <label className="inline-flex items-center gap-2 text-sm">
-                  <input
-                    type="checkbox"
-                    checked={dispCaixa}
-                    onChange={(e) => setDispCaixa(e.target.checked)}
-                  />
-                  Caixa
-                </label>
-              </div>
-            </label>
-
-            <label className="block">
-              <span className="text-sm text-gray-300">Destaque (Novidade)</span>
-              <div className="mt-2">
-                <label className="inline-flex items-center gap-2 text-sm">
-                  <input
-                    type="checkbox"
-                    checked={destaque}
-                    onChange={(e) => setDestaque(e.target.checked)}
-                  />
-                  Exibir em “NOVIDADE”
-                </label>
-              </div>
-            </label>
-          </div>
-
-          <div className="grid grid-cols-1 gap-3 mt-3 md:grid-cols-3">
-            <label className="block">
-              <span className="text-sm text-gray-300">Preço (unidade)</span>
-              <input
-                type="number"
-                inputMode="decimal"
-                step="0.01"
-                min="0"
-                value={precoUnidade}
-                onChange={(e) => setPrecoUnidade(e.target.value)}
-                className="w-full px-3 py-2 mt-1 text-sm text-white border rounded outline-none bg-zinc-800 border-zinc-700"
-                placeholder="0.00"
-              />
-            </label>
-
-            <label className="block">
-              <span className="text-sm text-gray-300">Preço (caixa)</span>
-              <input
-                type="number"
-                inputMode="decimal"
-                step="0.01"
-                min="0"
-                value={precoCaixa}
-                onChange={(e) => setPrecoCaixa(e.target.value)}
-                className="w-full px-3 py-2 mt-1 text-sm text-white border rounded outline-none bg-zinc-800 border-zinc-700"
-                placeholder="0.00"
-              />
-            </label>
-
-            <label className="block">
-              <span className="text-sm text-gray-300">Itens por caixa</span>
-              <input
-                type="number"
-                inputMode="numeric"
-                min="0"
-                value={itensPorCaixa}
-                onChange={(e) => setItensPorCaixa(e.target.value)}
-                className="w-full px-3 py-2 mt-1 text-sm text-white border rounded outline-none bg-zinc-800 border-zinc-700"
-                placeholder="Ex.: 6, 12, 24"
-              />
-            </label>
-          </div>
-
-          <label className="block mt-3">
-            <span className="text-sm text-gray-300">Imagem (arquivo em /public/produtos) *</span>
-            <input
-              value={imagem}
-              onChange={(e) => setImagem(e.target.value)}
-              className="w-full px-3 py-2 mt-1 text-sm text-white border rounded outline-none bg-zinc-800 border-zinc-700"
-              placeholder="ex.: seda-king-33f.png"
-              required
-            />
-            {imagem && (
-              <div className="mt-2">
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img
-                  src={`/produtos/${imagem}`}
-                  alt="preview"
-                  className="object-contain w-full rounded max-h-40 bg-black/20"
-                />
-              </div>
-            )}
-          </label>
-
-          <div className="flex items-center gap-3 mt-5">
-            <button
-              type="submit"
-              disabled={!isValid}
-              className={`px-4 py-2 text-sm font-semibold rounded ${
-                isValid ? 'bg-yellow-500 hover:bg-yellow-600 text-black' : 'bg-zinc-700 text-zinc-400'
-              }`}
-            >
-              {editingId ? 'Salvar alterações' : 'Adicionar produto'}
-            </button>
-            {editingId && (
-              <button
-                type="button"
-                onClick={resetForm}
-                className="px-4 py-2 text-sm font-semibold text-white rounded bg-zinc-700 hover:bg-zinc-600"
+            return (
+              <div
+                key={p.id}
+                className="p-4 rounded-xl ring-1 ring-white/10 bg-gradient-to-br from-neutral-900 via-neutral-800 to-neutral-900"
               >
-                Cancelar
-              </button>
-            )}
-          </div>
-        </form>
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="px-2 py-1 font-mono text-xs border rounded bg-zinc-800 border-zinc-700">#{p.id}</span>
+                  <span className="px-2 py-1 text-xs border rounded bg-amber-500/15 text-amber-300 border-amber-500/30">
+                    {p.tipoEntrega === 'entrega' ? '🚚 Entrega' : '🏪 Retirada'}
+                  </span>
+                  <span className="px-2 py-1 text-xs border rounded bg-sky-500/15 text-sky-300 border-sky-500/30">
+                    {p.formaPagamento || '—'}
+                  </span>
+                  {p.mp_payment_id && (
+                    <span className="px-2 py-1 text-xs border rounded bg-emerald-500/15 text-emerald-300 border-emerald-500/30">
+                      MP #{String(p.mp_payment_id)}
+                    </span>
+                  )}
+                  <span className="ml-auto text-sm font-semibold">
+                    Total: <span className="text-yellow-400">{money(p.total)}</span>
+                  </span>
+                </div>
 
-        {/* Lista */}
-        <div className="col-span-1 p-6 shadow lg:col-span-2 bg-zinc-900 rounded-xl">
-          <h2 className="mb-4 text-lg font-semibold text-white">Produtos cadastrados</h2>
-          {produtos.length === 0 ? (
-            <p className="text-sm text-gray-400">Nenhum produto cadastrado ainda.</p>
-          ) : (
-            <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
-              {produtos.map((p) => (
-                <div
-                  key={p.id}
-                  className={`p-3 rounded-lg shadow bg-gradient-to-br from-neutral-900 via-neutral-800 to-neutral-900 ${
-                    p.emFalta ? 'opacity-80' : ''
-                  }`}
-                >
-                  <div className="flex items-center justify-center w-full mb-2 overflow-hidden rounded-md aspect-video bg-black/20">
-                    {p.imagem ? (
-                      // eslint-disable-next-line @next/next/no-img-element
-                      <img
-                        src={`/produtos/${p.imagem}`}
-                        alt={p.nome}
-                        className="object-contain max-w-full max-h-full"
-                      />
-                    ) : (
-                      <div className="text-xs text-gray-500">Sem imagem</div>
-                    )}
+                <div className="grid gap-4 mt-3 md:grid-cols-3">
+                  <div className="text-sm">
+                    <div className="font-semibold text-yellow-400">Cliente</div>
+                    <div>{p.nome || '—'}</div>
+                    <div className="text-zinc-300">{p.email || '—'}</div>
+                    <div className="text-zinc-300">{p.telefone || '—'}</div>
                   </div>
 
-                  <h3 className="font-semibold text-yellow-400">{p.nome}</h3>
-                  <p className="text-xs text-gray-400">{p.descrição}</p>
-                  <p className="mt-1 text-xs text-gray-300">
-                    <strong>Categoria:</strong> {p.categoria || '—'}
-                    {p.destaque && (
-                      <span className="ml-2 px-2 py-0.5 text-[10px] rounded bg-pink-600/30 text-pink-300">
-                        NOVIDADE
-                      </span>
-                    )}
-                    {p.emFalta && (
-                      <span className="ml-2 px-2 py-0.5 text-[10px] rounded bg-red-600/30 text-red-300">
-                        EM FALTA
-                      </span>
-                    )}
-                  </p>
-                  <p className="mt-1 text-xs text-gray-300">
-                    <strong>Disponível por:</strong> {(p.disponivelPor || []).join(', ') || '—'}
-                  </p>
-                  <p className="mt-1 text-xs text-gray-300">
-                    <strong>Preço un.:</strong> {p.precoUnidade ? `R$ ${p.precoUnidade.toFixed(2)}` : '—'} &nbsp;|&nbsp;
-                    <strong>Preço caixa:</strong> {p.precoCaixa ? `R$ ${p.precoCaixa.toFixed(2)}` : '—'} &nbsp;|&nbsp;
-                    <strong>Itens/caixa:</strong> {p.itensPorCaixa || '—'}
-                  </p>
-
-                  <div className="flex flex-wrap items-center gap-2 mt-3">
-                    <button
-                      onClick={() => startEdit(p)}
-                      className="px-3 py-1.5 text-xs font-semibold text-black bg-yellow-400 rounded hover:bg-yellow-500"
-                    >
-                      Editar
-                    </button>
-                    <button
-                      onClick={() => removeProduct(p.id)}
-                      className="px-3 py-1.5 text-xs font-semibold text-white bg-red-600 rounded hover:bg-red-700"
-                    >
-                      Excluir
-                    </button>
-                    <button
-                      onClick={() => toggleFalta(p)}
-                      className={`px-3 py-1.5 text-xs font-semibold rounded ${
-                        p.emFalta
-                          ? 'bg-green-600 text-white hover:bg-green-700'
-                          : 'bg-orange-500 text-black hover:bg-orange-600'
-                      }`}
-                      title={p.emFalta ? 'Marcar como disponível' : 'Marcar como em falta'}
-                    >
-                      {p.emFalta ? 'Marcar disponível' : 'Marcar em falta'}
-                    </button>
+                  <div className="text-sm md:col-span-2">
+                    <div className="font-semibold text-yellow-400">Itens</div>
+                    <ul className="mt-1 space-y-0.5">
+                      {p.itens?.map((it, i) => (
+                        <li key={`${it.id}-${i}`} className="text-zinc-200">
+                          {it.nome} <span className="text-zinc-400">({it.tipo || 'unidade'})</span> × {it.quantidade}
+                          {' — '}<span className="text-zinc-300">{money(it.preco)}</span>
+                        </li>
+                      ))}
+                    </ul>
                   </div>
                 </div>
-              ))}
-            </div>
-          )}
+
+                {p.endereco && (
+                  <div className="mt-3 text-sm">
+                    <div className="font-semibold text-yellow-400">Endereço</div>
+                    <div className="text-zinc-200">
+                      {p.endereco.rua}, {p.endereco.numero} — {p.endereco.bairro}, {p.endereco.cidade} — {p.endereco.cep}
+                    </div>
+                    {p.endereco.pontoReferencia && (
+                      <div className="text-zinc-300">Ref.: {p.endereco.pontoReferencia}</div>
+                    )}
+                    {typeof p.endereco.lat === 'number' && typeof p.endereco.lng === 'number' && (
+                      <a
+                        className="inline-flex items-center gap-2 px-3 py-1.5 mt-2 text-xs font-semibold text-black bg-yellow-400 rounded hover:bg-yellow-500"
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        href={`https://www.google.com/maps?q=${p.endereco.lat},${p.endereco.lng}&z=17`}
+                      >
+                        Ver no mapa
+                      </a>
+                    )}
+                  </div>
+                )}
+
+                {/* Comprovante / Dados de pagamento */}
+                <div className="p-3 mt-4 rounded-lg ring-1 ring-white/10 bg-black/25">
+                  <div className="mb-2 text-sm font-semibold text-yellow-400">Comprovante</div>
+
+                  {!p.mp_snapshot && (
+                    <div className="text-sm text-zinc-400">
+                      Aguardando dados do pagamento (webhook do Mercado Pago).
+                    </div>
+                  )}
+
+                  {p.mp_snapshot && (
+                    <div className="grid gap-3 md:grid-cols-3">
+                      <div className="text-sm">
+                        <div>Status MP: <span className="font-semibold">{p.mp_snapshot.status ?? '—'}</span></div>
+                        <div>Tipo: {p.mp_snapshot.payment_type_id ?? '—'}</div>
+                        {isCard && (
+                          <div>
+                            Cartão: •••• {card?.last_four_digits ?? '—'}
+                            {card?.holder_name ? ` — ${card.holder_name}` : ''}
+                          </div>
+                        )}
+                        {p.mp_snapshot.date_approved && (
+                          <div>Aprovado em: {new Date(p.mp_snapshot.date_approved).toLocaleString()}</div>
+                        )}
+                      </div>
+
+                      {/* PIX */}
+                      {isPix && (
+                        <div className="text-sm md:col-span-2">
+                          <div className="mb-1">PIX Copia e Cola:</div>
+                          <textarea
+                            readOnly
+                            value={tx?.qr_code ?? ''}
+                            className="w-full p-2 text-xs border rounded bg-zinc-900 border-zinc-700"
+                            rows={3}
+                          />
+                          {tx?.qr_code_base64 && (
+                            <img
+                              src={`data:image/png;base64,${tx.qr_code_base64}`}
+                              alt="QR Code PIX"
+                              className="w-40 h-40 p-1 mt-2 bg-white rounded"
+                            />
+                          )}
+                        </div>
+                      )}
+
+                      {/* Boleto */}
+                      {isBoleto && (
+                        <div className="text-sm md:col-span-2">
+                          <div className="mb-2">Boleto:</div>
+                          {tx?.ticket_url ? (
+                            <a
+                              target="_blank" rel="noopener noreferrer"
+                              href={tx.ticket_url}
+                              className="inline-flex items-center px-3 py-1.5 text-xs font-semibold text-black rounded bg-amber-400 hover:bg-amber-500"
+                            >
+                              Abrir boleto (ticket_url)
+                            </a>
+                          ) : (
+                            <div className="text-zinc-400">ticket_url indisponível.</div>
+                          )}
+                        </div>
+                      )}
+
+                      {/* Link genérico do comprovante, se existir */}
+                      {!isPix && !isBoleto && p.mp_snapshot?.point_of_interaction?.transaction_data?.external_resource_url && (
+                        <div className="text-sm md:col-span-2">
+                          <a
+                            target="_blank" rel="noopener noreferrer"
+                            href={p.mp_snapshot.point_of_interaction.transaction_data.external_resource_url}
+                            className="inline-flex items-center px-3 py-1.5 text-xs font-semibold text-black rounded bg-emerald-400 hover:bg-emerald-500"
+                          >
+                            Abrir comprovante
+                          </a>
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+
+                <div className="flex flex-wrap items-center gap-2 mt-4">
+                  <span className="text-sm">Status:</span>
+                  <select
+                    value={p.status || 'Aguardando pagamento'}
+                    onChange={(e) => mudarStatus(p.id, e.target.value)}
+                    className="px-2 py-1 text-sm text-white border rounded bg-zinc-900 border-zinc-700"
+                  >
+                    {STATUS.map((s) => (
+                      <option key={s} value={s}>{s}</option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+            );
+          })}
         </div>
-      </div>
+      )}
     </div>
   );
 }
