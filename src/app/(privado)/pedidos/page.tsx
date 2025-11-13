@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
+import { useRouter } from 'next/navigation';
 import { db, auth } from '@/firebase/config';
 import { collection, onSnapshot, query, where } from 'firebase/firestore';
 import { onAuthStateChanged } from 'firebase/auth';
@@ -39,24 +40,29 @@ type FireTimestampLike =
   | undefined;
 
 type Pedido = {
-  id: string;
+  id: string; // = external_reference quando pagamento online
   uid: string;
   nome: string;
   telefone: string;
   tipoEntrega: 'entrega' | 'retirada';
-  formaPagamento: 'pix' | 'cartao_credito' | 'cartao_debito' | 'dinheiro';
+  formaPagamento: 'pix' | 'cartao_credito' | 'cartao_debito' | 'dinheiro' | 'online';
   troco?: number | null;
   endereco?: Endereco | null;
   itens: PedidoItem[];
   total: number;
   data: FireTimestampLike;
+  atualizadoEm?: FireTimestampLike;
   status:
     | 'Em andamento'
     | 'Confirmado'
     | 'Em rota'
     | 'Entregue'
     | 'Cancelado'
+    | 'Aguardando pagamento'
     | string;
+  external_reference?: string | null;
+  mpPaymentId?: string | null;
+  expiresAt?: FireTimestampLike; // agora +24h
 };
 
 type Range = 'hoje' | 'duas_semanas' | 'quinze_dias' | 'um_mes' | 'todos';
@@ -92,6 +98,8 @@ function fmtPagamento(fp: Pedido['formaPagamento']) {
       return '💳 Cartão • Débito';
     case 'dinheiro':
       return '💵 Dinheiro';
+    case 'online':
+      return '💠 Online (Mercado Pago)';
     default:
       return '—';
   }
@@ -104,8 +112,8 @@ function badgeStatus(status: string) {
   if (/confirm/i.test(status)) return `${base} bg-emerald-600 text-white`;
   if (/cancel/i.test(status)) return `${base} bg-red-600 text-white`;
   if (/pago|aprovado/i.test(status)) return `${base} bg-teal-600 text-white`;
-  if (/pendente/i.test(status)) return `${base} bg-yellow-500 text-black`;
-  return `${base} bg-yellow-500 text-black`;
+  if (/aguardando|pendente/i.test(status)) return `${base} bg-yellow-500 text-black`;
+  return `${base} bg-zinc-600 text-white`;
 }
 
 const badgeEntrega = (tipo: Pedido['tipoEntrega']) =>
@@ -126,10 +134,28 @@ function enderecoTexto(e?: Endereco | null) {
     .join(', ');
 }
 
+function msToClock(ms: number) {
+  if (ms <= 0) return '00:00:00';
+  const total = Math.floor(ms / 1000);
+  const h = Math.floor(total / 3600);
+  const m = Math.floor((total % 3600) / 60);
+  const s = total % 60;
+  const pad = (n: number) => n.toString().padStart(2, '0');
+  return `${pad(h)}:${pad(m)}:${pad(s)}`;
+}
+
 /* ------------ Página ------------ */
 export default function PedidosPage() {
   const [pedidos, setPedidos] = useState<Pedido[]>([]);
   const [range, setRange] = useState<Range>('todos');
+  const [nowTick, setNowTick] = useState<number>(Date.now()); // para contagem regressiva
+  const router = useRouter();
+
+  // tick a cada segundo para atualizar countdown
+  useEffect(() => {
+    const t = setInterval(() => setNowTick(Date.now()), 1000);
+    return () => clearInterval(t);
+  }, []);
 
   useEffect(() => {
     const unsubscribeAuth = onAuthStateChanged(auth, (user) => {
@@ -147,38 +173,37 @@ export default function PedidosPage() {
         const lista: Pedido[] = [];
         snapshot.forEach((d) => {
           const raw = d.data() as Record<string, unknown>;
-
           lista.push({
             id: d.id,
             uid: String(raw['uid'] ?? ''),
             nome: String(raw['nome'] ?? ''),
             telefone: String(raw['telefone'] ?? ''),
-            tipoEntrega: (raw['tipoEntrega'] === 'entrega' ||
-            raw['tipoEntrega'] === 'retirada'
-              ? raw['tipoEntrega']
-              : 'entrega') as Pedido['tipoEntrega'],
-            formaPagamento: (
+            tipoEntrega:
+              raw['tipoEntrega'] === 'entrega' || raw['tipoEntrega'] === 'retirada'
+                ? (raw['tipoEntrega'] as Pedido['tipoEntrega'])
+                : 'entrega',
+            formaPagamento:
               raw['formaPagamento'] === 'pix' ||
               raw['formaPagamento'] === 'cartao_credito' ||
               raw['formaPagamento'] === 'cartao_debito' ||
-              raw['formaPagamento'] === 'dinheiro'
-                ? raw['formaPagamento']
-                : 'pix'
-            ) as Pedido['formaPagamento'],
-            troco: typeof raw['troco'] === 'number' ? raw['troco'] : null,
+              raw['formaPagamento'] === 'dinheiro' ||
+              raw['formaPagamento'] === 'online'
+                ? (raw['formaPagamento'] as Pedido['formaPagamento'])
+                : 'online',
+            troco: typeof raw['troco'] === 'number' ? (raw['troco'] as number) : null,
             endereco: (raw['endereco'] as Endereco) ?? null,
-            itens: Array.isArray(raw['itens'])
-              ? (raw['itens'] as PedidoItem[])
-              : [],
+            itens: Array.isArray(raw['itens']) ? (raw['itens'] as PedidoItem[]) : [],
             total: Number(raw['total'] ?? 0),
             data: (raw['data'] as FireTimestampLike) ?? null,
+            atualizadoEm: (raw['atualizadoEm'] as FireTimestampLike) ?? null,
             status: String(raw['status'] ?? 'Em andamento'),
+            external_reference: (raw['external_reference'] as string) ?? d.id,
+            mpPaymentId: (raw['mpPaymentId'] as string) ?? null,
+            expiresAt: (raw['expiresAt'] as FireTimestampLike) ?? null,
           });
         });
 
-        lista.sort(
-          (a, b) => toDate(b.data).getTime() - toDate(a.data).getTime()
-        );
+        lista.sort((a, b) => toDate(b.data).getTime() - toDate(a.data).getTime());
         setPedidos(lista);
       });
 
@@ -235,6 +260,19 @@ export default function PedidosPage() {
     </button>
   );
 
+  // ações
+  const resumePayment = (pedido: Pedido) => {
+    router.push(`/checkout-bricks?order=${encodeURIComponent(pedido.id)}`);
+  };
+
+  const cancelNow = async (pedido: Pedido) => {
+    try {
+      await fetch(`/api/orders/cleanup?id=${encodeURIComponent(pedido.id)}`);
+    } catch {
+      // silencioso
+    }
+  };
+
   return (
     <div className="max-w-4xl min-h-screen p-4 mx-auto text-white bg-black">
       <h1 className="mb-6 text-3xl font-bold text-center text-yellow-400">
@@ -280,6 +318,12 @@ export default function PedidosPage() {
                   addrText
                 )}&z=16&output=embed`;
 
+            // pagamento pendente e relógio
+            const isPending = /aguardando pagamento|pendente/i.test(pedido.status);
+            const expires = pedido.expiresAt ? toDate(pedido.expiresAt) : null;
+            const msLeft = expires ? expires.getTime() - nowTick : 0;
+            const isExpired = !!expires && msLeft <= 0;
+
             return (
               <div
                 key={pedido.id}
@@ -289,18 +333,20 @@ export default function PedidosPage() {
                 <div className="flex flex-wrap items-center justify-between gap-3 pb-3 border-b border-zinc-700">
                   <div className="space-y-0.5">
                     <p className="text-lg font-semibold">
-                      Pedido{' '}
-                      <span className="text-yellow-400">#{pedido.id}</span>
+                      Pedido <span className="text-yellow-400">#{pedido.id}</span>
                     </p>
                     <p className="text-sm text-gray-400">
                       Data: {toDate(pedido.data).toLocaleString()}
                     </p>
+                    {isPending && expires && (
+                      <p className="text-xs text-yellow-300">
+                        Expira em: <strong>{msToClock(msLeft)}</strong>
+                      </p>
+                    )}
                   </div>
                   <div className="flex items-center gap-2">
                     {badgeEntrega(pedido.tipoEntrega)}
-                    <span className={badgeStatus(pedido.status)}>
-                      {pedido.status}
-                    </span>
+                    <span className={badgeStatus(pedido.status)}>{pedido.status}</span>
                   </div>
                 </div>
 
@@ -352,9 +398,7 @@ export default function PedidosPage() {
                           <>
                             {' '}
                             • Troco para:{' '}
-                            <span className="text-white">
-                              {money(pedido.troco)}
-                            </span>
+                            <span className="text-white">{money(pedido.troco)}</span>
                           </>
                         )}
                     </p>
@@ -362,12 +406,9 @@ export default function PedidosPage() {
                     {pedido.tipoEntrega === 'entrega' && pedido.endereco && (
                       <>
                         <p className="text-gray-300">
-                          Endereço: {pedido.endereco.rua},{' '}
-                          {pedido.endereco.numero} - {pedido.endereco.bairro}{' '}
-                          ({pedido.endereco.cidade}){' '}
-                          {pedido.endereco.cep
-                            ? `• CEP ${pedido.endereco.cep}`
-                            : ''}
+                          Endereço: {pedido.endereco.rua}, {pedido.endereco.numero} -{' '}
+                          {pedido.endereco.bairro} ({pedido.endereco.cidade}){' '}
+                          {pedido.endereco.cep ? `• CEP ${pedido.endereco.cep}` : ''}
                           {typeof pedido.endereco.accuracy === 'number' && (
                             <> • precisão ~{Math.round(pedido.endereco.accuracy)} m</>
                           )}
@@ -396,6 +437,35 @@ export default function PedidosPage() {
                           </div>
                         )}
                       </>
+                    )}
+
+                    {/* Ações de pagamento pendente */}
+                    {isPending && (
+                      <div className="flex flex-wrap items-center gap-2 mt-3">
+                        {!isExpired ? (
+                          <button
+                            onClick={() => resumePayment(pedido)}
+                            className="px-4 py-2 text-sm font-semibold text-black rounded bg-sky-400 hover:bg-sky-500"
+                            title="Reabrir checkout e concluir o pagamento"
+                          >
+                            💠 Finalizar pagamento
+                          </button>
+                        ) : (
+                          <span className="px-3 py-1 text-xs font-semibold text-yellow-300 rounded bg-zinc-700">
+                            Prazo expirado
+                          </span>
+                        )}
+
+                        {isExpired && (
+                          <button
+                            onClick={() => cancelNow(pedido)}
+                            className="px-3 py-1 text-sm font-semibold text-white bg-red-600 rounded hover:bg-red-700"
+                            title="Cancelar pedido expirado"
+                          >
+                            Cancelar agora
+                          </button>
+                        )}
+                      </div>
                     )}
                   </div>
 

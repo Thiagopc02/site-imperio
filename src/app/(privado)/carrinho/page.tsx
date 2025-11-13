@@ -257,10 +257,10 @@ export default function CarrinhoPage() {
         preco: item.preco,
       })),
       total,
-      data: serverTimestamp(),            //  <-- Timestamp correto
+      data: serverTimestamp(),            // Timestamp no servidor
       atualizadoEm: serverTimestamp(),
       status: 'Em andamento',
-      mpPaymentId: null as string | null, // preenchido se migrar para online
+      mpPaymentId: null as string | null, // pode ser preenchido se migrar depois
     };
 
     try {
@@ -293,13 +293,18 @@ export default function CarrinhoPage() {
           ? enderecos.find((e) => e.id === enderecoSelecionado)
           : null;
 
+      // referência única do pedido (vai ser usada pelo webhook)
       const externalRef = gerarExternalRef();
 
-      // rascunho do pedido (será atualizado via webhook)
+      // vencimento em 24h
+      const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000);
+
+      // rascunho do pedido (será atualizado pelo webhook do MP)
       const pedidoRascunho = {
         uid: userId || '',
         nome,
         telefone,
+        email: userEmail || null,
         tipoEntrega,
         formaPagamento: 'online' as const, // definido no Checkout
         troco: null as number | null,
@@ -312,16 +317,17 @@ export default function CarrinhoPage() {
           preco: item.preco,
         })),
         total,
-        data: serverTimestamp(),         //  <-- Timestamp correto
+        data: serverTimestamp(),
         atualizadoEm: serverTimestamp(),
         status: 'Aguardando pagamento',
-        external_reference: externalRef, //  <-- lido pelo webhook
+        external_reference: externalRef,   // lido pelo webhook
         mpPaymentId: null as string | null,
+        expiresAt,                         // *** usado p/ expiração em 24h ***
       };
 
       await setDoc(doc(db, 'pedidos', externalRef), pedidoRascunho, { merge: true });
 
-      // guarda informações para a página /checkout-bricks compor a preferência/pagamento
+      // guarda informações para a página /checkout-bricks
       if (typeof window !== 'undefined') {
         localStorage.setItem('carrinho', JSON.stringify(carrinho));
         localStorage.setItem('mp_external_reference', externalRef);
@@ -682,7 +688,11 @@ export default function CarrinhoPage() {
                     ? 'text-white bg-green-600 hover:bg-green-700'
                     : 'text-white bg-sky-500 hover:bg-sky-600',
                 ].join(' ')}
-                title={pagarComDinheiro ? 'Finalizar e pagar em dinheiro na entrega' : 'Ir para o Checkout do Mercado Pago'}
+                title={
+                  pagarComDinheiro
+                    ? 'Finalizar e pagar em dinheiro na entrega'
+                    : 'Ir para o Checkout do Mercado Pago'
+                }
               >
                 {pagarComDinheiro
                   ? 'Finalizar Pedido (pagar na entrega)'
