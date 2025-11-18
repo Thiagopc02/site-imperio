@@ -1,6 +1,7 @@
 'use client';
 /* eslint-disable @next/next/no-img-element */
 
+import type React from 'react';
 import { useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
@@ -18,7 +19,7 @@ function normalizeImagePath(p?: string): string | null {
   const s = p.trim();
 
   if (/^https?:\/\//i.test(s) || s.startsWith('data:')) return s; // URL externa / data URI
-  if (s.startsWith('/')) return encodeURI(s);                       // já começa com /
+  if (s.startsWith('/')) return encodeURI(s); // já começa com /
 
   if (s.startsWith('produtos/') || s.startsWith('publi/') || s.startsWith('logos/')) {
     return encodeURI('/' + s);
@@ -54,7 +55,7 @@ function MarqueePro({ items, speed = 36 }: { items: MarqueeItem[]; speed?: numbe
   };
 
   return (
-    <div className="relative w-full py-8 bg-black">
+    <div className="relative w-full py-8 overflow-hidden bg-black">
       <div className="marquee-bg" />
       <div className="absolute inset-y-0 left-0 w-16 pointer-events-none md:w-20 bg-gradient-to-r from-black via-black/70 to-transparent" />
       <div className="absolute inset-y-0 right-0 w-16 pointer-events-none md:w-20 bg-gradient-to-l from-black via-black/70 to-transparent" />
@@ -149,7 +150,7 @@ export default function Home() {
   const handleLoginClick = () => router.push('/login');
 
   return (
-    <>
+    <main className="min-h-screen overflow-x-hidden text-white bg-black">
       {/* Header */}
       <header className="flex flex-col gap-4 px-6 py-4 text-black bg-yellow-400 shadow-md md:flex-row md:items-center md:justify-between">
         {/* Logo */}
@@ -177,7 +178,11 @@ export default function Home() {
 
         {/* Ações */}
         <nav className="flex items-center justify-center w-full gap-4 md:gap-6 md:w-auto md:justify-end">
-          <button onClick={handleLoginClick} className="flex items-center gap-2 hover:underline min-h-[44px]" title="Entrar">
+          <button
+            onClick={handleLoginClick}
+            className="flex items-center gap-2 hover:underline min-h-[44px]"
+            title="Entrar"
+          >
             <FaUser /> Entrar
           </button>
           <Link href="/contato" className="flex items-center gap-2 hover:underline min-h-[44px]">
@@ -197,26 +202,38 @@ export default function Home() {
       </header>
 
       {/* Botão flutuante → HISTÓRIA */}
-      <div className="castle-fab animate-bounce" title="História das marcas" aria-label="História das marcas">
+      <div
+        className="castle-fab animate-bounce"
+        title="História das marcas"
+        aria-label="História das marcas"
+      >
         <Link href="/historia" className="grid w-full h-full place-items-center">
           <GiCastle className="w-10 h-10 drop-shadow-[0_0_8px_rgba(0,0,0,.45)]" />
         </Link>
       </div>
 
-      {/* Hero */}
-      <section className="relative min-h-[70svh] md:h-[80vh] bg-black overflow-hidden">
+      {/* Hero / Capa */}
+      <section className="relative w-full min-h-[60vh] md:min-h-[70vh] lg:h-[80vh] bg-black overflow-hidden">
+        {/* Imagem de fundo */}
         <div className="absolute inset-0">
           <img
             src="/banner.jpg"
             alt="Banner Império Bebidas"
-            className="w-full h-full object-cover object-[center_15%] md:scale-[0.7]"
+            className="w-full h-full object-cover object-[center_30%] md:object-[center_15%]"
+            loading="eager"
+            decoding="async"
           />
         </div>
-        <div className="relative z-10 flex flex-col items-center justify-center h-full px-4 text-center">
-          <h1 className="text-4xl md:text-6xl font-bold text-white drop-shadow-[0_2px_8px_rgba(0,0,0,0.7)]">
+
+        {/* Gradiente para melhorar leitura do texto */}
+        <div className="absolute inset-0 bg-gradient-to-t from-black/85 via-black/55 to-black/20 md:bg-gradient-to-r md:from-black/85 md:via-black/50 md:to-black/10" />
+
+        {/* Conteúdo */}
+        <div className="relative z-10 flex flex-col items-center justify-center max-w-3xl px-4 py-16 mx-auto text-center md:px-6 md:py-0">
+          <h1 className="text-3xl sm:text-4xl md:text-5xl lg:text-6xl font-bold text-white drop-shadow-[0_2px_8px_rgba(0,0,0,0.7)]">
             Império Bebidas & Tabacos
           </h1>
-          <p className="mt-4 text-lg md:text-xl text-white drop-shadow-[0_2px_6px_rgba(0,0,0,0.5)]">
+          <p className="mt-4 text-base sm:text-lg md:text-xl text-white drop-shadow-[0_2px_6px_rgba(0,0,0,0.5)]">
             Qualidade e exclusividade direto para sua casa
           </p>
 
@@ -292,6 +309,6 @@ export default function Home() {
 
       {/* Rodapé */}
       <Footer />
-    </>
+    </main>
   );
 }
