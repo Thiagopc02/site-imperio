@@ -1,17 +1,16 @@
-// src/app/api/webhook/route.ts
+// src/app/api/mp/webhook/route.ts
 import { NextRequest, NextResponse } from 'next/server';
 import { admin, afs } from '@/firebase/admin';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
-/* =========================
-   Tipos mínimos (parciais)
-   ========================= */
+/* ---------- Tipos ---------- */
+
 type MPNotification = {
-  action?: string;                 // ex.: "payment.created" | "payment.updated"
-  type?: string;                   // ex.: "payment"
-  data?: { id?: string | number }; // id do pagamento
+  action?: string;
+  type?: string;
+  data?: { id?: string | number } | null;
 };
 
 type MPPayment = {
@@ -28,225 +27,206 @@ type MPPayment = {
     | string;
   status_detail?: string;
   transaction_amount?: number;
-  payment_method_id?: string;      // "pix", "credit_card", ...
-  payment_type_id?: string;        // "pix", "ticket", "credit_card", ...
+  payment_method_id?: string;
+  payment_type_id?: string;
   external_reference?: string | null;
   payer?: { email?: string | null } | null;
+  metadata?: {
+    orderId?: string;
+    order_id?: string;
+    external_reference?: string;
+    [key: string]: unknown;
+  } | null;
   point_of_interaction?: {
     transaction_data?: {
       qr_code?: string;
       qr_code_base64?: string;
-      ticket_url?: string;             // boleto
-      external_resource_url?: string;  // link genérico
+      ticket_url?: string;
+      external_resource_url?: string;
     };
   };
-  charges_details?: Array<{
-    card?: { last_four_digits?: string; holder_name?: string };
-  }>;
 };
 
-/* =========================
-   Helpers
-   ========================= */
+/* ---------- Helpers ---------- */
 
-// (Opcional) Verifica assinatura dos Webhooks v2 (se MP_WEBHOOK_SECRET estiver definido)
-async function verifySignatureIfPresent(req: NextRequest): Promise<boolean> {
-  const secret = process.env.MP_WEBHOOK_SECRET?.trim();
-  if (!secret) return true; // sem segredo configurado, não bloqueia
-
-  try {
-    const id = req.headers.get('x-request-id') || '';
-    const signature = req.headers.get('x-signature') || '';
-    if (!id || !signature) return true; // cabeçalhos ausentes: não trava
-
-    // MP envia algo como: t=timestamp,v1=hash
-    const parts = Object.fromEntries(signature.split(',').map(p => {
-      const [k, v] = p.split('=');
-      return [k?.trim(), (v || '').trim()];
-    }));
-    if (!parts.t || !parts.v1) return true;
-
-    const rawBody = await req.text(); // precisamos do body "cru"
-    const encoder = new TextEncoder();
-    const key = await crypto.subtle.importKey(
-      'raw',
-      encoder.encode(secret),
-      { name: 'HMAC', hash: 'SHA-256' },
-      false,
-      ['sign', 'verify']
-    );
-    const mac = await crypto.subtle.sign('HMAC', key, encoder.encode(rawBody));
-    const hex = Array.from(new Uint8Array(mac)).map(b => b.toString(16).padStart(2, '0')).join('');
-
-    return hex === parts.v1;
-  } catch {
-    // Em dúvida, não bloqueia — apenas log
-    return true;
-  }
+function safeString(v: unknown | null | undefined): string {
+  if (v == null) return '';
+  return String(v).trim();
 }
 
-/** Lê body em JSON ou texto (sem quebrar) */
-async function parseBody(req: NextRequest): Promise<MPNotification | null> {
-  try {
-    const ct = (req.headers.get('content-type') || '').toLowerCase();
-    if (ct.includes('application/json')) {
-      return (await req.json()) as MPNotification;
-    }
-    // Quando usamos verifySignatureIfPresent, já consumimos o body.
-    // Para contornar, capturamos de novo a URL e querystring, e só tentamos JSON se houver corpo.
-    const txt = await req.text();
-    if (!txt) return null;
-    return JSON.parse(txt) as MPNotification;
-  } catch {
-    return null;
-  }
-}
-
-/** Extrai o paymentId de vários formatos (novo + legado) */
+/** Extrai o paymentId – primeiro da query (?id=..., ?topic=payment), depois do body JSON (data.id) */
 async function extractPaymentId(req: NextRequest): Promise<string | null> {
-  // 1) Novo: JSON com data.id
-  const body = await parseBody(req);
-  const idFromBody = body?.data?.id ?? null;
-  if (idFromBody != null && String(idFromBody).trim()) {
-    return String(idFromBody).trim();
+  const url = new URL(req.url);
+
+  // 1) Querystring (padrão antigo)
+  const qsId = url.searchParams.get('id');
+  const topic =
+    (url.searchParams.get('topic') ||
+      url.searchParams.get('type') ||
+      '')?.toLowerCase();
+
+  if (qsId && (!topic || topic === 'payment' || topic === 'payments')) {
+    const s = safeString(qsId);
+    if (s) return s;
   }
 
-  // 2) Legado: ?id=...&topic=payment
-  const search = req.nextUrl.searchParams;
-  const topic = (search.get('topic') || search.get('type') || '').toLowerCase();
-  const idQS = search.get('id');
-  if ((topic === 'payment' || topic === 'payments') && idQS) {
-    return idQS.trim();
+  // 2) Body JSON (padrão novo: Webhooks V2 – { data: { id } })
+  try {
+    const body = (await req.json()) as MPNotification;
+    const id = body?.data?.id;
+    const s = safeString(id);
+    if (s) return s;
+  } catch {
+    // sem body ou não é JSON → ignora
   }
 
   return null;
 }
 
-/** Busca o pagamento no MP */
+/** Busca o pagamento no Mercado Pago */
 async function getPayment(paymentId: string): Promise<MPPayment | null> {
-  const token = process.env.MP_ACCESS_TOKEN?.trim();
+  const token = safeString(process.env.MP_ACCESS_TOKEN);
   if (!token) return null;
+
   try {
-    const url = `https://api.mercadopago.com/v1/payments/${encodeURIComponent(paymentId)}`;
+    const url = `https://api.mercadopago.com/v1/payments/${encodeURIComponent(
+      paymentId
+    )}`;
     const res = await fetch(url, {
       method: 'GET',
       headers: { Authorization: `Bearer ${token}` },
       cache: 'no-store',
     });
-    if (!res.ok) return null;
+
+    if (!res.ok) {
+      console.error('MP getPayment not ok', res.status, await res.text());
+      return null;
+    }
+
     return (await res.json()) as MPPayment;
-  } catch {
+  } catch (err) {
+    console.error('MP getPayment error', err);
     return null;
   }
 }
 
-/** Status exibidos no painel */
+/** Mapeia status do MP para o status que aparece no painel */
 function mapPaymentStatus(p: MPPayment | null): string {
   if (!p) return 'Em andamento';
   switch (p.status) {
-    case 'approved':     return 'Pago';
+    case 'approved':
+      return 'Pago';
     case 'pending':
-    case 'in_process':   return 'Aguardando pagamento';
+    case 'in_process':
+      return 'Aguardando pagamento';
     case 'rejected':
-    case 'cancelled':    return 'Cancelado';
-    default:             return 'Em andamento';
+    case 'cancelled':
+      return 'Cancelado';
+    default:
+      return 'Em andamento';
   }
 }
 
-/** Forma de pagamento exibida no painel */
-function mapFormaPagamento(p: MPPayment | null):
-  | 'pix'
-  | 'cartao_credito'
-  | 'cartao_debito'
-  | 'dinheiro'
-  | undefined {
+/** Mapeia método de pagamento para o campo formaPagamento do pedido */
+function mapFormaPagamento(
+  p: MPPayment | null
+): 'pix' | 'cartao_credito' | 'cartao_debito' | 'dinheiro' | undefined {
   if (!p) return undefined;
-  const method = (p.payment_method_id || p.payment_type_id || '').toLowerCase();
+  const method = (
+    p.payment_method_id ||
+    p.payment_type_id ||
+    ''
+  ).toLowerCase();
+
   if (method.includes('pix')) return 'pix';
   if (method.includes('credit')) return 'cartao_credito';
   if (method.includes('debit')) return 'cartao_debito';
   return undefined;
 }
 
-/* =========================
-   Handlers
-   ========================= */
+/* ---------- Handlers ---------- */
+
 export async function POST(req: NextRequest) {
   try {
-    // (Opcional) valida assinatura (não bloqueia se ausente)
-    const okSig = await verifySignatureIfPresent(req);
-    if (!okSig) {
-      await afs.collection('mp_logs').add({
-        msg: 'Assinatura inválida',
-        recebidoEm: admin.firestore.FieldValue.serverTimestamp(),
-      });
-      // responde 200 mesmo assim para evitar retry em loop
-      return NextResponse.json({ ok: true, invalidSignature: true });
-    }
-
-    // Sempre 200 (o MP reenvia em caso de 5xx)
     const paymentId = await extractPaymentId(req);
+
     if (!paymentId) {
-      const raw = await parseBody(req);
+      // Sem ID → só loga e retorna 200 pra não ficar em retry infinito
       await afs.collection('mp_logs').add({
         msg: 'Webhook sem paymentId',
-        raw,
+        url: req.url,
         headers: Object.fromEntries(req.headers),
         recebidoEm: admin.firestore.FieldValue.serverTimestamp(),
       });
+
       return NextResponse.json({ ok: true, ignored: true });
     }
 
-    // Enriquecimento
     const payment = await getPayment(paymentId);
-
-    // Escolhe o documento (preferência: external_reference; senão, o próprio ID)
-    const docId = (payment?.external_reference || '').trim() || String(paymentId);
 
     const statusPainel = mapPaymentStatus(payment);
     const formaPainel = mapFormaPagamento(payment);
-    const valor = typeof payment?.transaction_amount === 'number' ? payment.transaction_amount : undefined;
+    const valor =
+      typeof payment?.transaction_amount === 'number'
+        ? payment.transaction_amount
+        : undefined;
 
-    // Campos úteis adicionais para o painel (email do pagador ajuda a conciliar e disparar e-mails)
     const payerEmail = payment?.payer?.email || null;
 
-    // Atualiza o pedido no Firestore
-    await afs.collection('pedidos').doc(docId).set(
-      {
-        status: statusPainel,
-        formaPagamento: formaPainel ?? null,
-        mp_payment_id: paymentId,
-        mp_status: payment?.status ?? null,
-        mp_status_detail: payment?.status_detail ?? null,
-        payerEmail,
-        ...(typeof valor === 'number' ? { total: valor } : {}),
-        // snapshot inteiro para o painel exibir comprovantes (PIX, boleto, cartão)
-        mp_snapshot: payment ?? null,
-        updatedAt: admin.firestore.FieldValue.serverTimestamp(),
-      },
-      { merge: true }
-    );
+    // Tentamos descobrir QUAL documento de pedido atualizar:
+    // 1) external_reference (se você estiver mandando o orderId lá)
+    // 2) metadata.orderId / metadata.order_id (caso tenha salvo no metadata)
+    // 3) fallback: o próprio paymentId (cria um doc novo se não existir)
+    const externalRef =
+      safeString(payment?.external_reference) ||
+      safeString(payment?.metadata?.orderId) ||
+      safeString(payment?.metadata?.order_id);
 
-    // Log (auditoria)
-    await afs.collection('mp_logs').doc(docId).set(
-      {
-        source: 'webhook',
-        paymentId,
-        headers: Object.fromEntries(req.headers),
-        receivedAt: admin.firestore.FieldValue.serverTimestamp(),
-      },
-      { merge: true }
-    );
+    const docId = externalRef || paymentId;
 
-    return NextResponse.json({ ok: true });
-  } catch (e) {
-    console.error('MP webhook error', e);
-    // Nunca devolve 5xx para não gerar retries infinitos
+    await afs
+      .collection('pedidos')
+      .doc(docId)
+      .set(
+        {
+          status: statusPainel,
+          formaPagamento: formaPainel ?? 'online',
+          mpPaymentId: paymentId, // compatível com o tipo que você usa no front
+          mp_payment_id: paymentId, // nome alternativo, se precisar
+          mp_status: payment?.status ?? null,
+          mp_status_detail: payment?.status_detail ?? null,
+          payerEmail,
+          ...(typeof valor === 'number' ? { total: valor } : {}),
+          mp_snapshot: payment ?? null,
+          atualizadoEm: admin.firestore.FieldValue.serverTimestamp(),
+          updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+        },
+        { merge: true }
+      );
+
+    await afs
+      .collection('mp_logs')
+      .doc(docId)
+      .set(
+        {
+          source: 'webhook',
+          paymentId,
+          url: req.url,
+          headers: Object.fromEntries(req.headers),
+          receivedAt: admin.firestore.FieldValue.serverTimestamp(),
+        },
+        { merge: true }
+      );
+
+    return NextResponse.json({ ok: true, docId });
+  } catch (err) {
+    console.error('MP webhook error', err);
+    // sempre 200 pra não gerar retries infinitos
     return NextResponse.json({ ok: false }, { status: 200 });
   }
 }
 
-// Ping opcional
+// Ping opcional pra testar no navegador
 export async function GET() {
-  return NextResponse.json({ ok: true, route: 'webhook' });
+  return NextResponse.json({ ok: true, route: '/api/mp/webhook' });
 }
