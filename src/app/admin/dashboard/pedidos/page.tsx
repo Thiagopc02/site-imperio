@@ -1,7 +1,6 @@
 'use client';
 
-/* eslint-disable @next/next/no-img-element */
-
+import type React from 'react';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
@@ -72,10 +71,24 @@ type Pedido = {
   uid: string;
   nome?: string;
   total?: number;
+
+  /** Status do pedido (fluxo interno: Em andamento, Confirmado, Em rota, Entregue…) */
   status?: string;
+
+  /** Status do pagamento (derivado de mp_status / formaPagamento) */
+  statusPagamento?: string;
+
+  /** Valor cru vindo do Mercado Pago (approved, pending, cancelled etc.) */
+  mpStatus?: string | null;
+
   data?: FireTimestampLike;
   tipoEntrega?: 'entrega' | 'retirada';
-  formaPagamento?: 'pix' | 'cartao_credito' | 'cartao_debito' | 'dinheiro';
+  formaPagamento?:
+    | 'pix'
+    | 'cartao_credito'
+    | 'cartao_debito'
+    | 'dinheiro'
+    | 'online';
   itens?: Item[];
   endereco?: Endereco | null;
   grupoEnviado?: boolean;
@@ -102,7 +115,10 @@ const toDate = (v: FireTimestampLike): Date => {
     return (v as Timestamp).toDate();
   }
   // objeto-like com seconds
-  if (typeof v === 'object' && typeof (v as { seconds?: number }).seconds === 'number') {
+  if (
+    typeof v === 'object' &&
+    typeof (v as { seconds?: number }).seconds === 'number'
+  ) {
     return new Date((v as { seconds: number }).seconds * 1000);
   }
   return new Date(NaN);
@@ -114,7 +130,11 @@ const fmtDateTime = (d: Date) =>
     : d.toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' });
 
 const enderecoTexto = (e?: Endereco | null) =>
-  e ? [e.rua, e.numero, e.bairro, e.cidade, e.cep, 'Brasil'].filter(Boolean).join(', ') : '';
+  e
+    ? [e.rua, e.numero, e.bairro, e.cidade, e.cep, 'Brasil']
+        .filter(Boolean)
+        .join(', ')
+    : '';
 
 const normalizeEmail = (raw: string) =>
   raw.normalize('NFKC').replace(/[\u200B-\u200D\uFEFF]/g, '').trim().toLowerCase();
@@ -144,6 +164,46 @@ async function hasAdminRole(uid: string): Promise<boolean> {
   if (await tryCol('usuarios')) return true;
   if (await tryCol('usuários')) return true;
   return false;
+}
+
+/** Badge do status do pedido (fluxo interno) */
+function badgeStatusPedido(status?: string) {
+  const base = 'px-2 py-1 text-xs font-semibold rounded';
+  const s = (status || '').toLowerCase();
+
+  if (s.includes('entregue')) return `${base} bg-green-600 text-white`;
+  if (s.includes('rota')) return `${base} bg-blue-600 text-white`;
+  if (s.includes('confirm')) return `${base} bg-emerald-600 text-white`;
+  if (s.includes('cancel')) return `${base} bg-red-600 text-white`;
+  if (s.includes('aguardando')) return `${base} bg-yellow-400 text-black`;
+  if (!status) return `${base} bg-zinc-600 text-white`;
+  return `${base} bg-zinc-700 text-white`;
+}
+
+/** Badge do status do pagamento (MP / forma de pagamento) */
+function badgeStatusPagamento(statusPagamento?: string) {
+  const base = 'px-2 py-1 text-xs font-semibold rounded';
+  if (!statusPagamento) return `${base} bg-zinc-600 text-white`;
+
+  const s = statusPagamento.toLowerCase();
+
+  if (s.includes('pago') || s.includes('aprovado'))
+    return `${base} bg-teal-600 text-white`;
+
+  if (
+    s.includes('aguardando') ||
+    s.includes('pendente') ||
+    s.includes('análise') ||
+    s.includes('analise')
+  )
+    return `${base} bg-yellow-400 text-black`;
+
+  if (s.includes('cancelado') || s.includes('estornado'))
+    return `${base} bg-red-600 text-white`;
+
+  if (s.includes('na entrega')) return `${base} bg-zinc-700 text-white`;
+
+  return `${base} bg-zinc-600 text-white`;
 }
 
 /* ===================== Página ===================== */
@@ -197,28 +257,70 @@ export default function PedidosDetalhadosPage() {
           const arr: Pedido[] = [];
           snap.forEach((d) => {
             const raw = d.data() as Record<string, unknown>;
+
+            const formaPagamento: Pedido['formaPagamento'] =
+              raw['formaPagamento'] === 'pix' ||
+              raw['formaPagamento'] === 'cartao_credito' ||
+              raw['formaPagamento'] === 'cartao_debito' ||
+              raw['formaPagamento'] === 'dinheiro' ||
+              raw['formaPagamento'] === 'online'
+                ? (raw['formaPagamento'] as Pedido['formaPagamento'])
+                : undefined;
+
+            const mpStatusRaw =
+              typeof raw['mp_status'] === 'string'
+                ? (raw['mp_status'] as string)
+                : null;
+
+            // Mapeia mp_status -> statusPagamento amigável
+            let statusPagamento: string | undefined;
+            if (mpStatusRaw && mpStatusRaw.trim()) {
+              const s = mpStatusRaw.toLowerCase();
+              if (s === 'approved') statusPagamento = 'Pago';
+              else if (s === 'pending' || s === 'in_process')
+                statusPagamento = 'Aguardando pagamento';
+              else if (s === 'cancelled' || s === 'rejected')
+                statusPagamento = 'Pagamento cancelado';
+              else if (s === 'refunded' || s === 'charged_back')
+                statusPagamento = 'Pagamento estornado';
+              else statusPagamento = `Pagamento: ${mpStatusRaw}`;
+            } else {
+              // sem mp_status: ex. dinheiro (pagar na entrega)
+              if (formaPagamento === 'dinheiro')
+                statusPagamento = 'Pagar na entrega';
+            }
+
             arr.push({
               id: d.id,
               uid: String(raw['uid'] ?? ''),
-              nome: typeof raw['nome'] === 'string' ? raw['nome'] : undefined,
-              total: typeof raw['total'] === 'number' ? raw['total'] : undefined,
-              status: typeof raw['status'] === 'string' ? raw['status'] : undefined,
+              nome:
+                typeof raw['nome'] === 'string'
+                  ? (raw['nome'] as string)
+                  : undefined,
+              total:
+                typeof raw['total'] === 'number'
+                  ? (raw['total'] as number)
+                  : undefined,
+              status:
+                typeof raw['status'] === 'string'
+                  ? (raw['status'] as string)
+                  : undefined,
+              statusPagamento,
+              mpStatus: mpStatusRaw,
               data: (raw['data'] as FireTimestampLike) ?? null,
               tipoEntrega:
-                raw['tipoEntrega'] === 'entrega' || raw['tipoEntrega'] === 'retirada'
+                raw['tipoEntrega'] === 'entrega' ||
+                raw['tipoEntrega'] === 'retirada'
                   ? (raw['tipoEntrega'] as 'entrega' | 'retirada')
                   : undefined,
-              formaPagamento:
-                raw['formaPagamento'] === 'pix' ||
-                raw['formaPagamento'] === 'cartao_credito' ||
-                raw['formaPagamento'] === 'cartao_debito' ||
-                raw['formaPagamento'] === 'dinheiro'
-                  ? (raw['formaPagamento'] as Pedido['formaPagamento'])
-                  : undefined,
-              itens: Array.isArray(raw['itens']) ? (raw['itens'] as Item[]) : undefined,
+              formaPagamento,
+              itens: Array.isArray(raw['itens'])
+                ? (raw['itens'] as Item[])
+                : undefined,
               endereco: (raw['endereco'] as Endereco) ?? null,
               grupoEnviado: raw['grupoEnviado'] === true,
-              grupoEnviadoEm: (raw['grupoEnviadoEm'] as FireTimestampLike) ?? null,
+              grupoEnviadoEm:
+                (raw['grupoEnviadoEm'] as FireTimestampLike) ?? null,
             });
           });
           setPedidos(arr);
@@ -255,18 +357,26 @@ export default function PedidosDetalhadosPage() {
   /** Abre o WhatsApp com mensagem pronta e marca o pedido como enviado ao grupo */
   async function enviarParaGrupo(p: Pedido) {
     const itensTxt = (p.itens || [])
-      .map((i) => `• ${String(i.nome || '—')} — ${Number(i.quantidade || 0)} × ${money(Number(i.preco || 0))}`)
+      .map(
+        (i) =>
+          `• ${String(i.nome || '—')} — ${Number(
+            i.quantidade || 0
+          )} × ${money(Number(i.preco || 0))}`
+      )
       .join('\n');
 
     const endTxt = enderecoTexto(p.endereco);
     const hasCoords =
-      typeof p.endereco?.lat === 'number' && typeof p.endereco?.lng === 'number';
+      typeof p.endereco?.lat === 'number' &&
+      typeof p.endereco?.lng === 'number';
     const mapsUrl = hasCoords
-      ? `https://www.google.com/maps/search/?api=1&query=${String(p.endereco!.lat)},${String(
-          p.endereco!.lng
-        )}`
+      ? `https://www.google.com/maps/search/?api=1&query=${String(
+          p.endereco!.lat
+        )},${String(p.endereco!.lng)}`
       : endTxt
-      ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(endTxt)}`
+      ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(
+          endTxt
+        )}`
       : '';
 
     const cabecalho = `*NOVO PEDIDO* #${p.id}`;
@@ -284,6 +394,8 @@ export default function PedidosDetalhadosPage() {
         ? 'Cartão (Débito)'
         : p.formaPagamento === 'dinheiro'
         ? 'Dinheiro'
+        : p.formaPagamento === 'online'
+        ? 'Online (Mercado Pago)'
         : '—';
 
     const corpo =
@@ -296,7 +408,9 @@ export default function PedidosDetalhadosPage() {
       `*Pagamento:* ${pagamento}\n` +
       `*Total:* ${money(p.total || 0)}`;
 
-    const url = `https://api.whatsapp.com/send?text=${encodeURIComponent(corpo)}`;
+    const url = `https://api.whatsapp.com/send?text=${encodeURIComponent(
+      corpo
+    )}`;
     window.open(url, '_blank');
 
     try {
@@ -341,8 +455,16 @@ export default function PedidosDetalhadosPage() {
         const inId = p.id.toLowerCase().includes(needle);
         const inNome = (p.nome || '').toLowerCase().includes(needle);
         const inForma = (p.formaPagamento || '').toLowerCase().includes(needle);
-        const inAddr = enderecoTexto(p.endereco).toLowerCase().includes(needle);
-        return inId || inNome || inForma || inAddr;
+        const inAddr = enderecoTexto(p.endereco)
+          .toLowerCase()
+          .includes(needle);
+        const inStatusPag = (p.statusPagamento || '')
+          .toLowerCase()
+          .includes(needle);
+        const inMpStatus = (p.mpStatus || '').toLowerCase().includes(needle);
+        return (
+          inId || inNome || inForma || inAddr || inStatusPag || inMpStatus
+        );
       });
     }
 
@@ -380,8 +502,12 @@ export default function PedidosDetalhadosPage() {
     return (
       <div className="flex items-center justify-center min-h-screen p-6 text-white bg-black">
         <div className="p-6 text-center bg-zinc-900 rounded-xl">
-          <h1 className="mb-2 text-xl font-bold text-yellow-400">Acesso restrito</h1>
-          <p className="text-gray-300">Sua conta não possui permissão de administrador.</p>
+          <h1 className="mb-2 text-xl font-bold text-yellow-400">
+            Acesso restrito
+          </h1>
+          <p className="text-gray-300">
+            Sua conta não possui permissão de administrador.
+          </p>
           <button
             onClick={handleLogout}
             className="px-4 py-2 mt-4 text-sm font-semibold text-white bg-red-600 rounded hover:bg-red-700"
@@ -403,8 +529,12 @@ export default function PedidosDetalhadosPage() {
           <FaArrowLeft /> Voltar ao Dashboard
         </Link>
 
-        <h1 className="text-2xl font-bold text-yellow-400">Pedidos (detalhado)</h1>
-        <span className="text-sm text-gray-400">Itens, cliente e localização</span>
+        <h1 className="text-2xl font-bold text-yellow-400">
+          Pedidos (detalhado)
+        </h1>
+        <span className="text-sm text-gray-400">
+          Itens, cliente e localização
+        </span>
 
         <div className="flex items-center gap-2 ml-auto">
           {user?.email && (
@@ -429,10 +559,18 @@ export default function PedidosDetalhadosPage() {
             onClick={() => setDays(d)}
             className={[
               'px-3 py-1.5 rounded-full text-sm border',
-              days === d ? 'bg-yellow-400 text-black border-yellow-500' : 'bg-zinc-800 border-zinc-600',
+              days === d
+                ? 'bg-yellow-400 text-black border-yellow-500'
+                : 'bg-zinc-800 border-zinc-600',
             ].join(' ')}
           >
-            {d === 0 ? 'Todos' : d === 7 ? '7 dias' : d === 30 ? '30 dias' : '90 dias'}
+            {d === 0
+              ? 'Todos'
+              : d === 7
+              ? '7 dias'
+              : d === 30
+              ? '30 dias'
+              : '90 dias'}
           </button>
         ))}
 
@@ -443,7 +581,7 @@ export default function PedidosDetalhadosPage() {
           }
           className="px-3 py-2 text-sm border rounded outline-none bg-zinc-900 border-zinc-700"
         >
-          <option value="todos">Todos status</option>
+          <option value="todos">Todos status (pedido)</option>
           <option value="andamento">Em andamento</option>
           <option value="confirmado">Confirmados</option>
           <option value="rota">Em rota</option>
@@ -455,8 +593,10 @@ export default function PedidosDetalhadosPage() {
           <FaSearch className="absolute -translate-y-1/2 left-2 top-1/2 text-neutral-400" />
           <input
             value={q}
-            onChange={(e: React.ChangeEvent<HTMLInputElement>) => setQ(e.target.value)}
-            placeholder="Buscar por ID, cliente, pagamento ou endereço…"
+            onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
+              setQ(e.target.value)
+            }
+            placeholder="Buscar por ID, cliente, pagamento, status…"
             className="py-2 pl-8 pr-3 text-sm border rounded outline-none w-80 bg-zinc-900 border-zinc-700"
           />
         </div>
@@ -471,11 +611,15 @@ export default function PedidosDetalhadosPage() {
             const d = toDate(p.data);
             const resumoCliente = clientesResumo.get(p.uid);
             const hasCoords =
-              typeof p.endereco?.lat === 'number' && typeof p.endereco?.lng === 'number';
+              typeof p.endereco?.lat === 'number' &&
+              typeof p.endereco?.lng === 'number';
             const addressText = enderecoTexto(p.endereco);
 
             return (
-              <article key={p.id} className="p-4 border bg-zinc-900 rounded-xl border-zinc-800">
+              <article
+                key={p.id}
+                className="p-4 border bg-zinc-900 rounded-xl border-zinc-800"
+              >
                 {/* Cabeçalho */}
                 <div className="flex flex-wrap items-center gap-3 mb-3">
                   <span className="px-2 py-1 text-xs font-semibold text-black bg-yellow-400 rounded">
@@ -488,13 +632,26 @@ export default function PedidosDetalhadosPage() {
                     <FaMoneyBillWave /> {money(p.total || 0)}
                   </span>
                   <span className="inline-flex items-center gap-1 text-sm text-gray-300">
-                    <FaShoppingBag /> {p.tipoEntrega === 'retirada' ? 'Retirada' : 'Entrega'}
+                    <FaShoppingBag />{' '}
+                    {p.tipoEntrega === 'retirada' ? 'Retirada' : 'Entrega'}
                   </span>
-                  <span className="ml-auto">
-                    <span className="px-2 py-1 text-xs text-black bg-yellow-400 rounded">
+                  <div className="flex items-center gap-2 ml-auto">
+                    <span className={badgeStatusPedido(p.status)}>
                       {p.status || 'Em andamento'}
                     </span>
-                  </span>
+                    {p.statusPagamento && (
+                      <span
+                        className={badgeStatusPagamento(p.statusPagamento)}
+                        title={
+                          p.mpStatus
+                            ? `Status do pagamento (MP: ${p.mpStatus})`
+                            : 'Status do pagamento'
+                        }
+                      >
+                        {p.statusPagamento}
+                      </span>
+                    )}
+                  </div>
                 </div>
 
                 {/* Grid: Cliente | Itens | Entrega */}
@@ -505,7 +662,8 @@ export default function PedidosDetalhadosPage() {
                       <FaUser /> Cliente
                     </h3>
                     <p className="text-sm">
-                      <span className="text-gray-400">Nome:</span> {p.nome || '—'}
+                      <span className="text-gray-400">Nome:</span>{' '}
+                      {p.nome || '—'}
                     </p>
                     <p className="text-sm">
                       <span className="text-gray-400">UID:</span> {p.uid}
@@ -513,16 +671,23 @@ export default function PedidosDetalhadosPage() {
                     {resumoCliente && (
                       <ul className="mt-2 text-sm text-gray-300">
                         <li>
-                          Compras: <strong className="text-white">{resumoCliente.pedidos}</strong>
+                          Compras:{' '}
+                          <strong className="text-white">
+                            {resumoCliente.pedidos}
+                          </strong>
                         </li>
                         <li>
                           Gasto total:{' '}
-                          <strong className="text-white">{money(resumoCliente.gastoTotal)}</strong>
+                          <strong className="text-white">
+                            {money(resumoCliente.gastoTotal)}
+                          </strong>
                         </li>
                         <li>
                           Última compra:{' '}
                           <strong className="text-white">
-                            {fmtDateTime(resumoCliente.ultimaCompra || new Date(NaN))}
+                            {fmtDateTime(
+                              resumoCliente.ultimaCompra || new Date(NaN)
+                            )}
                           </strong>
                         </li>
                       </ul>
@@ -531,9 +696,13 @@ export default function PedidosDetalhadosPage() {
 
                   {/* Itens */}
                   <section className="p-3 border rounded-lg bg-zinc-950/40 border-zinc-800">
-                    <h3 className="mb-2 text-sm font-semibold text-white">Itens do pedido</h3>
+                    <h3 className="mb-2 text-sm font-semibold text-white">
+                      Itens do pedido
+                    </h3>
                     {!p.itens || p.itens.length === 0 ? (
-                      <p className="text-sm text-gray-400">Sem itens informados.</p>
+                      <p className="text-sm text-gray-400">
+                        Sem itens informados.
+                      </p>
                     ) : (
                       <ul className="space-y-2">
                         {p.itens.map((it, idx) => (
@@ -541,9 +710,12 @@ export default function PedidosDetalhadosPage() {
                             key={`${p.id}-it-${idx}`}
                             className="flex justify-between gap-2 pb-1 text-sm border-b border-zinc-800"
                           >
-                            <span className="text-gray-200">{String(it.nome || '—')}</span>
+                            <span className="text-gray-200">
+                              {String(it.nome || '—')}
+                            </span>
                             <span className="text-gray-400">
-                              {Number(it.quantidade || 0)} × {money(Number(it.preco || 0))}
+                              {Number(it.quantidade || 0)} ×{' '}
+                              {money(Number(it.preco || 0))}
                             </span>
                           </li>
                         ))}
@@ -552,11 +724,23 @@ export default function PedidosDetalhadosPage() {
                     <p className="mt-2 text-sm text-gray-300">
                       <span className="text-gray-400">Pagamento:</span>{' '}
                       {p.formaPagamento === 'pix' && 'PIX'}
-                      {p.formaPagamento === 'cartao_credito' && 'Cartão (Crédito)'}
-                      {p.formaPagamento === 'cartao_debito' && 'Cartão (Débito)'}
+                      {p.formaPagamento === 'cartao_credito' &&
+                        'Cartão (Crédito)'}
+                      {p.formaPagamento === 'cartao_debito' &&
+                        'Cartão (Débito)'}
                       {p.formaPagamento === 'dinheiro' && 'Dinheiro'}
+                      {p.formaPagamento === 'online' &&
+                        'Online (Mercado Pago)'}
                       {!p.formaPagamento && '—'}
                     </p>
+                    {p.statusPagamento && (
+                      <p className="mt-1 text-xs text-gray-300">
+                        <span className="text-gray-400">
+                          Status do pagamento:
+                        </span>{' '}
+                        <strong>{p.statusPagamento}</strong>
+                      </p>
+                    )}
                   </section>
 
                   {/* Entrega / Localização */}
@@ -586,7 +770,9 @@ export default function PedidosDetalhadosPage() {
                               referrerPolicy="no-referrer-when-downgrade"
                               src={`https://www.google.com/maps?q=${String(
                                 p.endereco!.lat
-                              )},${String(p.endereco!.lng)}&z=16&output=embed`}
+                              )},${String(
+                                p.endereco!.lng
+                              )}&z=16&output=embed`}
                             />
                           </div>
                         ) : null}
@@ -615,7 +801,9 @@ export default function PedidosDetalhadosPage() {
                               Buscar endereço no Google Maps
                             </a>
                           ) : (
-                            <p className="text-xs text-gray-400">Sem localização informada.</p>
+                            <p className="text-xs text-gray-400">
+                              Sem localização informada.
+                            </p>
                           )}
                         </div>
                       </>
@@ -742,9 +930,13 @@ function ActionBtn({
       onClick={onClick}
       disabled={!!disabled}
       title={title}
-      className={[base, map[tone], disabled ? 'opacity-60 cursor-not-allowed hover:bg-inherit' : ''].join(
-        ' '
-      )}
+      className={[
+        base,
+        map[tone],
+        disabled
+          ? 'opacity-60 cursor-not-allowed hover:bg-inherit'
+          : '',
+      ].join(' ')}
     >
       {children}
     </button>

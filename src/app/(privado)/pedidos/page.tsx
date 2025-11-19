@@ -52,6 +52,8 @@ type Pedido = {
   total: number;
   data: FireTimestampLike;
   atualizadoEm?: FireTimestampLike;
+
+  /** Status do pedido (fluxo da loja: Em andamento, Confirmado, Em rota...) */
   status:
     | 'Em andamento'
     | 'Confirmado'
@@ -60,6 +62,12 @@ type Pedido = {
     | 'Cancelado'
     | 'Aguardando pagamento'
     | string;
+
+  /** Status do pagamento (derivado de mp_status) */
+  statusPagamento?: string;
+  /** Valor cru vindo do Mercado Pago (approved, pending, cancelled...) */
+  mpStatus?: string | null;
+
   external_reference?: string | null;
   mpPaymentId?: string | null;
   expiresAt?: FireTimestampLike; // agora +24h
@@ -105,14 +113,34 @@ function fmtPagamento(fp: Pedido['formaPagamento']) {
   }
 }
 
-function badgeStatus(status: string) {
+/** Badge do status do pedido (fluxo interno) */
+function badgeStatusPedido(status: string) {
   const base = 'px-2 py-0.5 rounded-full text-xs font-semibold';
   if (/entregue/i.test(status)) return `${base} bg-green-600 text-white`;
   if (/rota/i.test(status)) return `${base} bg-blue-600 text-white`;
   if (/confirm/i.test(status)) return `${base} bg-emerald-600 text-white`;
   if (/cancel/i.test(status)) return `${base} bg-red-600 text-white`;
-  if (/pago|aprovado/i.test(status)) return `${base} bg-teal-600 text-white`;
-  if (/aguardando|pendente/i.test(status)) return `${base} bg-yellow-500 text-black`;
+  if (/aguardando/i.test(status)) return `${base} bg-yellow-500 text-black`;
+  return `${base} bg-zinc-600 text-white`;
+}
+
+/** Badge do status do pagamento (MP / forma de pagamento) */
+function badgeStatusPagamento(statusPagamento?: string) {
+  const base = 'px-2 py-0.5 rounded-full text-xs font-semibold';
+  if (!statusPagamento) return `${base} bg-zinc-600 text-white`;
+
+  if (/pago|aprovado/i.test(statusPagamento))
+    return `${base} bg-teal-600 text-white`;
+
+  if (/aguardando|pendente|em análise|analise/i.test(statusPagamento))
+    return `${base} bg-yellow-500 text-black`;
+
+  if (/cancel|estorn/i.test(statusPagamento))
+    return `${base} bg-red-600 text-white`;
+
+  if (/na entrega/i.test(statusPagamento))
+    return `${base} bg-zinc-700 text-white`;
+
   return `${base} bg-zinc-600 text-white`;
 }
 
@@ -171,8 +199,40 @@ export default function PedidosPage() {
 
       const unsubscribeSnapshot = onSnapshot(pedidosQuery, (snapshot) => {
         const lista: Pedido[] = [];
+
         snapshot.forEach((d) => {
           const raw = d.data() as Record<string, unknown>;
+
+          const formaPagamento: Pedido['formaPagamento'] =
+            raw['formaPagamento'] === 'pix' ||
+            raw['formaPagamento'] === 'cartao_credito' ||
+            raw['formaPagamento'] === 'cartao_debito' ||
+            raw['formaPagamento'] === 'dinheiro' ||
+            raw['formaPagamento'] === 'online'
+              ? (raw['formaPagamento'] as Pedido['formaPagamento'])
+              : 'online';
+
+          const mpStatusRaw =
+            typeof raw['mp_status'] === 'string' ? (raw['mp_status'] as string) : null;
+
+          // Mapeia o mp_status para um texto amigável de "statusPagamento"
+          let statusPagamento: string | undefined;
+          if (mpStatusRaw && mpStatusRaw.trim()) {
+            const s = mpStatusRaw.toLowerCase();
+            if (s === 'approved') statusPagamento = 'Pago';
+            else if (s === 'pending' || s === 'in_process')
+              statusPagamento = 'Aguardando pagamento';
+            else if (s === 'cancelled' || s === 'rejected')
+              statusPagamento = 'Pagamento cancelado';
+            else if (s === 'refunded' || s === 'charged_back')
+              statusPagamento = 'Pagamento estornado';
+            else statusPagamento = `Pagamento: ${mpStatusRaw}`;
+          } else {
+            // Casos sem mp_status (ex.: dinheiro / pagar na entrega)
+            if (formaPagamento === 'dinheiro')
+              statusPagamento = 'Pagar na entrega';
+          }
+
           lista.push({
             id: d.id,
             uid: String(raw['uid'] ?? ''),
@@ -182,14 +242,7 @@ export default function PedidosPage() {
               raw['tipoEntrega'] === 'entrega' || raw['tipoEntrega'] === 'retirada'
                 ? (raw['tipoEntrega'] as Pedido['tipoEntrega'])
                 : 'entrega',
-            formaPagamento:
-              raw['formaPagamento'] === 'pix' ||
-              raw['formaPagamento'] === 'cartao_credito' ||
-              raw['formaPagamento'] === 'cartao_debito' ||
-              raw['formaPagamento'] === 'dinheiro' ||
-              raw['formaPagamento'] === 'online'
-                ? (raw['formaPagamento'] as Pedido['formaPagamento'])
-                : 'online',
+            formaPagamento,
             troco: typeof raw['troco'] === 'number' ? (raw['troco'] as number) : null,
             endereco: (raw['endereco'] as Endereco) ?? null,
             itens: Array.isArray(raw['itens']) ? (raw['itens'] as PedidoItem[]) : [],
@@ -197,6 +250,8 @@ export default function PedidosPage() {
             data: (raw['data'] as FireTimestampLike) ?? null,
             atualizadoEm: (raw['atualizadoEm'] as FireTimestampLike) ?? null,
             status: String(raw['status'] ?? 'Em andamento'),
+            statusPagamento,
+            mpStatus: mpStatusRaw,
             external_reference: (raw['external_reference'] as string) ?? d.id,
             mpPaymentId: (raw['mpPaymentId'] as string) ?? null,
             expiresAt: (raw['expiresAt'] as FireTimestampLike) ?? null,
@@ -318,8 +373,14 @@ export default function PedidosPage() {
                   addrText
                 )}&z=16&output=embed`;
 
-            // pagamento pendente e relógio
-            const isPending = /aguardando pagamento|pendente/i.test(pedido.status);
+            // pagamento pendente baseado em statusPagamento (e fallback em status)
+            const isPaymentPending =
+              /aguardando pagamento|pendente/i.test(
+                pedido.statusPagamento || ''
+              ) ||
+              (/aguardando pagamento|pendente/i.test(pedido.status) &&
+                pedido.formaPagamento === 'online');
+
             const expires = pedido.expiresAt ? toDate(pedido.expiresAt) : null;
             const msLeft = expires ? expires.getTime() - nowTick : 0;
             const isExpired = !!expires && msLeft <= 0;
@@ -333,20 +394,41 @@ export default function PedidosPage() {
                 <div className="flex flex-wrap items-center justify-between gap-3 pb-3 border-b border-zinc-700">
                   <div className="space-y-0.5">
                     <p className="text-lg font-semibold">
-                      Pedido <span className="text-yellow-400">#{pedido.id}</span>
+                      Pedido{' '}
+                      <span className="text-yellow-400">#{pedido.id}</span>
                     </p>
                     <p className="text-sm text-gray-400">
                       Data: {toDate(pedido.data).toLocaleString()}
                     </p>
-                    {isPending && expires && (
+                    {isPaymentPending && expires && (
                       <p className="text-xs text-yellow-300">
                         Expira em: <strong>{msToClock(msLeft)}</strong>
                       </p>
                     )}
                   </div>
-                  <div className="flex items-center gap-2">
+
+                  <div className="flex flex-col items-end gap-1 text-right">
                     {badgeEntrega(pedido.tipoEntrega)}
-                    <span className={badgeStatus(pedido.status)}>{pedido.status}</span>
+                    <span
+                      className={badgeStatusPedido(pedido.status)}
+                      title="Status do pedido"
+                    >
+                      {pedido.status}
+                    </span>
+                    {pedido.statusPagamento && (
+                      <span
+                        className={badgeStatusPagamento(
+                          pedido.statusPagamento
+                        )}
+                        title={
+                          pedido.mpStatus
+                            ? `Status do pagamento (MP: ${pedido.mpStatus})`
+                            : 'Status do pagamento'
+                        }
+                      >
+                        {pedido.statusPagamento}
+                      </span>
+                    )}
                   </div>
                 </div>
 
@@ -374,7 +456,8 @@ export default function PedidosPage() {
                         <div className="flex-1 min-w-0">
                           <p className="font-medium truncate">{item.nome}</p>
                           <p className="text-xs text-gray-400">
-                            {item.tipo || 'unidade'} • Qtd: {item.quantidade}
+                            {item.tipo || 'unidade'} • Qtd:{' '}
+                            {item.quantidade}
                           </p>
                           <p className="text-sm font-semibold text-yellow-300">
                             {money(subtotal)}
@@ -398,19 +481,38 @@ export default function PedidosPage() {
                           <>
                             {' '}
                             • Troco para:{' '}
-                            <span className="text-white">{money(pedido.troco)}</span>
+                            <span className="text-white">
+                              {money(pedido.troco)}
+                            </span>
                           </>
                         )}
                     </p>
 
+                    {pedido.statusPagamento && (
+                      <p className="mt-1 text-xs text-gray-300">
+                        Status do pagamento:{' '}
+                        <span className="font-semibold">
+                          {pedido.statusPagamento}
+                        </span>
+                      </p>
+                    )}
+
                     {pedido.tipoEntrega === 'entrega' && pedido.endereco && (
                       <>
-                        <p className="text-gray-300">
-                          Endereço: {pedido.endereco.rua}, {pedido.endereco.numero} -{' '}
-                          {pedido.endereco.bairro} ({pedido.endereco.cidade}){' '}
-                          {pedido.endereco.cep ? `• CEP ${pedido.endereco.cep}` : ''}
+                        <p className="mt-2 text-gray-300">
+                          Endereço: {pedido.endereco.rua},{' '}
+                          {pedido.endereco.numero} -{' '}
+                          {pedido.endereco.bairro} (
+                          {pedido.endereco.cidade}){' '}
+                          {pedido.endereco.cep
+                            ? `• CEP ${pedido.endereco.cep}`
+                            : ''}
                           {typeof pedido.endereco.accuracy === 'number' && (
-                            <> • precisão ~{Math.round(pedido.endereco.accuracy)} m</>
+                            <>
+                              {' '}
+                              • precisão ~
+                              {Math.round(pedido.endereco.accuracy)} m
+                            </>
                           )}
                         </p>
 
@@ -440,7 +542,7 @@ export default function PedidosPage() {
                     )}
 
                     {/* Ações de pagamento pendente */}
-                    {isPending && (
+                    {isPaymentPending && (
                       <div className="flex flex-wrap items-center gap-2 mt-3">
                         {!isExpired ? (
                           <button
