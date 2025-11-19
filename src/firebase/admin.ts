@@ -2,13 +2,31 @@
 import * as admin from 'firebase-admin';
 
 let app: admin.app.App;
-if (admin.apps.length === 0) {
+
+if (!admin.apps.length) {
+  const projectId = process.env.FIREBASE_PROJECT_ID;
+  const clientEmail = process.env.FIREBASE_CLIENT_EMAIL;
+  let privateKey = process.env.FIREBASE_PRIVATE_KEY;
+
+  if (!projectId || !clientEmail || !privateKey) {
+    throw new Error(
+      'Firebase Admin: variáveis FIREBASE_PROJECT_ID, FIREBASE_CLIENT_EMAIL ou FIREBASE_PRIVATE_KEY não configuradas.'
+    );
+  }
+
+  // Remove aspas extras no começo/fim, se existirem
+  privateKey = privateKey.replace(/^"|"$/g, '');
+
+  // Se estiver no formato com "\n" escapado (ex: em .env local), converte para quebras de linha reais
+  if (privateKey.includes('\\n')) {
+    privateKey = privateKey.replace(/\\n/g, '\n');
+  }
+
   app = admin.initializeApp({
     credential: admin.credential.cert({
-      projectId: process.env.FIREBASE_PROJECT_ID,
-      clientEmail: process.env.FIREBASE_CLIENT_EMAIL,
-      // no .env, as quebras de linha vêm escapadas; convertemos aqui:
-      privateKey: process.env.FIREBASE_PRIVATE_KEY?.replace(/\\n/g, '\n'),
+      projectId,
+      clientEmail,
+      privateKey,
     }),
   });
 } else {
@@ -17,5 +35,5 @@ if (admin.apps.length === 0) {
 
 export { admin, app };
 
-// Firestore Admin (será usado nos webhooks)
+// Firestore Admin (usado pelos webhooks, etc.)
 export const afs = admin.firestore();
