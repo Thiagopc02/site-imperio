@@ -1,3 +1,4 @@
+// src/app/admin/dashboard/pedidos/page.tsx
 'use client';
 
 import type React from 'react';
@@ -75,7 +76,7 @@ type Pedido = {
   /** Status do pedido (fluxo interno: Em andamento, Confirmado, Em rota, Entregue…) */
   status?: string;
 
-  /** Status do pagamento (derivado de mp_status / formaPagamento) */
+  /** Status do pagamento (texto amigável derivado de mp_status / formaPagamento) */
   statusPagamento?: string;
 
   /** Valor cru vindo do Mercado Pago (approved, pending, cancelled etc.) */
@@ -696,7 +697,7 @@ export default function PedidosDetalhadosPage() {
 
                   {/* Itens */}
                   <section className="p-3 border rounded-lg bg-zinc-950/40 border-zinc-800">
-                    <h3 className="mb-2 text-sm font-semibold text-white">
+                    <h3 className="mb-2 text-sm font-semibold text.white">
                       Itens do pedido
                     </h3>
                     {!p.itens || p.itens.length === 0 ? (
@@ -933,9 +934,7 @@ function ActionBtn({
       className={[
         base,
         map[tone],
-        disabled
-          ? 'opacity-60 cursor-not-allowed hover:bg-inherit'
-          : '',
+        disabled ? 'opacity-60 cursor-not-allowed hover:bg-inherit' : '',
       ].join(' ')}
     >
       {children}

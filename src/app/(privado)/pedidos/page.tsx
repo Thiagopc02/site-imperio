@@ -63,7 +63,7 @@ type Pedido = {
     | 'Aguardando pagamento'
     | string;
 
-  /** Status do pagamento (derivado de mp_status) */
+  /** Status do pagamento (texto amigável, derivado de mp_status) */
   statusPagamento?: string;
   /** Valor cru vindo do Mercado Pago (approved, pending, cancelled...) */
   mpStatus?: string | null;
@@ -373,13 +373,10 @@ export default function PedidosPage() {
                   addrText
                 )}&z=16&output=embed`;
 
-            // pagamento pendente baseado em statusPagamento (e fallback em status)
-            const isPaymentPending =
-              /aguardando pagamento|pendente/i.test(
-                pedido.statusPagamento || ''
-              ) ||
-              (/aguardando pagamento|pendente/i.test(pedido.status) &&
-                pedido.formaPagamento === 'online');
+            // pagamento pendente baseado SOMENTE em statusPagamento
+            const isPaymentPending = /aguardando pagamento|pendente/i.test(
+              pedido.statusPagamento || ''
+            );
 
             const expires = pedido.expiresAt ? toDate(pedido.expiresAt) : null;
             const msLeft = expires ? expires.getTime() - nowTick : 0;
@@ -547,7 +544,7 @@ export default function PedidosPage() {
                         {!isExpired ? (
                           <button
                             onClick={() => resumePayment(pedido)}
-                            className="px-4 py-2 text-sm font-semibold text-black rounded bg-sky-400 hover:bg-sky-500"
+                            className="px-4 py-2 text-sm font-semibold text.black rounded bg-sky-400 hover:bg-sky-500"
                             title="Reabrir checkout e concluir o pagamento"
                           >
                             💠 Finalizar pagamento

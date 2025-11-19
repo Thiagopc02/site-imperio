@@ -5,39 +5,28 @@ import { admin, afs } from '@/firebase/admin';
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
-/* =========================
-   Tipos mínimos (parciais)
-   ========================= */
 type MPNotification = {
-  action?: string; // ex.: "payment.created" | "payment.updated"
-  type?: string; // ex.: "payment"
+  action?: string;
+  type?: string;
   data?: { id?: string | number } | null;
 };
 
 type MPPayment = {
   id?: string | number;
-  status?:
-    | 'approved'
-    | 'pending'
-    | 'rejected'
-    | 'in_process'
-    | 'in_mediation'
-    | 'cancelled'
-    | 'refunded'
-    | 'charged_back'
-    | string;
+  status?: string;
   status_detail?: string;
   transaction_amount?: number;
-  payment_method_id?: string; // "pix", "credit_card", ...
-  payment_type_id?: string; // "pix", "ticket", "credit_card", ...
+  payment_method_id?: string;
+  payment_type_id?: string;
   external_reference?: string | null;
   payer?: { email?: string | null } | null;
+  metadata?: {
+    orderId?: string;
+    [key: string]: unknown;
+  } | null;
 };
 
-/* =========================
-   Helpers
-   ========================= */
-
+/* ---------- Buscar pagamento completo no MP ---------- */
 async function getPayment(paymentId: string): Promise<MPPayment | null> {
   const token = process.env.MP_ACCESS_TOKEN?.trim();
   if (!token) {
@@ -49,77 +38,73 @@ async function getPayment(paymentId: string): Promise<MPPayment | null> {
     const url = `https://api.mercadopago.com/v1/payments/${encodeURIComponent(
       paymentId
     )}`;
+
     const res = await fetch(url, {
       method: 'GET',
       headers: { Authorization: `Bearer ${token}` },
       cache: 'no-store',
     });
 
+    if (res.status === 404) {
+      console.warn(
+        '[MP Webhook] Pagamento não encontrado no MP (404) para id:',
+        paymentId
+      );
+      return null;
+    }
+
     if (!res.ok) {
-      console.error('[MP Webhook] Erro ao buscar pagamento no MP', res.status);
+      console.error(
+        '[MP Webhook] Erro ao buscar pagamento no MP',
+        res.status,
+        await res.text()
+      );
       return null;
     }
 
     return (await res.json()) as MPPayment;
   } catch (err) {
-    console.error('[MP Webhook] Erro de rede ao buscar pagamento no MP', err);
+    console.error(
+      '[MP Webhook] Erro de rede ao buscar pagamento no MP',
+      err
+    );
     return null;
   }
 }
 
-/** Status exibidos no painel */
-function mapPaymentStatus(p: MPPayment | null): string {
-  if (!p) return 'Em andamento';
-  switch (p.status) {
-    case 'approved':
-      return 'Pago';
-    case 'pending':
-    case 'in_process':
-      return 'Aguardando pagamento';
-    case 'rejected':
-    case 'cancelled':
-      return 'Cancelado';
-    default:
-      return 'Em andamento';
-  }
-}
-
-/** Forma de pagamento exibida no painel */
+/* ---------- Inferir formaPagamento a partir do pagamento ---------- */
 function mapFormaPagamento(
   p: MPPayment | null
 ): 'pix' | 'cartao_credito' | 'cartao_debito' | 'dinheiro' | 'online' | undefined {
   if (!p) return undefined;
   const method = (p.payment_method_id || p.payment_type_id || '').toLowerCase();
+
   if (method.includes('pix')) return 'pix';
   if (method.includes('credit')) return 'cartao_credito';
   if (method.includes('debit')) return 'cartao_debito';
-  // para checkout online sempre tratamos como "online"
+
+  // qualquer outra coisa tratamos como pagamento online
   return 'online';
 }
 
-/* =========================
-   Handlers
-   ========================= */
-
+/* ===================== POST ===================== */
 export async function POST(req: NextRequest) {
+  // Lê body cru uma vez
   let rawBody = '';
   let body: MPNotification | null = null;
 
   try {
-    // Mercado Pago envia JSON, então lemos o texto e depois parseamos
     rawBody = await req.text();
     body = rawBody ? (JSON.parse(rawBody) as MPNotification) : null;
-  } catch (err) {
-    console.warn('[MP Webhook] Falha ao parsear body como JSON:', err);
+  } catch {
     body = null;
   }
 
   const headers = Object.fromEntries(req.headers);
 
-  // 1) Tenta pegar do JSON: data.id
+  // 1) ID pelo body
   const idFromBody = body?.data?.id;
-
-  // 2) Fallback para querystring: ?id=...&topic=payment
+  // 2) Fallback: querystring ?id= / ?data.id= / ?payment_id=
   const search = req.nextUrl.searchParams;
   const idFromQS =
     search.get('id') ||
@@ -130,59 +115,85 @@ export async function POST(req: NextRequest) {
   const paymentId = String(idFromBody ?? idFromQS ?? '').trim();
 
   if (!paymentId) {
-    // Loga pra debug, mas responde 200 pra evitar retries infinitos
-    try {
-      await afs.collection('mp_logs').add({
-        msg: 'Webhook sem paymentId',
-        rawBody,
-        headers,
-        receivedAt: admin.firestore.FieldValue.serverTimestamp(),
-      });
-    } catch (logErr) {
-      console.error('[MP Webhook] Erro ao logar mp_logs (sem paymentId):', logErr);
-    }
+    await afs.collection('mp_logs').add({
+      msg: 'Webhook sem paymentId',
+      rawBody,
+      headers,
+      receivedAt: admin.firestore.FieldValue.serverTimestamp(),
+    });
 
-    return NextResponse.json({ ok: true, ignored: true });
+    // responde 200 para não tomar retry infinito do MP
+    return NextResponse.json({ ok: true, ignored: true, reason: 'no payment id' });
   }
 
-  // Busca dados completos do pagamento no MP
   const payment = await getPayment(paymentId);
 
-  // Decide qual documento vamos atualizar
-  // Preferência: external_reference (que deve ser o id do pedido, ex: "order_...")
-  const externalRef = (payment?.external_reference || '').trim();
-  const docId = externalRef || `order_${paymentId}`;
+  if (!payment) {
+    await afs.collection('mp_logs').add({
+      msg: 'Pagamento não encontrado no MP',
+      paymentId,
+      rawBody,
+      headers,
+      receivedAt: admin.firestore.FieldValue.serverTimestamp(),
+    });
 
-  const statusPainel = mapPaymentStatus(payment);
-  const formaPainel = mapFormaPagamento(payment);
-  const valor =
-    typeof payment?.transaction_amount === 'number'
-      ? payment.transaction_amount
-      : undefined;
-  const payerEmail = payment?.payer?.email ?? null;
+    return NextResponse.json({
+      ok: true,
+      ignored: true,
+      reason: 'payment not found',
+    });
+  }
+
+  // *** AQUI ESTÁ O PONTO PRINCIPAL ***
+  // Usamos SOMENTE metadata.orderId para achar o pedido.
+  const orderId = String(payment.metadata?.orderId ?? '').trim();
+
+  if (!orderId) {
+    await afs.collection('mp_logs').add({
+      msg: 'Pagamento sem metadata.orderId',
+      paymentId,
+      paymentMetadata: payment.metadata ?? null,
+      rawBody,
+      headers,
+      receivedAt: admin.firestore.FieldValue.serverTimestamp(),
+    });
+
+    // Não inventamos ID, não criamos pedido novo.
+    return NextResponse.json({
+      ok: true,
+      ignored: true,
+      reason: 'no metadata.orderId',
+    });
+  }
+
+  const docRef = afs.collection('pedidos').doc(orderId);
+
+  const formaPagamento = mapFormaPagamento(payment);
+  const payerEmail = payment.payer?.email ?? null;
+
+  const updateData: Record<string, unknown> = {
+    mpPaymentId: paymentId,
+    mp_status: payment.status ?? null,
+    mp_status_detail: payment.status_detail ?? null,
+    payerEmail,
+    mp_snapshot: payment,
+    updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+  };
+
+  // Atualiza formaPagamento só se conseguimos inferir algo
+  if (formaPagamento) {
+    updateData.formaPagamento = formaPagamento;
+  }
 
   try {
-    // Atualiza o pedido no Firestore
-    await afs.collection('pedidos').doc(docId).set(
-      {
-        status: statusPainel,
-        formaPagamento: formaPainel ?? null,
-        mpPaymentId: paymentId,
-        mp_status: payment?.status ?? null,
-        mp_status_detail: payment?.status_detail ?? null,
-        payerEmail,
-        ...(typeof valor === 'number' ? { total: valor } : {}),
-        mp_snapshot: payment ?? null,
-        updatedAt: admin.firestore.FieldValue.serverTimestamp(),
-      },
-      { merge: true }
-    );
+    // *** IMPORTANTE: não mexemos no campo "status" do pedido! ***
+    await docRef.set(updateData, { merge: true });
 
-    // Log de auditoria
-    await afs.collection('mp_logs').doc(docId).set(
+    await afs.collection('mp_logs').doc(orderId).set(
       {
         source: 'webhook',
         paymentId,
+        orderId,
         rawBody,
         headers,
         receivedAt: admin.firestore.FieldValue.serverTimestamp(),
@@ -190,15 +201,18 @@ export async function POST(req: NextRequest) {
       { merge: true }
     );
   } catch (err) {
-    console.error('[MP Webhook] Erro ao atualizar Firestore:', err);
-    // Ainda respondemos 200 para o MP não ficar em retry infinito
-    return NextResponse.json({ ok: true, firestoreError: String(err) });
+    console.error('[MP Webhook] Erro ao atualizar Firestore', err);
+
+    return NextResponse.json({
+      ok: true,
+      firestoreError: String(err),
+    });
   }
 
   return NextResponse.json({ ok: true });
 }
 
-// Ping opcional pra testar no navegador
+/* ---------- GET de teste (ping) ---------- */
 export async function GET() {
   return NextResponse.json({ ok: true, route: '/api/mp/webhook' });
 }
