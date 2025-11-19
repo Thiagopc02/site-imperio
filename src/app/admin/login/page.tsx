@@ -5,6 +5,8 @@ import { useRouter } from 'next/navigation';
 import {
   onAuthStateChanged,
   signInWithEmailAndPassword,
+  signInWithPopup,
+  GoogleAuthProvider,
   signOut,
   type User,
 } from 'firebase/auth';
@@ -103,6 +105,11 @@ function mapAuthError(code?: string, message?: string) {
     return 'Falha de rede. Verifique sua conexão.';
   if (combo.includes('password_does_not_meet_requirements'))
     return 'Sua senha não atende à política definida. Atualize-a para continuar.';
+  if (
+    combo.includes('popup-closed-by-user') ||
+    combo.includes('cancelled-popup-request')
+  )
+    return 'Login cancelado pelo usuário.';
 
   return 'Não foi possível entrar. Verifique os dados e tente novamente.';
 }
@@ -129,7 +136,7 @@ export default function AdminLoginPage() {
   // Marca do build para confirmar que o deploy novo está carregado
   useEffect(() => {
     if (typeof window !== 'undefined') {
-      console.info('ADMIN_BUILD_TAG', 'admin-login-2025-11-18-sem-recaptcha');
+      console.info('ADMIN_BUILD_TAG', 'admin-login-2025-11-18-google');
     }
   }, []);
 
@@ -151,7 +158,7 @@ export default function AdminLoginPage() {
     return () => unsub();
   }, [router]);
 
-  /** Submit simples: login Firebase + checagem de admin */
+  /** Login por e-mail/senha (continua disponível) */
   async function doEmailPassword() {
     if (loading) return;
     setErro(null);
@@ -172,7 +179,30 @@ export default function AdminLoginPage() {
       router.replace('/admin/dashboard');
     } catch (err: unknown) {
       const { code, message } = getErrInfo(err);
-      console.error('ADMIN login error:', code, message ?? err);
+      console.error('ADMIN login error (email/senha):', code, message ?? err);
+      setErro(mapAuthError(code, message ?? String(err)));
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  /** Login com Google (para os e-mails liberados) */
+  async function doGoogleLogin() {
+    if (loading) return;
+    setErro(null);
+    setLoading(true);
+
+    try {
+      const provider = new GoogleAuthProvider();
+      provider.setCustomParameters({ prompt: 'select_account' });
+
+      const cred = await signInWithPopup(auth, provider);
+      await ensureAdminOrThrow(cred.user);
+
+      router.replace('/admin/dashboard');
+    } catch (err: unknown) {
+      const { code, message } = getErrInfo(err);
+      console.error('ADMIN login error (Google):', code, message ?? err);
       setErro(mapAuthError(code, message ?? String(err)));
     } finally {
       setLoading(false);
@@ -190,6 +220,7 @@ export default function AdminLoginPage() {
           </div>
         )}
 
+        {/* Login por e-mail/senha */}
         <form
           onSubmit={(e) => {
             e.preventDefault();
@@ -206,7 +237,6 @@ export default function AdminLoginPage() {
               onBlur={(e) => setEmail(normalizeEmail(e.target.value))}
               className="w-full px-3 py-2 outline-none rounded-xl bg-neutral-800 ring-1 ring-neutral-700 focus:ring-2 focus:ring-yellow-500"
               placeholder="admin@exemplo.com"
-              required
               autoComplete="email"
               inputMode="email"
             />
@@ -221,7 +251,6 @@ export default function AdminLoginPage() {
                 onChange={(e) => setSenha(e.target.value)}
                 className="w-full px-3 py-2 pr-10 outline-none rounded-xl bg-neutral-800 ring-1 ring-neutral-700 focus:ring-2 focus:ring-yellow-500"
                 placeholder="••••••••"
-                required
                 autoComplete="current-password"
                 minLength={6}
               />
@@ -242,9 +271,29 @@ export default function AdminLoginPage() {
             disabled={loading}
             className="w-full px-4 py-2 font-medium text-black bg-yellow-500 rounded-xl hover:bg-yellow-400 disabled:opacity-60"
           >
-            {loading ? 'Entrando…' : 'Entrar'}
+            {loading ? 'Entrando…' : 'Entrar com e-mail/senha'}
           </button>
         </form>
+
+        {/* Separador */}
+        <div className="flex items-center my-5">
+          <div className="flex-1 h-px bg-neutral-700" />
+          <span className="px-3 text-xs text-neutral-400">ou</span>
+          <div className="flex-1 h-px bg-neutral-700" />
+        </div>
+
+        {/* Login com Google */}
+        <button
+          type="button"
+          onClick={() => void doGoogleLogin()}
+          disabled={loading}
+          className="inline-flex items-center justify-center w-full gap-3 px-4 py-2 text-sm font-medium bg-white rounded-xl text-neutral-900 hover:bg-neutral-100 disabled:opacity-60"
+        >
+          <span className="inline-flex items-center justify-center text-base font-bold bg-white border rounded-full w-7 h-7">
+            G
+          </span>
+          <span>Entrar com Google</span>
+        </button>
       </div>
     </main>
   );
