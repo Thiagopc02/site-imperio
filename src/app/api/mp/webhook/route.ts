@@ -9,8 +9,8 @@ export const dynamic = 'force-dynamic';
    Tipos mínimos (parciais)
    ========================= */
 type MPNotification = {
-  action?: string;                 // ex.: "payment.created" | "payment.updated"
-  type?: string;                   // ex.: "payment"
+  action?: string; // ex.: "payment.created" | "payment.updated"
+  type?: string; // ex.: "payment"
   data?: { id?: string | number } | null;
 };
 
@@ -28,8 +28,8 @@ type MPPayment = {
     | string;
   status_detail?: string;
   transaction_amount?: number;
-  payment_method_id?: string;      // "pix", "credit_card", ...
-  payment_type_id?: string;        // "pix", "ticket", "credit_card", ...
+  payment_method_id?: string; // "pix", "credit_card", ...
+  payment_type_id?: string; // "pix", "ticket", "credit_card", ...
   external_reference?: string | null;
   payer?: { email?: string | null } | null;
 };
@@ -41,7 +41,7 @@ type MPPayment = {
 async function getPayment(paymentId: string): Promise<MPPayment | null> {
   const token = process.env.MP_ACCESS_TOKEN?.trim();
   if (!token) {
-    console.error('MP_ACCESS_TOKEN não configurado');
+    console.error('[MP Webhook] MP_ACCESS_TOKEN não configurado');
     return null;
   }
 
@@ -56,13 +56,13 @@ async function getPayment(paymentId: string): Promise<MPPayment | null> {
     });
 
     if (!res.ok) {
-      console.error('Erro ao buscar pagamento no MP', res.status);
+      console.error('[MP Webhook] Erro ao buscar pagamento no MP', res.status);
       return null;
     }
 
     return (await res.json()) as MPPayment;
   } catch (err) {
-    console.error('Erro de rede ao buscar pagamento no MP', err);
+    console.error('[MP Webhook] Erro de rede ao buscar pagamento no MP', err);
     return null;
   }
 }
@@ -102,14 +102,15 @@ function mapFormaPagamento(
    ========================= */
 
 export async function POST(req: NextRequest) {
-  // Lê o body UMA ÚNICA VEZ
   let rawBody = '';
   let body: MPNotification | null = null;
 
   try {
+    // Mercado Pago envia JSON, então lemos o texto e depois parseamos
     rawBody = await req.text();
     body = rawBody ? (JSON.parse(rawBody) as MPNotification) : null;
-  } catch {
+  } catch (err) {
+    console.warn('[MP Webhook] Falha ao parsear body como JSON:', err);
     body = null;
   }
 
@@ -130,12 +131,16 @@ export async function POST(req: NextRequest) {
 
   if (!paymentId) {
     // Loga pra debug, mas responde 200 pra evitar retries infinitos
-    await afs.collection('mp_logs').add({
-      msg: 'Webhook sem paymentId',
-      rawBody,
-      headers,
-      receivedAt: admin.firestore.FieldValue.serverTimestamp(),
-    });
+    try {
+      await afs.collection('mp_logs').add({
+        msg: 'Webhook sem paymentId',
+        rawBody,
+        headers,
+        receivedAt: admin.firestore.FieldValue.serverTimestamp(),
+      });
+    } catch (logErr) {
+      console.error('[MP Webhook] Erro ao logar mp_logs (sem paymentId):', logErr);
+    }
 
     return NextResponse.json({ ok: true, ignored: true });
   }
@@ -156,33 +161,39 @@ export async function POST(req: NextRequest) {
       : undefined;
   const payerEmail = payment?.payer?.email ?? null;
 
-  // Atualiza o pedido no Firestore
-  await afs.collection('pedidos').doc(docId).set(
-    {
-      status: statusPainel,
-      formaPagamento: formaPainel ?? null,
-      mpPaymentId: paymentId,
-      mp_status: payment?.status ?? null,
-      mp_status_detail: payment?.status_detail ?? null,
-      payerEmail,
-      ...(typeof valor === 'number' ? { total: valor } : {}),
-      mp_snapshot: payment ?? null,
-      updatedAt: admin.firestore.FieldValue.serverTimestamp(),
-    },
-    { merge: true }
-  );
+  try {
+    // Atualiza o pedido no Firestore
+    await afs.collection('pedidos').doc(docId).set(
+      {
+        status: statusPainel,
+        formaPagamento: formaPainel ?? null,
+        mpPaymentId: paymentId,
+        mp_status: payment?.status ?? null,
+        mp_status_detail: payment?.status_detail ?? null,
+        payerEmail,
+        ...(typeof valor === 'number' ? { total: valor } : {}),
+        mp_snapshot: payment ?? null,
+        updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+      },
+      { merge: true }
+    );
 
-  // Log de auditoria
-  await afs.collection('mp_logs').doc(docId).set(
-    {
-      source: 'webhook',
-      paymentId,
-      rawBody,
-      headers,
-      receivedAt: admin.firestore.FieldValue.serverTimestamp(),
-    },
-    { merge: true }
-  );
+    // Log de auditoria
+    await afs.collection('mp_logs').doc(docId).set(
+      {
+        source: 'webhook',
+        paymentId,
+        rawBody,
+        headers,
+        receivedAt: admin.firestore.FieldValue.serverTimestamp(),
+      },
+      { merge: true }
+    );
+  } catch (err) {
+    console.error('[MP Webhook] Erro ao atualizar Firestore:', err);
+    // Ainda respondemos 200 para o MP não ficar em retry infinito
+    return NextResponse.json({ ok: true, firestoreError: String(err) });
+  }
 
   return NextResponse.json({ ok: true });
 }
