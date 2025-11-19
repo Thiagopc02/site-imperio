@@ -1,16 +1,15 @@
 'use client';
 
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import {
   onAuthStateChanged,
   signInWithEmailAndPassword,
   signOut,
-  User,
+  type User,
 } from 'firebase/auth';
 import { auth, db } from '@/firebase/config';
 import { doc, getDoc } from 'firebase/firestore';
-import RecaptchaV2Invisible, { RecaptchaV2Handle } from '@/components/RecaptchaV2Invisible';
 
 /** ====== CONFIG ====== */
 const ADMIN_EMAILS = new Set<string>(
@@ -43,7 +42,10 @@ async function hasAdminRole(uid: string): Promise<boolean> {
     const snap = await getDoc(ref);
     if (snap.exists()) {
       const d = snap.data() as unknown;
-      if (isAdminDoc(d) && (d.papel === 'administrador' || d.role === 'admin' || d.ativo === true)) {
+      if (
+        isAdminDoc(d) &&
+        (d.papel === 'administrador' || d.role === 'admin' || d.ativo === true)
+      ) {
         return true;
       }
     }
@@ -85,7 +87,11 @@ function getErrInfo(e: unknown): { code?: string; message?: string } {
 function mapAuthError(code?: string, message?: string) {
   const combo = `${code ?? ''} ${message ?? ''}`.toLowerCase();
 
-  if (combo.includes('wrong-password') || combo.includes('invalid-credential') || combo.includes('invalid_password'))
+  if (
+    combo.includes('wrong-password') ||
+    combo.includes('invalid-credential') ||
+    combo.includes('invalid_password')
+  )
     return 'Senha incorreta.';
   if (combo.includes('user-not-found') || combo.includes('email_not_found'))
     return 'Conta não encontrada para este e-mail.';
@@ -101,6 +107,15 @@ function mapAuthError(code?: string, message?: string) {
   return 'Não foi possível entrar. Verifique os dados e tente novamente.';
 }
 
+/** Garante que o usuário logado é admin; caso contrário, encerra a sessão */
+async function ensureAdminOrThrow(user: User) {
+  const mail = normalizeEmail(user.email || '');
+  if (ADMIN_EMAILS.has(mail)) return;
+  if (await hasAdminRole(user.uid)) return;
+  await signOut(auth);
+  throw new Error('Esta conta não tem acesso administrativo.');
+}
+
 /** ====== PAGE ====== */
 export default function AdminLoginPage() {
   const router = useRouter();
@@ -111,13 +126,10 @@ export default function AdminLoginPage() {
   const [erro, setErro] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
-  const recaptchaRef = useRef<RecaptchaV2Handle>(null);
-  const pending = useRef<{ email: string; senha: string } | null>(null);
-
   // Marca do build para confirmar que o deploy novo está carregado
   useEffect(() => {
     if (typeof window !== 'undefined') {
-      console.info('ADMIN_BUILD_TAG', 'admin-login-2025-10-06');
+      console.info('ADMIN_BUILD_TAG', 'admin-login-2025-11-18-sem-recaptcha');
     }
   }, []);
 
@@ -139,53 +151,7 @@ export default function AdminLoginPage() {
     return () => unsub();
   }, [router]);
 
-  /** Valida token do reCAPTCHA invisível no backend */
-  async function verifyCaptchaOnServer(token: string) {
-    const r = await fetch('/api/verify-recaptcha', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ token, action: 'admin-login' }),
-    });
-    const j = (await r.json().catch(() => ({}))) as { success?: boolean };
-    if (!(r.ok && j?.success)) {
-      throw new Error('Falha na verificação do reCAPTCHA.');
-    }
-  }
-
-  /** Garante que o usuário logado é admin; caso contrário, encerra a sessão */
-  async function ensureAdminOrThrow(user: User) {
-    const mail = normalizeEmail(user.email || '');
-    if (ADMIN_EMAILS.has(mail)) return;
-    if (await hasAdminRole(user.uid)) return;
-    await signOut(auth);
-    throw new Error('Esta conta não tem acesso administrativo.');
-  }
-
-  /** Executa o widget invisível com timeout e feedback */
-  async function executeRecaptchaOrFail() {
-    const start = Date.now();
-    return new Promise<void>((resolve, reject) => {
-      const step = () => {
-        if (recaptchaRef.current?.isReady?.()) {
-          try {
-            recaptchaRef.current.execute();
-            resolve();
-          } catch (err) {
-            reject(err);
-          }
-          return;
-        }
-        if (Date.now() - start > 6000) {
-          reject(new Error('reCAPTCHA não ficou pronto a tempo.'));
-          return;
-        }
-        setTimeout(step, 150);
-      };
-      step();
-    });
-  }
-
-  /** Submit: prepara credenciais, dispara reCAPTCHA e completa o login no callback */
+  /** Submit simples: login Firebase + checagem de admin */
   async function doEmailPassword() {
     if (loading) return;
     setErro(null);
@@ -200,44 +166,18 @@ export default function AdminLoginPage() {
         throw new Error('A senha deve ter pelo menos 6 caracteres.');
       }
 
-      pending.current = { email: mail, senha };
-      await executeRecaptchaOrFail(); // onVerify continua o fluxo
-    } catch (err: unknown) {
-      const { code, message } = getErrInfo(err);
-      console.error('ADMIN doEmailPassword error:', code, message ?? err);
-      setErro(mapAuthError(code, message ?? String(err)));
-      setLoading(false);
-      pending.current = null;
-    }
-  }
-
-  /** Callback do reCAPTCHA invisível */
-  const onVerify = async (token: string) => {
-    try {
-      if (!pending.current) return;
-
-      // 1) valida reCAPTCHA no backend
-      await verifyCaptchaOnServer(token);
-
-      // 2) login Firebase
-      const { email: em, senha: pw } = pending.current;
-      const cred = await signInWithEmailAndPassword(auth, em, pw);
-
-      // 3) garante permissão admin
+      const cred = await signInWithEmailAndPassword(auth, mail, senha);
       await ensureAdminOrThrow(cred.user);
 
-      // 4) navega
       router.replace('/admin/dashboard');
     } catch (err: unknown) {
       const { code, message } = getErrInfo(err);
-      console.error('ADMIN onVerify error:', code, message ?? err);
+      console.error('ADMIN login error:', code, message ?? err);
       setErro(mapAuthError(code, message ?? String(err)));
     } finally {
       setLoading(false);
-      pending.current = null;
-      recaptchaRef.current?.reset();
     }
-  };
+  }
 
   return (
     <main className="flex items-center justify-center min-h-screen p-4 bg-black text-neutral-100">
@@ -306,9 +246,6 @@ export default function AdminLoginPage() {
           </button>
         </form>
       </div>
-
-      {/* reCAPTCHA invisível */}
-      <RecaptchaV2Invisible ref={recaptchaRef} onVerify={onVerify} />
     </main>
   );
 }
