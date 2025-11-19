@@ -1,4 +1,3 @@
-// src/app/admin/dashboard/pedidos/page.tsx
 'use client';
 
 import type React from 'react';
@@ -76,7 +75,7 @@ type Pedido = {
   /** Status do pedido (fluxo interno: Em andamento, Confirmado, Em rota, Entregue…) */
   status?: string;
 
-  /** Status do pagamento (texto amigável derivado de mp_status / formaPagamento) */
+  /** Status do pagamento (derivado de mp_status / formaPagamento) */
   statusPagamento?: string;
 
   /** Valor cru vindo do Mercado Pago (approved, pending, cancelled etc.) */
@@ -545,7 +544,7 @@ export default function PedidosDetalhadosPage() {
           )}
           <button
             onClick={handleLogout}
-            className="px-3 py-1.5 text-sm font-semibold text-white bg-red-600 rounded hover:bg-red-700"
+            className="px-3 py-1.5 text-sm font-semibold textwhite bg-red-600 rounded hover:bg-red-700"
           >
             Sair
           </button>
@@ -616,6 +615,14 @@ export default function PedidosDetalhadosPage() {
               typeof p.endereco?.lng === 'number';
             const addressText = enderecoTexto(p.endereco);
 
+            const statusPagamentoLabel =
+              p.statusPagamento ||
+              (p.formaPagamento === 'online'
+                ? 'Aguardando pagamento'
+                : p.formaPagamento === 'dinheiro'
+                ? 'Pagar na entrega'
+                : '—');
+
             return (
               <article
                 key={p.id}
@@ -636,22 +643,35 @@ export default function PedidosDetalhadosPage() {
                     <FaShoppingBag />{' '}
                     {p.tipoEntrega === 'retirada' ? 'Retirada' : 'Entrega'}
                   </span>
-                  <div className="flex items-center gap-2 ml-auto">
-                    <span className={badgeStatusPedido(p.status)}>
-                      {p.status || 'Em andamento'}
-                    </span>
-                    {p.statusPagamento && (
+                  <div className="flex flex-wrap items-center gap-2 ml-auto text-[11px]">
+                    {/* Status do pedido */}
+                    <div className="flex items-center gap-1">
+                      <span className="text-[10px] uppercase tracking-wide text-zinc-400">
+                        Pedido
+                      </span>
                       <span
-                        className={badgeStatusPagamento(p.statusPagamento)}
+                        className={badgeStatusPedido(p.status)}
+                        title="Status do pedido (controlado pela dashboard)"
+                      >
+                        {p.status || 'Em andamento'}
+                      </span>
+                    </div>
+                    {/* Status do pagamento */}
+                    <div className="flex items-center gap-1">
+                      <span className="text-[10px] uppercase tracking-wide text-zinc-400">
+                        Pagamento
+                      </span>
+                      <span
+                        className={badgeStatusPagamento(statusPagamentoLabel)}
                         title={
                           p.mpStatus
                             ? `Status do pagamento (MP: ${p.mpStatus})`
                             : 'Status do pagamento'
                         }
                       >
-                        {p.statusPagamento}
+                        {statusPagamentoLabel}
                       </span>
-                    )}
+                    </div>
                   </div>
                 </div>
 
@@ -679,7 +699,7 @@ export default function PedidosDetalhadosPage() {
                         </li>
                         <li>
                           Gasto total:{' '}
-                          <strong className="text-white">
+                          <strong className="textwhite">
                             {money(resumoCliente.gastoTotal)}
                           </strong>
                         </li>
@@ -697,7 +717,7 @@ export default function PedidosDetalhadosPage() {
 
                   {/* Itens */}
                   <section className="p-3 border rounded-lg bg-zinc-950/40 border-zinc-800">
-                    <h3 className="mb-2 text-sm font-semibold text.white">
+                    <h3 className="mb-2 text-sm font-semibold textwhite">
                       Itens do pedido
                     </h3>
                     {!p.itens || p.itens.length === 0 ? (
@@ -734,12 +754,12 @@ export default function PedidosDetalhadosPage() {
                         'Online (Mercado Pago)'}
                       {!p.formaPagamento && '—'}
                     </p>
-                    {p.statusPagamento && (
+                    {statusPagamentoLabel && (
                       <p className="mt-1 text-xs text-gray-300">
                         <span className="text-gray-400">
                           Status do pagamento:
                         </span>{' '}
-                        <strong>{p.statusPagamento}</strong>
+                        <strong>{statusPagamentoLabel}</strong>
                       </p>
                     )}
                   </section>
@@ -934,7 +954,9 @@ function ActionBtn({
       className={[
         base,
         map[tone],
-        disabled ? 'opacity-60 cursor-not-allowed hover:bg-inherit' : '',
+        disabled
+          ? 'opacity-60 cursor-not-allowed hover:bg-inherit'
+          : '',
       ].join(' ')}
     >
       {children}

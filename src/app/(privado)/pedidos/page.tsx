@@ -63,7 +63,7 @@ type Pedido = {
     | 'Aguardando pagamento'
     | string;
 
-  /** Status do pagamento (texto amigável, derivado de mp_status) */
+  /** Status do pagamento (derivado de mp_status) */
   statusPagamento?: string;
   /** Valor cru vindo do Mercado Pago (approved, pending, cancelled...) */
   mpStatus?: string | null;
@@ -373,14 +373,26 @@ export default function PedidosPage() {
                   addrText
                 )}&z=16&output=embed`;
 
-            // pagamento pendente baseado SOMENTE em statusPagamento
-            const isPaymentPending = /aguardando pagamento|pendente/i.test(
-              pedido.statusPagamento || ''
-            );
+            // pagamento pendente baseado em statusPagamento (e fallback em status)
+            const isPaymentPending =
+              /aguardando pagamento|pendente/i.test(
+                pedido.statusPagamento || ''
+              ) ||
+              (/aguardando pagamento|pendente/i.test(pedido.status) &&
+                pedido.formaPagamento === 'online');
 
             const expires = pedido.expiresAt ? toDate(pedido.expiresAt) : null;
             const msLeft = expires ? expires.getTime() - nowTick : 0;
             const isExpired = !!expires && msLeft <= 0;
+
+            // label sempre presente para o balão de pagamento
+            const statusPagamentoLabel =
+              pedido.statusPagamento ||
+              (pedido.formaPagamento === 'online'
+                ? 'Aguardando pagamento'
+                : pedido.formaPagamento === 'dinheiro'
+                ? 'Pagar na entrega'
+                : '—');
 
             return (
               <div
@@ -406,26 +418,38 @@ export default function PedidosPage() {
 
                   <div className="flex flex-col items-end gap-1 text-right">
                     {badgeEntrega(pedido.tipoEntrega)}
-                    <span
-                      className={badgeStatusPedido(pedido.status)}
-                      title="Status do pedido"
-                    >
-                      {pedido.status}
-                    </span>
-                    {pedido.statusPagamento && (
-                      <span
-                        className={badgeStatusPagamento(
-                          pedido.statusPagamento
-                        )}
-                        title={
-                          pedido.mpStatus
-                            ? `Status do pagamento (MP: ${pedido.mpStatus})`
-                            : 'Status do pagamento'
-                        }
-                      >
-                        {pedido.statusPagamento}
-                      </span>
-                    )}
+
+                    <div className="flex flex-wrap justify-end gap-1 text-[11px]">
+                      {/* Status do pedido (dashboard) */}
+                      <div className="flex items-center gap-1">
+                        <span className="text-[10px] uppercase tracking-wide text-zinc-400">
+                          Pedido
+                        </span>
+                        <span
+                          className={badgeStatusPedido(pedido.status)}
+                          title="Status do pedido (controlado pela loja)"
+                        >
+                          {pedido.status || 'Em andamento'}
+                        </span>
+                      </div>
+
+                      {/* Status do pagamento (MP / forma) */}
+                      <div className="flex items-center gap-1">
+                        <span className="text-[10px] uppercase tracking-wide text-zinc-400">
+                          Pagamento
+                        </span>
+                        <span
+                          className={badgeStatusPagamento(statusPagamentoLabel)}
+                          title={
+                            pedido.mpStatus
+                              ? `Status do pagamento (MP: ${pedido.mpStatus})`
+                              : 'Status do pagamento'
+                          }
+                        >
+                          {statusPagamentoLabel}
+                        </span>
+                      </div>
+                    </div>
                   </div>
                 </div>
 
@@ -485,11 +509,11 @@ export default function PedidosPage() {
                         )}
                     </p>
 
-                    {pedido.statusPagamento && (
+                    {statusPagamentoLabel && (
                       <p className="mt-1 text-xs text-gray-300">
                         Status do pagamento:{' '}
                         <span className="font-semibold">
-                          {pedido.statusPagamento}
+                          {statusPagamentoLabel}
                         </span>
                       </p>
                     )}
@@ -544,7 +568,7 @@ export default function PedidosPage() {
                         {!isExpired ? (
                           <button
                             onClick={() => resumePayment(pedido)}
-                            className="px-4 py-2 text-sm font-semibold text.black rounded bg-sky-400 hover:bg-sky-500"
+                            className="px-4 py-2 text-sm font-semibold rounded textblack bg-sky-400 hover:bg-sky-500"
                             title="Reabrir checkout e concluir o pagamento"
                           >
                             💠 Finalizar pagamento
