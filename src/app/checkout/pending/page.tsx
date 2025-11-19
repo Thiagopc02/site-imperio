@@ -1,8 +1,7 @@
 'use client';
+
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
-
-export const metadata = { robots: { index: false, follow: false } };
 
 type SP = {
   payment_id?: string;
@@ -12,6 +11,7 @@ type SP = {
 
 export default function PendingPage({ searchParams }: { searchParams: SP }) {
   const { payment_id, status, preference_id } = searchParams;
+
   const [statusAtual, setStatusAtual] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [erro, setErro] = useState<string | null>(null);
@@ -27,6 +27,7 @@ export default function PendingPage({ searchParams }: { searchParams: SP }) {
       try {
         const res = await fetch(`/api/mp/payment-status?id=${payment_id}`);
         const data = await res.json();
+
         if (!data.ok) {
           setErro('Falha ao consultar status do pagamento.');
         } else {
@@ -49,23 +50,31 @@ export default function PendingPage({ searchParams }: { searchParams: SP }) {
       </p>
 
       <div className="p-4 mb-8 border rounded bg-zinc-900 border-yellow-700/40">
-        <p><b>payment_id:</b> {payment_id ?? '—'}</p>
-        <p><b>status inicial:</b> {status ?? '—'}</p>
+        <p>
+          <b>payment_id:</b> {payment_id ?? '—'}
+        </p>
+        <p>
+          <b>status inicial:</b> {status ?? '—'}
+        </p>
         <p>
           <b>status atualizado:</b>{' '}
-          {loading
-            ? 'Carregando...'
-            : erro
-            ? <span className="text-red-400">{erro}</span>
-            : statusAtual === 'approved'
-            ? <span className="text-emerald-400">Aprovado ✅</span>
-            : statusAtual === 'pending'
-            ? <span className="text-yellow-400">Pendente ⏳</span>
-            : statusAtual === 'rejected'
-            ? <span className="text-red-400">Recusado ❌</span>
-            : <span className="text-gray-400">{statusAtual}</span>}
+          {loading ? (
+            'Carregando...'
+          ) : erro ? (
+            <span className="text-red-400">{erro}</span>
+          ) : statusAtual === 'approved' ? (
+            <span className="text-emerald-400">Aprovado ✅</span>
+          ) : statusAtual === 'pending' ? (
+            <span className="text-yellow-400">Pendente ⏳</span>
+          ) : statusAtual === 'rejected' ? (
+            <span className="text-red-400">Recusado ❌</span>
+          ) : (
+            <span className="text-gray-400">{statusAtual}</span>
+          )}
         </p>
-        <p><b>preference_id:</b> {preference_id ?? '—'}</p>
+        <p>
+          <b>preference_id:</b> {preference_id ?? '—'}
+        </p>
       </div>
 
       <div className="flex flex-wrap gap-3">
