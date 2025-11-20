@@ -44,9 +44,16 @@ async function parseJson(req: NextRequest) {
     return null;
   }
 }
+
 function withTimeout<T>(p: Promise<T>, ms = 25_000) {
-  return Promise.race([p, new Promise<T>((_, rej) => setTimeout(() => rej(new Error('timeout')), ms))]);
+  return Promise.race([
+    p,
+    new Promise<T>((_, rej) =>
+      setTimeout(() => rej(new Error('timeout')), ms)
+    ),
+  ]);
 }
+
 function genExternalRef() {
   return `order_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
 }
@@ -54,10 +61,20 @@ function genExternalRef() {
 export async function POST(req: NextRequest) {
   try {
     const bodyIn = (await parseJson(req)) as MPBricksFormData | null;
-    if (!bodyIn) return NextResponse.json({ ok: false, message: 'empty-body' }, { status: 200 });
+    if (!bodyIn) {
+      return NextResponse.json(
+        { ok: false, message: 'empty-body' },
+        { status: 200 }
+      );
+    }
 
     const accessToken = process.env.MP_ACCESS_TOKEN?.trim();
-    if (!accessToken) return NextResponse.json({ ok: false, message: 'missing-token' }, { status: 200 });
+    if (!accessToken) {
+      return NextResponse.json(
+        { ok: false, message: 'missing-token' },
+        { status: 200 }
+      );
+    }
 
     const baseUrl =
       process.env.NEXT_PUBLIC_SITE_URL?.replace(/\/$/, '') ||
@@ -67,10 +84,13 @@ export async function POST(req: NextRequest) {
     const headerRef = req.headers.get('x-external-ref') || undefined;
     const qsRef = req.nextUrl.searchParams.get('ref') || undefined;
     const external_reference =
-      (bodyIn.external_reference || headerRef || qsRef || '').trim() || genExternalRef();
+      (bodyIn.external_reference || headerRef || qsRef || '').trim() ||
+      genExternalRef();
 
     const amount = Number(bodyIn.transaction_amount ?? 0);
-    const payerEmail = (bodyIn.payer?.email || '').toString().trim() || 'comprador-teste@example.com';
+    const payerEmail =
+      (bodyIn.payer?.email || '').toString().trim() ||
+      'comprador-teste@example.com';
 
     const payload = {
       ...bodyIn,
@@ -78,13 +98,14 @@ export async function POST(req: NextRequest) {
       description: bodyIn.description || 'Pedido - Império Distribuidora',
       binary_mode: true,
       external_reference,
-      notification_url: `${baseUrl}/api/webhook`,
+      // 🔴 IMPORTANTE: manter exatamente esse caminho, com /mp/webhook
+      notification_url: `${baseUrl}/api/mp/webhook`,
       payer: { ...(bodyIn.payer || {}), email: payerEmail },
       metadata: {
         ...(bodyIn.metadata || {}),
+        // aqui não inventamos nada, só mantemos o que vier do front
         source: 'payment-bricks',
       },
-      // statement_descriptor poderia ser configurado na sua conta MP
     };
 
     const idemKey = `${payerEmail}-${external_reference}-${Date.now()}-${Math.random()
@@ -105,8 +126,11 @@ export async function POST(req: NextRequest) {
       25_000
     );
 
-    const data: MPPaymentResponse = await mpResp.json().catch(() => ({} as MPPaymentResponse));
-    const ok = mpResp.ok && (mpResp.status === 201 || mpResp.status === 200);
+    const data: MPPaymentResponse = await mpResp
+      .json()
+      .catch(() => ({} as MPPaymentResponse));
+    const ok =
+      mpResp.ok && (mpResp.status === 201 || mpResp.status === 200);
 
     return NextResponse.json(
       {
@@ -116,7 +140,10 @@ export async function POST(req: NextRequest) {
         external_reference,
         error: ok
           ? undefined
-          : data?.message || data?.error || data?.cause?.[0]?.description || String(data?.cause?.[0]?.code ?? ''),
+          : data?.message ||
+            data?.error ||
+            data?.cause?.[0]?.description ||
+            String(data?.cause?.[0]?.code ?? ''),
       },
       { status: 200 }
     );
