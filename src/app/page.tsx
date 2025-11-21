@@ -132,6 +132,52 @@ function MarqueePro({ items, speed = 36 }: { items: MarqueeItem[]; speed?: numbe
           ))}
         </ul>
       </div>
+
+      {/* CSS escopado para o carrossel infinito */}
+      <style jsx>{`
+        .marquee-wrap {
+          position: relative;
+          width: 100%;
+          overflow: hidden;
+        }
+
+        .marquee-track {
+          display: flex;
+          gap: 1.5rem;
+          width: max-content;
+          animation: marquee var(--speed) linear infinite;
+        }
+
+        .fancy-card {
+          position: relative;
+          border-radius: 1.5rem;
+          background: radial-gradient(circle at top, rgba(255, 255, 255, 0.09), rgba(0, 0, 0, 0.9));
+          border: 1px solid rgba(255, 255, 255, 0.08);
+          box-shadow: 0 16px 40px rgba(0, 0, 0, 0.85);
+          overflow: hidden;
+        }
+
+        .img-frame {
+          backdrop-filter: blur(6px);
+        }
+
+        .marquee-bg {
+          position: absolute;
+          inset: 0;
+          background: radial-gradient(circle at center, rgba(255, 215, 0, 0.12), transparent 60%);
+          opacity: 0.6;
+          pointer-events: none;
+        }
+
+        @keyframes marquee {
+          0% {
+            transform: translateX(0);
+          }
+          100% {
+            transform: translateX(-50%);
+          }
+        }
+      `}</style>
     </div>
   );
 }
@@ -590,8 +636,8 @@ export default function Home() {
             <div>
               <h2 className="text-2xl font-extrabold md:text-3xl">Onde estamos 🏰</h2>
               <p className="mt-1 text-sm text-gray-300 md:text-base">
-                Império Bebidas &amp; Tabacos — Campos Belos / GO.  
-                Retire seu pedido diretamente na loja ou receba em casa.
+                Império Bebidas &amp; Tabacos — Campos Belos / GO. Retire seu pedido diretamente na
+                loja ou receba em casa.
               </p>
             </div>
 
