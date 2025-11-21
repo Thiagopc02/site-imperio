@@ -101,6 +101,7 @@ export default function Home() {
   const router = useRouter();
   const [user, setUser] = useState<User | null>(null);
   const [items, setItems] = useState<MarqueeItem[]>([]);
+  const [showVideo, setShowVideo] = useState(false); // controla carregamento do iframe
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, setUser);
@@ -254,7 +255,7 @@ export default function Home() {
             className="
               relative overflow-hidden rounded-3xl p-[2px]
               bg-gradient-to-r from-yellow-400 via-amber-500 to-orange-500
-              shadow-[0_0_40px_rgba(250,204,21,0.5)]
+              shadow-[0_0_32px_rgba(250,204,21,0.35)]
             "
           >
             <div className="flex flex-col gap-6 p-4 bg-black/90 rounded-3xl md:p-6 lg:flex-row">
@@ -273,13 +274,33 @@ export default function Home() {
                     Ex: https://www.instagram.com/reel/SEU_VIDEO/embed
                   */}
                   <div className="relative w-full pt-[56.25%]">
-                    <iframe
-                      src="https://www.instagram.com/reel/SEU_VIDEO/embed"
-                      title="Tutorial de compras - Império Distribuidora"
-                      className="absolute inset-0 w-full h-full"
-                      allow="autoplay; encrypted-media; fullscreen; picture-in-picture"
-                      loading="lazy"
-                    />
+                    {!showVideo && (
+                      <button
+                        type="button"
+                        onClick={() => setShowVideo(true)}
+                        className="absolute inset-0 flex flex-col items-center justify-center w-full h-full gap-3 px-4 text-center transition bg-gradient-to-br from-black via-black/85 to-black/70 hover:from-black hover:via-black/80 hover:to-black/60"
+                      >
+                        <span className="flex items-center justify-center w-16 h-16 text-4xl bg-yellow-400 rounded-full shadow-[0_0_18px_rgba(250,204,21,0.7)] text-black">
+                          ▶
+                        </span>
+                        <span className="text-sm font-semibold text-yellow-200 md:text-base">
+                          Toque aqui para assistir ao passo a passo de compra 🛒
+                        </span>
+                        <span className="text-xs text-gray-400">
+                          Vídeo hospedado no Instagram da Império
+                        </span>
+                      </button>
+                    )}
+
+                    {showVideo && (
+                      <iframe
+                        src="https://www.instagram.com/reel/SEU_VIDEO/embed"
+                        title="Tutorial de compras - Império Distribuidora"
+                        className="absolute inset-0 w-full h-full"
+                        allow="autoplay; encrypted-media; fullscreen; picture-in-picture"
+                        loading="lazy"
+                      />
+                    )}
                   </div>
                 </div>
 
@@ -310,7 +331,7 @@ export default function Home() {
                     <span className="mt-0.5">👉</span>
                     <p>
                       <span className="font-semibold text-yellow-300">
-                        1. Dê o play no vídeo
+                        1. Toque no vídeo
                       </span>{' '}
                       aqui do lado para ver como funciona o site.
                     </p>
