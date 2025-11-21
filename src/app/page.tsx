@@ -247,6 +247,141 @@ export default function Home() {
         </div>
       </section>
 
+      {/* SEÇÃO – VÍDEO EXPLICANDO COMO COMPRAR */}
+      <section className="w-full px-4 mt-8 mb-10">
+        <div className="max-w-6xl mx-auto">
+          <div
+            className="
+              relative overflow-hidden rounded-3xl p-[2px]
+              bg-gradient-to-r from-yellow-400 via-amber-500 to-orange-500
+              shadow-[0_0_40px_rgba(250,204,21,0.5)]
+            "
+          >
+            <div className="flex flex-col gap-6 p-4 bg-black/90 rounded-3xl md:p-6 lg:flex-row">
+              {/* LADO ESQUERDO – VÍDEO */}
+              <div className="w-full lg:w-1/2">
+                <div className="flex items-center gap-2 mb-3 text-xs font-semibold tracking-wide text-yellow-300 uppercase">
+                  <span className="inline-flex items-center justify-center w-6 h-6 text-base text-black bg-yellow-400 rounded-full">
+                    🎥
+                  </span>
+                  <span>Aprenda a comprar em menos de 1 minuto</span>
+                </div>
+
+                <div className="overflow-hidden bg-black border rounded-2xl border-yellow-500/60">
+                  {/* 
+                    👉 Troque o src abaixo pelo link EMBED do vídeo do Instagram 
+                    Ex: https://www.instagram.com/reel/SEU_VIDEO/embed
+                  */}
+                  <div className="relative w-full pt-[56.25%]">
+                    <iframe
+                      src="https://www.instagram.com/reel/SEU_VIDEO/embed"
+                      title="Tutorial de compras - Império Distribuidora"
+                      className="absolute inset-0 w-full h-full"
+                      allow="autoplay; encrypted-media; fullscreen; picture-in-picture"
+                      loading="lazy"
+                    />
+                  </div>
+                </div>
+
+                <p className="mt-2 text-xs text-gray-400">
+                  Dica: o vídeo também estará no nosso Instagram para você reassistir sempre que
+                  quiser. 🔁
+                </p>
+              </div>
+
+              {/* LADO DIREITO – EXPLICAÇÃO COM EMOJIS */}
+              <div className="flex flex-col justify-center w-full lg:w-1/2">
+                <div className="inline-flex items-center gap-2 px-3 py-1 mb-2 text-xs font-semibold text-black bg-yellow-400 rounded-full">
+                  <span>✨ Novo recurso</span>
+                  <span className="text-xs text-black/70">Passo a passo da primeira compra</span>
+                </div>
+
+                <h2 className="text-2xl font-extrabold text-white md:text-3xl">
+                  Não sabe como comprar pelo site?
+                </h2>
+                <p className="mt-2 text-sm text-gray-200 md:text-base">
+                  Relaxa, a{' '}
+                  <span className="font-semibold text-yellow-300">Império Bebidas &amp; Tabacos</span>{' '}
+                  te mostra tudo em um vídeo rápido: do carrinho até a confirmação do pedido. 🛒⚡
+                </p>
+
+                <div className="mt-4 space-y-2 text-sm text-gray-100 md:text-base">
+                  <div className="flex items-start gap-2">
+                    <span className="mt-0.5">👉</span>
+                    <p>
+                      <span className="font-semibold text-yellow-300">
+                        1. Dê o play no vídeo
+                      </span>{' '}
+                      aqui do lado para ver como funciona o site.
+                    </p>
+                  </div>
+
+                  <div className="flex items-start gap-2">
+                    <span className="mt-0.5">🛍️</span>
+                    <p>
+                      <span className="font-semibold text-yellow-300">
+                        2. Escolha seus produtos
+                      </span>{' '}
+                      navegando nas categorias e adicionando ao carrinho.
+                    </p>
+                  </div>
+
+                  <div className="flex items-start gap-2">
+                    <span className="mt-0.5">📍</span>
+                    <p>
+                      <span className="font-semibold text-yellow-300">
+                        3. Informe o endereço
+                      </span>{' '}
+                      ou escolha retirar na loja.
+                    </p>
+                  </div>
+
+                  <div className="flex items-start gap-2">
+                    <span className="mt-0.5">💳</span>
+                    <p>
+                      <span className="font-semibold text-yellow-300">
+                        4. Finalize o pedido
+                      </span>{' '}
+                      pelo site e acompanhe tudo em <strong>“Meus pedidos”</strong>.
+                    </p>
+                  </div>
+                </div>
+
+                {/* SETAS “APONTANDO” PRO VÍDEO */}
+                <div className="flex flex-col mt-4 text-sm font-semibold text-yellow-300 md:flex-row md:items-center md:gap-3">
+                  <span className="flex items-center gap-2">
+                    👇
+                    <span>É aqui que você aprende a fazer sua primeira compra.</span>
+                  </span>
+                  <span className="hidden text-lg md:inline-flex md:ml-2 lg:ml-4 lg:text-2xl">
+                    ⬅️⬅️⬅️
+                  </span>
+                </div>
+
+                {/* BOTÕES */}
+                <div className="flex flex-wrap gap-2 mt-5">
+                  <a
+                    href="https://www.instagram.com/imperiodistribuidora3015"
+                    target="_blank"
+                    rel="noreferrer"
+                    className="inline-flex items-center gap-2 px-4 py-2 text-sm font-semibold text-black transition-transform bg-yellow-400 rounded-full hover:bg-yellow-300 active:scale-95"
+                  >
+                    📲 Ver vídeo no Instagram
+                  </a>
+
+                  <Link
+                    href="/produtos"
+                    className="inline-flex items-center gap-2 px-4 py-2 text-sm font-semibold text-white transition-colors border rounded-full border-yellow-400/70 hover:bg-yellow-400/10"
+                  >
+                    🛒 Começar a montar o carrinho
+                  </Link>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
       {/* Carrossel 1 */}
       {items.length > 0 && <MarqueePro items={items} speed={34} />}
 
