@@ -46,8 +46,53 @@ type MarqueeItem = { src: string; alt?: string };
 type CSSVars = React.CSSProperties & Record<'--speed' | '--card-w' | '--card-h', string>;
 
 function MarqueePro({ items, speed = 36 }: { items: MarqueeItem[]; speed?: number }) {
+  const [isMobile, setIsMobile] = useState(false);
+
+  // Detecta tamanho de tela para simplificar o layout no mobile
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const handle = () => setIsMobile(window.innerWidth < 768);
+    handle();
+    window.addEventListener('resize', handle);
+    return () => window.removeEventListener('resize', handle);
+  }, []);
+
   const track = useMemo(() => [...items, ...items], [items]);
 
+  // Versão LEVE para celular: lista horizontal rolável, sem animação infinita
+  if (isMobile) {
+    const compact = items.slice(0, 12); // limita quantidade para ficar suave
+
+    return (
+      <div className="w-full py-4 overflow-x-auto bg-black">
+        <div className="flex gap-3 px-4">
+          {compact.map((item, i) => (
+            <div
+              key={`${item.src}-${i}`}
+              className="flex-shrink-0 p-2 border rounded-2xl border-white/10 bg-white/5"
+              style={{ width: 130, height: 130 }}
+              title={item.alt ?? 'Produto'}
+            >
+              <img
+                src={item.src}
+                alt={item.alt ?? 'Produto'}
+                className="object-contain w-full h-full rounded-xl"
+                loading="lazy"
+                decoding="async"
+                onError={(e) => {
+                  const el = e.currentTarget as HTMLImageElement;
+                  if (el.src !== FALLBACK_DATA_URI) el.src = FALLBACK_DATA_URI;
+                  el.style.opacity = '0.55';
+                }}
+              />
+            </div>
+          ))}
+        </div>
+      </div>
+    );
+  }
+
+  // Versão animada para desktop / telas maiores
   const styleVars: CSSVars = {
     '--speed': `${speed}s`,
     '--card-w': 'clamp(120px, 26vw, 180px)',
@@ -101,7 +146,7 @@ export default function Home() {
   const router = useRouter();
   const [user, setUser] = useState<User | null>(null);
   const [items, setItems] = useState<MarqueeItem[]>([]);
-  const [showVideo, setShowVideo] = useState(false); // controla carregamento do iframe
+  const [showVideo, setShowVideo] = useState(false);
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, setUser);
@@ -129,6 +174,12 @@ export default function Home() {
         [...fromDb, ...fromLocal].forEach((it) => uniq.set(it.src, it));
 
         let final = Array.from(uniq.values());
+
+        // Limita a quantidade total de imagens pra não ficar pesado
+        if (final.length > 24) {
+          final = final.slice(0, 24);
+        }
+
         if (final.length === 0) {
           final = [
             { src: normalizeImagePath('/produtos/Brahma-chopp-cx.jpg')!, alt: 'Brahma Chopp' },
@@ -149,6 +200,36 @@ export default function Home() {
 
   const handleCarrinhoClick = () => router.push(user ? '/carrinho' : '/login');
   const handleLoginClick = () => router.push('/login');
+
+  const destaques = [
+    {
+      nome: 'Brahma Chopp 15x269ML',
+      descricao:
+        'A queridinha gelada 🍻 a um clique de você. Saindo por unidade a partir de R$ 2,93 — peça já!',
+      preco: '44,00',
+      img: '/produtos/Brahma-chopp-cx.jpg',
+      selo: '🔥 Mais pedida',
+      emoji: '❄️',
+    },
+    {
+      nome: 'Royal Salute 21 Anos',
+      descricao:
+        'Whisky escocês de luxo 👑 para momentos especiais. Elegância máxima em cada gole.',
+      preco: '999,90',
+      img: '/produtos/royal-salute.jpg',
+      selo: '👑 Linha Premium',
+      emoji: '✨',
+    },
+    {
+      nome: 'Vodka Smirnoff 1L',
+      descricao:
+        'Campeã de vendas! Neutra, suave e versátil — triplamente destilada, perfeita para drinks. 🍹',
+      preco: '37,87',
+      img: '/produtos/Smirnoff-1L-uni00.jpg',
+      selo: '⭐ Top em drinks',
+      emoji: '🥂',
+    },
+  ];
 
   return (
     <main className="min-h-screen overflow-x-hidden text-white bg-black">
@@ -269,10 +350,6 @@ export default function Home() {
                 </div>
 
                 <div className="overflow-hidden bg-black border rounded-2xl border-yellow-500/60">
-                  {/* 
-                    👉 Troque o src abaixo pelo link EMBED do vídeo do Instagram 
-                    Ex: https://www.instagram.com/reel/SEU_VIDEO/embed
-                  */}
                   <div className="relative w-full pt-[56.25%]">
                     {!showVideo && (
                       <button
@@ -330,10 +407,8 @@ export default function Home() {
                   <div className="flex items-start gap-2">
                     <span className="mt-0.5">👉</span>
                     <p>
-                      <span className="font-semibold text-yellow-300">
-                        1. Toque no vídeo
-                      </span>{' '}
-                      aqui do lado para ver como funciona o site.
+                      <span className="font-semibold text-yellow-300">1. Toque no vídeo</span> aqui
+                      do lado para ver como funciona o site.
                     </p>
                   </div>
 
@@ -403,65 +478,110 @@ export default function Home() {
         </div>
       </section>
 
-      {/* Carrossel 1 */}
+      {/* ÚNICO CARROSSEL */}
       {items.length > 0 && <MarqueePro items={items} speed={34} />}
 
       {/* Destaques da Semana */}
       <section className="px-4 text-white bg-black py-14 md:py-16">
-        <h2 className="mb-8 text-3xl font-bold text-center md:mb-10 md:text-4xl">
-          Destaques da Semana
-        </h2>
+        <div className="max-w-6xl mx-auto">
+          <div className="flex flex-col items-center mb-8 md:mb-10">
+            <h2 className="mb-2 text-3xl font-extrabold text-center md:text-4xl">
+              Destaques da Semana
+            </h2>
+            <p className="text-sm text-center text-gray-300 md:text-base">
+              Ofertas geladas, rótulos premium e os queridinhos do público. 🧊🍾
+            </p>
+          </div>
 
-        <div className="grid max-w-6xl grid-cols-1 gap-6 mx-auto md:gap-8 sm:grid-cols-2 md:grid-cols-3">
-          {[
-            {
-              nome: 'Brahma Chopp 15x269ML',
-              descricao:
-                'A queridinha gelada e a apenas A um clique de você com UNI. APENAS R$2,93, PEÇA JA !!!',
-              preco: '44,00',
-              img: '/produtos/Brahma-chopp-cx.jpg',
-            },
-            {
-              nome: 'Royal Salute 21 Anos',
-              descricao: 'Whisky Escocês Luxo',
-              preco: '999,90',
-              img: '/produtos/royal-salute.jpg',
-            },
-            {
-              nome: 'VodKa SMIIRNOFF 1l',
-              descricao:
-                'CAMPEÃ DE VENDAS A Smirnoff se encontra em uma faixa Neutra, suave e versátil — triplamente destilada.',
-              preco: '37,87',
-              img: '/produtos/Smirnoff-1L-uni00.jpg',
-            },
-          ].map((produto, idx) => (
-            <div key={idx} className="product-card">
-              <img
-                src={produto.img}
-                alt={produto.nome}
-                className="object-contain w-full bg-white h-60"
-                loading="lazy"
-                decoding="async"
-              />
-              <div className="p-5">
-                <h3 className="product-title">{produto.nome}</h3>
-                <p className="product-desc">{produto.descricao}</p>
-                <span className="oferta-pill">OFERTA</span>
-                <div className="price-card">
-                  <span className="price-dot" />
-                  <span className="price-currency">R$</span>
-                  <span className="text-4xl align-middle neon-price md:text-5xl xl:text-6xl">
-                    {produto.preco}
+          <div className="grid grid-cols-1 gap-7 md:gap-9 sm:grid-cols-2 md:grid-cols-3">
+            {destaques.map((produto, idx) => (
+              <div
+                key={idx}
+                className="
+                  relative flex flex-col items-center p-4 md:p-5
+                  rounded-3xl border border-yellow-500/35
+                  bg-gradient-to-b from-white/5 via-black/70 to-black/95
+                  shadow-[0_18px_45px_rgba(0,0,0,0.85)]
+                  hover:shadow-[0_24px_60px_rgba(0,0,0,1)]
+                  hover:-translate-y-1
+                  transition-transform transition-shadow duration-300
+                  overflow-hidden
+                "
+              >
+                {/* Glow no “chão” do produto */}
+                <div
+                  className="absolute h-10 rounded-full pointer-events-none inset-x-6 bottom-6 bg-yellow-400/10 blur-2xl"
+                  aria-hidden="true"
+                />
+
+                {/* Selo */}
+                <div className="flex items-center justify-between w-full mb-3 text-xs">
+                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-yellow-400/10 text-yellow-200 border border-yellow-400/40">
+                    <span>{produto.emoji}</span>
+                    <span className="font-semibold tracking-tight uppercase">
+                      {produto.selo}
+                    </span>
                   </span>
+                  <span className="text-xs text-yellow-300/80">LIMITADO 🔔</span>
+                </div>
+
+                {/* Imagem “flutuando” */}
+                <div className="relative flex items-center justify-center w-full mb-3 h-52 md:h-56">
+                  <img
+                    src={produto.img}
+                    alt={produto.nome}
+                    className="
+                      object-contain max-h-full
+                      drop-shadow-[0_22px_40px_rgba(0,0,0,0.95)]
+                      transition-transform duration-300
+                      group-hover:-translate-y-2
+                    "
+                    loading="lazy"
+                    decoding="async"
+                  />
+
+                  {/* Emojis extras em volta */}
+                  <span className="absolute text-xl -left-1 top-3 md:-left-2 md:text-2xl">
+                    ✨
+                  </span>
+                  <span className="absolute text-xl right-2 bottom-4 md:text-2xl">💥</span>
+                </div>
+
+                {/* Infos */}
+                <div className="relative z-10 w-full mt-1 text-center">
+                  <h3 className="text-base font-semibold md:text-lg">
+                    {produto.nome}
+                  </h3>
+                  <p className="mt-2 text-xs leading-relaxed text-gray-200 md:text-sm">
+                    {produto.descricao}
+                  </p>
+
+                  <div className="flex items-center justify-center gap-2 mt-4">
+                    <span className="px-2 py-1 text-xs font-semibold tracking-wide text-black uppercase bg-yellow-400 rounded-full">
+                      Oferta da semana
+                    </span>
+                  </div>
+
+                  <div className="flex items-end justify-center gap-1 mt-3">
+                    <span className="text-sm text-yellow-300">R$</span>
+                    <span className="text-4xl font-extrabold text-green-400 md:text-5xl">
+                      {produto.preco}
+                    </span>
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={() => router.push('/produtos')}
+                    className="inline-flex items-center gap-2 px-4 py-2 mt-4 text-xs font-semibold text-black transition-transform bg-yellow-400 rounded-full hover:bg-yellow-300 active:scale-95"
+                  >
+                    🛒 Ver na loja
+                  </button>
                 </div>
               </div>
-            </div>
-          ))}
+            ))}
+          </div>
         </div>
       </section>
-
-      {/* Carrossel 2 */}
-      {items.length > 0 && <MarqueePro items={items} speed={40} />}
 
       {/* Rodapé */}
       <Footer />
