@@ -46,7 +46,51 @@ type MarqueeItem = { src: string; alt?: string };
 type CSSVars = React.CSSProperties & Record<'--speed' | '--card-w' | '--card-h', string>;
 
 function MarqueePro({ items, speed = 36 }: { items: MarqueeItem[]; speed?: number }) {
-  // duplicamos a lista 3x para o loop ficar bem contínuo
+  const [isMobile, setIsMobile] = useState(false);
+
+  // Detecta tamanho de tela para simplificar o layout no mobile
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const handle = () => setIsMobile(window.innerWidth < 768);
+    handle();
+    window.addEventListener('resize', handle);
+    return () => window.removeEventListener('resize', handle);
+  }, []);
+
+  // 🔹 MOBILE: lista horizontal simples (sem animação) – mais leve
+  if (isMobile) {
+    const compact = items.slice(0, 12); // limita quantidade para ficar suave
+
+    return (
+      <div className="w-full py-4 overflow-x-auto bg-black">
+        <div className="flex gap-3 px-4">
+          {compact.map((item, i) => (
+            <div
+              key={`${item.src}-${i}`}
+              className="flex-shrink-0 p-2 border rounded-2xl border-white/10 bg-white/5"
+              style={{ width: 130, height: 130 }}
+              title={item.alt ?? 'Produto'}
+            >
+              <img
+                src={item.src}
+                alt={item.alt ?? 'Produto'}
+                className="object-contain w-full h-full rounded-xl"
+                loading="lazy"
+                decoding="async"
+                onError={(e) => {
+                  const el = e.currentTarget as HTMLImageElement;
+                  if (el.src !== FALLBACK_DATA_URI) el.src = FALLBACK_DATA_URI;
+                  el.style.opacity = '0.55';
+                }}
+              />
+            </div>
+          ))}
+        </div>
+      </div>
+    );
+  }
+
+  // 🔹 DESKTOP: carrossel infinito — duplicamos a lista 3x para o loop ficar contínuo
   const track = useMemo(() => [...items, ...items, ...items], [items]);
 
   const styleVars: CSSVars = {
@@ -94,8 +138,7 @@ function MarqueePro({ items, speed = 36 }: { items: MarqueeItem[]; speed?: numbe
 
 /* (Opcional) imagens locais extras em /public/produtos */
 const LOCALS_IN_PRODUTOS: string[] = [
-  // 'coca-cola-2L.jpg',
-  // 'H2OHlimoneto500ML.png',
+  // 'coca-cola-2L.jpg', 'H2OHlimoneto500ML.png'
 ];
 
 /* =============================== Página =============================== */
@@ -103,6 +146,7 @@ export default function Home() {
   const router = useRouter();
   const [user, setUser] = useState<User | null>(null);
   const [items, setItems] = useState<MarqueeItem[]>([]);
+  const [showVideo, setShowVideo] = useState(false);
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, setUser);
@@ -130,6 +174,12 @@ export default function Home() {
         [...fromDb, ...fromLocal].forEach((it) => uniq.set(it.src, it));
 
         let final = Array.from(uniq.values());
+
+        // Limita a quantidade total de imagens pra não ficar pesado
+        if (final.length > 24) {
+          final = final.slice(0, 24);
+        }
+
         if (final.length === 0) {
           final = [
             { src: normalizeImagePath('/produtos/Brahma-chopp-cx.jpg')!, alt: 'Brahma Chopp' },
@@ -151,17 +201,47 @@ export default function Home() {
   const handleCarrinhoClick = () => router.push(user ? '/carrinho' : '/login');
   const handleLoginClick = () => router.push('/login');
 
+  const destaques = [
+    {
+      nome: 'Brahma Chopp 15x269ML',
+      descricao:
+        'A queridinha gelada 🍻 a um clique de você. Saindo por unidade a partir de R$ 2,93 — peça já!',
+      preco: '44,00',
+      img: '/produtos/Brahma-chopp-cx.jpg',
+      selo: '🔥 Mais pedida',
+      emoji: '❄️',
+    },
+    {
+      nome: 'Royal Salute 21 Anos',
+      descricao:
+        'Whisky escocês de luxo 👑 para momentos especiais. Elegância máxima em cada gole.',
+      preco: '999,90',
+      img: '/produtos/royal-salute.jpg',
+      selo: '👑 Linha Premium',
+      emoji: '✨',
+    },
+    {
+      nome: 'Vodka Smirnoff 1L',
+      descricao:
+        'Campeã de vendas! Neutra, suave e versátil — triplamente destilada, perfeita para drinks. 🍹',
+      preco: '37,87',
+      img: '/produtos/Smirnoff-1L-uni00.jpg',
+      selo: '⭐ Top em drinks',
+      emoji: '🥂',
+    },
+  ];
+
   return (
     <main className="min-h-screen overflow-x-hidden text-white bg-black">
       {/* Header */}
-      <header className="flex flex-col gap-4 px-4 py-3 text-black bg-yellow-400 shadow-md sm:px-6 md:flex-row md:items-center md:justify-between">
+      <header className="flex flex-col gap-4 px-6 py-4 text-black bg-yellow-400 shadow-md md:flex-row md:items-center md:justify-between">
         {/* Logo */}
         <div className="flex items-center justify-between w-full md:w-auto">
           <Link href="/" aria-label="Página inicial">
             <img
               src="/logo-imperio-ilimitada.png"
               alt="Império Bebidas & Tabacos"
-              className="w-auto h-10 sm:h-11 md:h-12"
+              className="w-auto h-10 md:h-12"
             />
           </Link>
         </div>
@@ -169,7 +249,7 @@ export default function Home() {
         {/* Slogan */}
         <div className="flex items-center justify-center w-full md:max-w-2xl">
           <span
-            className="text-base italic tracking-tight text-center text-black select-none sm:text-lg md:text-2xl font-extralight"
+            className="text-lg italic tracking-tight text-center text-black select-none md:text-2xl font-extralight"
             style={{ fontFamily: "'Segoe Script','Brush Script MT','Dancing Script',cursive" }}
             aria-label="Slogan"
             title="Império a um gole de você"
@@ -179,29 +259,23 @@ export default function Home() {
         </div>
 
         {/* Ações */}
-        <nav className="flex items-center justify-center w-full gap-3 sm:gap-4 md:gap-6 md:w-auto md:justify-end">
+        <nav className="flex items-center justify-center w-full gap-4 md:gap-6 md:w-auto md:justify-end">
           <button
             onClick={handleLoginClick}
-            className="flex items-center gap-2 text-sm sm:text-base hover:underline min-h-[40px]"
+            className="flex items-center gap-2 hover:underline min-h-[44px]"
             title="Entrar"
           >
             <FaUser /> Entrar
           </button>
-          <Link
-            href="/contato"
-            className="flex items-center gap-2 text-sm sm:text-base hover:underline min-h-[40px]"
-          >
+          <Link href="/contato" className="flex items-center gap-2 hover:underline min-h-[44px]">
             <FaPhoneAlt /> Contato
           </Link>
-          <Link
-            href="/produtos"
-            className="flex items-center gap-2 text-sm sm:text-base hover:underline min-h-[40px]"
-          >
+          <Link href="/produtos" className="flex items-center gap-2 hover:underline min-h-[44px]">
             <FaBoxes /> Categorias
           </Link>
           <button
             onClick={handleCarrinhoClick}
-            className="flex items-center justify-center p-2 text-2xl text-black transition bg-white rounded-full drop-shadow-lg hover:scale-110 hover:text-yellow-600 min-h-[40px] min-w-[40px]"
+            className="p-2 text-3xl text-black transition bg-white rounded-full drop-shadow-lg hover:scale-110 hover:text-yellow-600 min-h-[44px] min-w-[44px]"
             title="Carrinho"
           >
             <FaShoppingCart />
@@ -220,9 +294,9 @@ export default function Home() {
         </Link>
       </div>
 
-      {/* Hero / Capa com vídeo + explicação (mantém seu vídeo atual no lugar da imagem se quiser) */}
+      {/* Hero / Capa */}
       <section className="relative w-full min-h-[60vh] md:min-h-[70vh] lg:h-[80vh] bg-black overflow-hidden">
-        {/* Imagem de fundo (troque por <video> se quiser) */}
+        {/* Imagem de fundo */}
         <div className="absolute inset-0">
           <img
             src="/banner.jpg"
@@ -233,7 +307,7 @@ export default function Home() {
           />
         </div>
 
-        {/* Gradiente para leitura */}
+        {/* Gradiente para melhorar leitura do texto */}
         <div className="absolute inset-0 bg-gradient-to-t from-black/85 via-black/55 to-black/20 md:bg-gradient-to-r md:from-black/85 md:via-black/50 md:to-black/10" />
 
         {/* Conteúdo */}
@@ -241,7 +315,7 @@ export default function Home() {
           <h1 className="text-3xl sm:text-4xl md:text-5xl lg:text-6xl font-bold text-white drop-shadow-[0_2px_8px_rgba(0,0,0,0.7)]">
             Império Bebidas & Tabacos
           </h1>
-          <p className="mt-4 text-sm sm:text-base md:text-xl text-white drop-shadow-[0_2px_6px_rgba(0,0,0,0.5)]">
+          <p className="mt-4 text-base sm:text-lg md:text-xl text-white drop-shadow-[0_2px_6px_rgba(0,0,0,0.5)]">
             Qualidade e exclusividade direto para sua casa
           </p>
 
@@ -255,91 +329,260 @@ export default function Home() {
         </div>
       </section>
 
-      {/* Carrossel ÚNICO – loop infinito */}
+      {/* SEÇÃO – VÍDEO EXPLICANDO COMO COMPRAR */}
+      <section className="w-full px-4 mt-8 mb-10">
+        <div className="max-w-6xl mx-auto">
+          <div
+            className="
+              relative overflow-hidden rounded-3xl p-[2px]
+              bg-gradient-to-r from-yellow-400 via-amber-500 to-orange-500
+              shadow-[0_0_32px_rgba(250,204,21,0.35)]
+            "
+          >
+            <div className="flex flex-col gap-6 p-4 bg-black/90 rounded-3xl md:p-6 lg:flex-row">
+              {/* LADO ESQUERDO – VÍDEO */}
+              <div className="w-full lg:w-1/2">
+                <div className="flex items-center gap-2 mb-3 text-xs font-semibold tracking-wide text-yellow-300 uppercase">
+                  <span className="inline-flex items-center justify-center w-6 h-6 text-base text-black bg-yellow-400 rounded-full">
+                    🎥
+                  </span>
+                  <span>Aprenda a comprar em menos de 1 minuto</span>
+                </div>
+
+                <div className="overflow-hidden bg-black border rounded-2xl border-yellow-500/60">
+                  <div className="relative w-full pt-[56.25%]">
+                    {!showVideo && (
+                      <button
+                        type="button"
+                        onClick={() => setShowVideo(true)}
+                        className="absolute inset-0 flex flex-col items-center justify-center w-full h-full gap-3 px-4 text-center transition bg-gradient-to-br from-black via-black/85 to-black/70 hover:from-black hover:via-black/80 hover:to-black/60"
+                      >
+                        <span className="flex items-center justify-center w-16 h-16 text-4xl bg-yellow-400 rounded-full shadow-[0_0_18px_rgba(250,204,21,0.7)] text-black">
+                          ▶
+                        </span>
+                        <span className="text-sm font-semibold text-yellow-200 md:text-base">
+                          Toque aqui para assistir ao passo a passo de compra 🛒
+                        </span>
+                        <span className="text-xs text-gray-400">
+                          Vídeo hospedado no Instagram da Império
+                        </span>
+                      </button>
+                    )}
+
+                    {showVideo && (
+                      <iframe
+                        src="https://www.instagram.com/reel/SEU_VIDEO/embed"
+                        title="Tutorial de compras - Império Distribuidora"
+                        className="absolute inset-0 w-full h-full"
+                        allow="autoplay; encrypted-media; fullscreen; picture-in-picture"
+                        loading="lazy"
+                      />
+                    )}
+                  </div>
+                </div>
+
+                <p className="mt-2 text-xs text-gray-400">
+                  Dica: o vídeo também estará no nosso Instagram para você reassistir sempre que
+                  quiser. 🔁
+                </p>
+              </div>
+
+              {/* LADO DIREITO – EXPLICAÇÃO COM EMOJIS */}
+              <div className="flex flex-col justify-center w-full lg:w-1/2">
+                <div className="inline-flex items-center gap-2 px-3 py-1 mb-2 text-xs font-semibold text-black bg-yellow-400 rounded-full">
+                  <span>✨ Novo recurso</span>
+                  <span className="text-xs text-black/70">Passo a passo da primeira compra</span>
+                </div>
+
+                <h2 className="text-2xl font-extrabold text-white md:text-3xl">
+                  Não sabe como comprar pelo site?
+                </h2>
+                <p className="mt-2 text-sm text-gray-200 md:text-base">
+                  Relaxa, a{' '}
+                  <span className="font-semibold text-yellow-300">Império Bebidas &amp; Tabacos</span>{' '}
+                  te mostra tudo em um vídeo rápido: do carrinho até a confirmação do pedido. 🛒⚡
+                </p>
+
+                <div className="mt-4 space-y-2 text-sm text-gray-100 md:text-base">
+                  <div className="flex items-start gap-2">
+                    <span className="mt-0.5">👉</span>
+                    <p>
+                      <span className="font-semibold text-yellow-300">1. Toque no vídeo</span> aqui
+                      do lado para ver como funciona o site.
+                    </p>
+                  </div>
+
+                  <div className="flex items-start gap-2">
+                    <span className="mt-0.5">🛍️</span>
+                    <p>
+                      <span className="font-semibold text-yellow-300">
+                        2. Escolha seus produtos
+                      </span>{' '}
+                      navegando nas categorias e adicionando ao carrinho.
+                    </p>
+                  </div>
+
+                  <div className="flex items-start gap-2">
+                    <span className="mt-0.5">📍</span>
+                    <p>
+                      <span className="font-semibold text-yellow-300">
+                        3. Informe o endereço
+                      </span>{' '}
+                      ou escolha retirar na loja.
+                    </p>
+                  </div>
+
+                  <div className="flex items-start gap-2">
+                    <span className="mt-0.5">💳</span>
+                    <p>
+                      <span className="font-semibold text-yellow-300">
+                        4. Finalize o pedido
+                      </span>{' '}
+                      pelo site e acompanhe tudo em <strong>“Meus pedidos”</strong>.
+                    </p>
+                  </div>
+                </div>
+
+                {/* SETAS “APONTANDO” PRO VÍDEO */}
+                <div className="flex flex-col mt-4 text-sm font-semibold text-yellow-300 md:flex-row md:items-center md:gap-3">
+                  <span className="flex items-center gap-2">
+                    👇
+                    <span>É aqui que você aprende a fazer sua primeira compra.</span>
+                  </span>
+                  <span className="hidden text-lg md:inline-flex md:ml-2 lg:ml-4 lg:text-2xl">
+                    ⬅️⬅️⬅️
+                  </span>
+                </div>
+
+                {/* BOTÕES */}
+                <div className="flex flex-wrap gap-2 mt-5">
+                  <a
+                    href="https://www.instagram.com/imperiodistribuidora3015"
+                    target="_blank"
+                    rel="noreferrer"
+                    className="inline-flex items-center gap-2 px-4 py-2 text-sm font-semibold text-black transition-transform bg-yellow-400 rounded-full hover:bg-yellow-300 active:scale-95"
+                  >
+                    📲 Ver vídeo no Instagram
+                  </a>
+
+                  <Link
+                    href="/produtos"
+                    className="inline-flex items-center gap-2 px-4 py-2 text-sm font-semibold text-white transition-colors border rounded-full border-yellow-400/70 hover:bg-yellow-400/10"
+                  >
+                    🛒 Começar a montar o carrinho
+                  </Link>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {/* ÚNICO CARROSSEL */}
       {items.length > 0 && <MarqueePro items={items} speed={34} />}
 
       {/* Destaques da Semana */}
       <section className="px-4 text-white bg-black py-14 md:py-16">
-        <h2 className="mb-8 text-3xl font-bold text-center md:mb-10 md:text-4xl">
-          Destaques da Semana
-        </h2>
+        <div className="max-w-6xl mx-auto">
+          <div className="flex flex-col items-center mb-8 md:mb-10">
+            <h2 className="mb-2 text-3xl font-extrabold text-center md:text-4xl">
+              Destaques da Semana
+            </h2>
+            <p className="text-sm text-center text-gray-300 md:text-base">
+              Ofertas geladas, rótulos premium e os queridinhos do público. 🧊🍾
+            </p>
+          </div>
 
-        <div className="grid max-w-6xl grid-cols-1 gap-6 mx-auto md:gap-8 sm:grid-cols-2 md:grid-cols-3">
-          {[
-            {
-              nome: 'Brahma Chopp 15x269ML',
-              descricao:
-                'A queridinha gelada a um clique de você. UNI a partir de R$ 2,93. Peça já! 🍻✨',
-              preco: '44,00',
-              img: '/produtos/Brahma-chopp-cx.jpg',
-              badge: '🔥 Mais Pedida',
-              emoji: '🍺',
-            },
-            {
-              nome: 'Royal Salute 21 Anos',
-              descricao: 'Whisky escocês de luxo para brindes inesquecíveis. 👑🥃',
-              preco: '999,90',
-              img: '/produtos/royal-salute.jpg',
-              badge: '👑 Linha Premium',
-              emoji: '✨',
-            },
-            {
-              nome: 'Vodka Smirnoff 1L',
-              descricao:
-                'Campeã de vendas! Neutra, suave e versátil — perfeita para seus drinks. 🍸',
-              preco: '37,87',
-              img: '/produtos/Smirnoff-1L-uni00.jpg',
-              badge: '⭐ Best Seller',
-              emoji: '🎉',
-            },
-          ].map((produto, idx) => (
-            <div
-              key={idx}
-              className="relative flex flex-col items-center p-4 transition-transform duration-200 rounded-3xl bg-gradient-to-b from-yellow-400/0 via-yellow-400/5 to-yellow-400/10 shadow-[0_18px_40px_rgba(0,0,0,0.65)] hover:-translate-y-2 hover:shadow-[0_22px_50px_rgba(0,0,0,0.85)]"
-            >
-              <div className="absolute z-10 px-3 py-1 text-xs font-semibold text-black bg-yellow-300 rounded-full top-3 left-4 shadow-[0_4px_10px_rgba(0,0,0,0.4)]">
-                {produto.badge}
-              </div>
-
-              <div className="relative w-full max-w-[220px] aspect-[4/5] mb-4">
-                <div className="absolute inset-0 bg-gradient-to-b from-white/10 to-white/0 blur-3xl opacity-70 animate-pulse" />
-                <img
-                  src={produto.img}
-                  alt={produto.nome}
-                  className="relative z-10 object-contain w-full h-full rounded-3xl bg-gradient-to-b from-white to-white/80"
-                  loading="lazy"
-                  decoding="async"
+          <div className="grid grid-cols-1 gap-7 md:gap-9 sm:grid-cols-2 md:grid-cols-3">
+            {destaques.map((produto, idx) => (
+              <div
+                key={idx}
+                className="
+                  group
+                  relative flex flex-col items-center p-4 md:p-5
+                  rounded-3xl border border-yellow-500/35
+                  bg-gradient-to-b from-white/5 via-black/70 to-black/95
+                  shadow-[0_18px_45px_rgba(0,0,0,0.85)]
+                  hover:shadow-[0_24px_60px_rgba(0,0,0,1)]
+                  hover:-translate-y-1
+                  transition-transform transition-shadow duration-300
+                  overflow-hidden
+                "
+              >
+                {/* Glow no “chão” do produto */}
+                <div
+                  className="absolute h-10 rounded-full pointer-events-none inset-x-6 bottom-6 bg-yellow-400/10 blur-2xl"
+                  aria-hidden="true"
                 />
-              </div>
 
-              <div className="flex flex-col items-center text-center">
-                <h3 className="flex items-center gap-2 mb-2 text-lg font-semibold tracking-tight">
-                  <span>{produto.emoji}</span>
-                  <span>{produto.nome}</span>
-                </h3>
-                <p className="mb-3 text-sm leading-relaxed text-white/80">{produto.descricao}</p>
-
-                <div className="flex items-end gap-1 mb-4 text-green-400">
-                  <span className="text-sm font-semibold tracking-wide uppercase">R$</span>
-                  <span className="text-3xl font-extrabold md:text-4xl neon-price">
-                    {produto.preco}
+                {/* Selo */}
+                <div className="flex items-center justify-between w-full mb-3 text-xs">
+                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-yellow-400/10 text-yellow-200 border border-yellow-400/40">
+                    <span>{produto.emoji}</span>
+                    <span className="font-semibold tracking-tight uppercase">
+                      {produto.selo}
+                    </span>
                   </span>
+                  <span className="text-xs text-yellow-300/80">LIMITADO 🔔</span>
                 </div>
 
-                <Link
-                  href="/produtos"
-                  className="inline-flex items-center px-5 py-2 text-sm font-semibold text-black bg-yellow-400 rounded-full shadow-[0_10px_25px_rgba(0,0,0,0.6)] hover:bg-yellow-300 hover:-translate-y-0.5 transition-all duration-150"
-                >
-                  Ver mais ofertas
-                  <span className="ml-2 text-lg">👉</span>
-                </Link>
+                {/* Imagem “flutuando” */}
+                <div className="relative flex items-center justify-center w-full mb-3 h-52 md:h-56">
+                  <img
+                    src={produto.img}
+                    alt={produto.nome}
+                    className="
+                      object-contain max-h-full
+                      drop-shadow-[0_22px_40px_rgba(0,0,0,0.95)]
+                      transition-transform duration-300
+                      group-hover:-translate-y-2
+                    "
+                    loading="lazy"
+                    decoding="async"
+                  />
+
+                  {/* Emojis extras em volta */}
+                  <span className="absolute text-xl -left-1 top-3 md:-left-2 md:text-2xl">
+                    ✨
+                  </span>
+                  <span className="absolute text-xl right-2 bottom-4 md:text-2xl">💥</span>
+                </div>
+
+                {/* Infos */}
+                <div className="relative z-10 w-full mt-1 text-center">
+                  <h3 className="text-base font-semibold md:text-lg">{produto.nome}</h3>
+                  <p className="mt-2 text-xs leading-relaxed text-gray-200 md:text-sm">
+                    {produto.descricao}
+                  </p>
+
+                  <div className="flex items-center justify-center gap-2 mt-4">
+                    <span className="px-2 py-1 text-xs font-semibold tracking-wide text-black uppercase bg-yellow-400 rounded-full">
+                      Oferta da semana
+                    </span>
+                  </div>
+
+                  <div className="flex items-end justify-center gap-1 mt-3">
+                    <span className="text-sm text-yellow-300">R$</span>
+                    <span className="text-4xl font-extrabold text-green-400 md:text-5xl">
+                      {produto.preco}
+                    </span>
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={() => router.push('/produtos')}
+                    className="inline-flex items-center gap-2 px-4 py-2 mt-4 text-xs font-semibold text-black transition-transform bg-yellow-400 rounded-full hover:bg-yellow-300 active:scale-95"
+                  >
+                    🛒 Ver na loja
+                  </button>
+                </div>
               </div>
-            </div>
-          ))}
+            ))}
+          </div>
         </div>
       </section>
 
-      {/* Nossa Localização */}
+      {/* NOSSA LOCALIZAÇÃO – no final do site */}
       <section className="px-4 pb-16 bg-black">
         <div className="max-w-5xl mx-auto">
           <h2 className="mb-4 text-3xl font-bold text-center md:text-4xl">
