@@ -2,7 +2,7 @@
 /* eslint-disable @next/next/no-img-element */
 
 import type React from 'react';
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { onAuthStateChanged, type User } from 'firebase/auth';
@@ -57,7 +57,7 @@ function MarqueePro({ items, speed = 36 }: { items: MarqueeItem[]; speed?: numbe
     return () => window.removeEventListener('resize', handle);
   }, []);
 
-  // 🔹 MOBILE: lista horizontal simples (sem animação) – mais leve
+  // Versão LEVE para celular: lista horizontal rolável, sem animação infinita
   if (isMobile) {
     const compact = items.slice(0, 12); // limita quantidade para ficar suave
 
@@ -90,8 +90,8 @@ function MarqueePro({ items, speed = 36 }: { items: MarqueeItem[]; speed?: numbe
     );
   }
 
-  // 🔹 DESKTOP: carrossel infinito — duplicamos a lista 3x para o loop ficar contínuo
-  const track = useMemo(() => [...items, ...items, ...items], [items]);
+  // Versão animada para desktop / telas maiores (infinita)
+  const track = [...items, ...items];
 
   const styleVars: CSSVars = {
     '--speed': `${speed}s`,
@@ -114,7 +114,7 @@ function MarqueePro({ items, speed = 36 }: { items: MarqueeItem[]; speed?: numbe
               style={{ width: 'var(--card-w)', height: 'var(--card-h)' }}
               title={item.alt ?? 'Produto'}
             >
-              <div className="w-full h-full p-3 img-frame">
+              <div className="w-full h-full p-3 float img-frame">
                 <img
                   src={item.src}
                   alt={item.alt ?? 'Produto'}
@@ -399,7 +399,9 @@ export default function Home() {
                 </h2>
                 <p className="mt-2 text-sm text-gray-200 md:text-base">
                   Relaxa, a{' '}
-                  <span className="font-semibold text-yellow-300">Império Bebidas &amp; Tabacos</span>{' '}
+                  <span className="font-semibold text-yellow-300">
+                    Império Bebidas &amp; Tabacos
+                  </span>{' '}
                   te mostra tudo em um vídeo rápido: do carrinho até a confirmação do pedido. 🛒⚡
                 </p>
 
@@ -498,14 +500,13 @@ export default function Home() {
               <div
                 key={idx}
                 className="
-                  group
                   relative flex flex-col items-center p-4 md:p-5
                   rounded-3xl border border-yellow-500/35
                   bg-gradient-to-b from-white/5 via-black/70 to-black/95
                   shadow-[0_18px_45px_rgba(0,0,0,0.85)]
                   hover:shadow-[0_24px_60px_rgba(0,0,0,1)]
                   hover:-translate-y-1
-                  transition-transform transition-shadow duration-300
+                  transition duration-300
                   overflow-hidden
                 "
               >
@@ -582,48 +583,36 @@ export default function Home() {
         </div>
       </section>
 
-      {/* NOSSA LOCALIZAÇÃO – no final do site */}
-      <section className="px-4 pb-16 bg-black">
-        <div className="max-w-5xl mx-auto">
-          <h2 className="mb-4 text-3xl font-bold text-center md:text-4xl">
-            Nossa localização 🗺️
-          </h2>
-          <p className="mb-6 text-sm text-center text-white/80 md:text-base">
-            Venha retirar seu pedido direto na Império Bebidas & Tabacos ou faça sua compra online
-            e confira onde estamos.
-          </p>
-
-          <div className="p-5 mb-6 rounded-3xl bg-zinc-900/90 border border-yellow-500/40 shadow-[0_18px_40px_rgba(0,0,0,0.7)]">
-            <p className="text-lg font-semibold">Império Bebidas & Tabacos</p>
-            <p className="text-sm text-white/90">
-              R. Temístocles Rocha, Qd. 07 - Lt. 01, Nº 56
-              <br />
-              Setor Central – Campos Belos – GO | CEP 73840-000
-              <br />
-              <span className="text-white/70">Ref.: Próximo à Câmara Municipal</span>
-            </p>
-
-            <div className="mt-4">
-              <Link
-                href="https://www.google.com/maps/search/?api=1&query=-13.034359,-46.775423"
-                target="_blank"
-                rel="noopener noreferrer"
-                className="inline-flex items-center px-4 py-2 text-sm font-semibold text-black bg-yellow-400 rounded-full shadow-md hover:bg-yellow-300"
-              >
-                📍 Ver no Google Maps
-              </Link>
+      {/* Seção – Onde estamos / Google Maps */}
+      <section className="px-4 pb-12 bg-black">
+        <div className="max-w-6xl mx-auto">
+          <div className="flex flex-col gap-4 mb-6 md:flex-row md:items-center md:justify-between">
+            <div>
+              <h2 className="text-2xl font-extrabold md:text-3xl">Onde estamos 🏰</h2>
+              <p className="mt-1 text-sm text-gray-300 md:text-base">
+                Império Bebidas &amp; Tabacos — Campos Belos / GO.  
+                Retire seu pedido diretamente na loja ou receba em casa.
+              </p>
             </div>
+
+            <Link
+              href="https://www.google.com/maps/place/Imp%C3%A9rio+Bebidas+%26+Tabacos/@-13.034359,-46.775423,19z"
+              target="_blank"
+              className="inline-flex items-center gap-2 px-4 py-2 text-sm font-semibold text-black bg-yellow-400 rounded-full hover:bg-yellow-300 active:scale-95"
+            >
+              📍 Ver no Google Maps
+            </Link>
           </div>
 
-          <div className="overflow-hidden rounded-3xl border border-yellow-500/40 bg-zinc-900/70 shadow-[0_18px_40px_rgba(0,0,0,0.7)]">
+          <div className="overflow-hidden border rounded-3xl border-yellow-500/40 bg-zinc-900">
             <iframe
               title="Mapa Império Bebidas & Tabacos"
-              src="https://www.google.com/maps/embed?pb=!1m14!1m8!1m3!1d1552.6538441650186!2d-46.775423!3d-13.034359!3m2!1i1024!2i768!4f13.1!3m3!1m2!1s0x932c5c2a9f92e8a7%3A0x0000000000000000!2sImp%C3%A9rio%20Bebidas%20%26%20Tabacos!5e0!3m2!1spt-BR!2sbr!4v1730560000000"
+              src="https://www.google.com/maps/embed?pb=!1m18!1m12!1m3!1d15552.653844165081!2d-46.775423!3d-13.034359!2m3!1f0!2f0!3f0!3m2!1i1024!2i768!4f13.1!3m3!1m2!1s0x93cde07b2f4a6c0b%3A0x0000000000000000!2sImp%C3%A9rio%20Bebidas%20%26%20Tabacos!5e0!3m2!1spt-BR!2sbr!4v1700000000000"
               width="100%"
               height="260"
               loading="lazy"
               referrerPolicy="no-referrer-when-downgrade"
-              className="w-full h-[260px] sm:h-[300px] md:h-[340px] lg:h-[380px]"
+              className="w-full h-[260px] sm:h-[280px] md:h-[340px] lg:h-[380px]"
             />
           </div>
         </div>
