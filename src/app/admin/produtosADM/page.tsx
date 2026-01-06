@@ -157,6 +157,7 @@ const CATEGORIAS = [
   'Águas',
   'Balas e Gomas',
   'Chocolates',
+  'Tabacaria', // ✅ ADICIONADO AQUI
   'Copão de 770ml',
 ];
 
@@ -259,7 +260,9 @@ export default function AdminProdutosPage() {
 
               const dispRaw = getStringArray(data, 'disponivelPor');
               const disponivelPor: Array<'unidade' | 'caixa'> = (dispRaw.includes('caixa')
-                ? (dispRaw.includes('unidade') ? ['unidade', 'caixa'] : ['caixa'])
+                ? dispRaw.includes('unidade')
+                  ? ['unidade', 'caixa']
+                  : ['caixa']
                 : ['unidade']) as Array<'unidade' | 'caixa'>;
 
               list.push({
@@ -314,15 +317,7 @@ export default function AdminProdutosPage() {
 
       if (!q) return true;
 
-      const hay = [
-        p.nome,
-        p.descricao,
-        p.categoria,
-        marcaFinal,
-        p.imagem,
-      ]
-        .join(' ')
-        .toLowerCase();
+      const hay = [p.nome, p.descricao, p.categoria, marcaFinal, p.imagem].join(' ').toLowerCase();
 
       return hay.includes(q);
     });
@@ -353,9 +348,7 @@ export default function AdminProdutosPage() {
     if (dispUnidade) disp.push('unidade');
     if (dispCaixa) disp.push('caixa');
 
-    const precosOk =
-      (!dispUnidade || Number(precoUnidade || 0) > 0) &&
-      (!dispCaixa || Number(precoCaixa || 0) > 0);
+    const precosOk = (!dispUnidade || Number(precoUnidade || 0) > 0) && (!dispCaixa || Number(precoCaixa || 0) > 0);
 
     return Boolean(nome.trim() && categoria && imagem.trim() && disp.length > 0 && precosOk);
   }, [nome, categoria, imagem, dispUnidade, dispCaixa, precoUnidade, precoCaixa]);
@@ -549,9 +542,7 @@ export default function AdminProdutosPage() {
       <div className="grid grid-cols-1 gap-6 mb-8 lg:grid-cols-3">
         {/* Form */}
         <form onSubmit={handleSubmit} className="col-span-1 p-6 shadow bg-zinc-900 rounded-xl">
-          <h2 className="mb-4 text-lg font-semibold text-white">
-            {editingId ? 'Editar produto' : 'Novo produto'}
-          </h2>
+          <h2 className="mb-4 text-lg font-semibold text-white">{editingId ? 'Editar produto' : 'Novo produto'}</h2>
 
           <label className="block mb-3">
             <span className="text-sm text-gray-300">Nome *</span>
@@ -572,9 +563,7 @@ export default function AdminProdutosPage() {
               className="w-full px-3 py-2 mt-1 text-sm text-white border rounded outline-none bg-zinc-800 border-zinc-700"
               placeholder="Ex.: Coca-Cola, Skol, Heineken..."
             />
-            <p className="mt-1 text-[11px] text-gray-500">
-              Se você deixar vazio, eu tento inferir pela primeira palavra do nome.
-            </p>
+            <p className="mt-1 text-[11px] text-gray-500">Se você deixar vazio, eu tento inferir pela primeira palavra do nome.</p>
           </label>
 
           <label className="block mb-3">
@@ -610,11 +599,7 @@ export default function AdminProdutosPage() {
               <span className="text-sm text-gray-300">Disponível por</span>
               <div className="flex items-center gap-3 mt-2">
                 <label className="inline-flex items-center gap-2 text-sm">
-                  <input
-                    type="checkbox"
-                    checked={dispUnidade}
-                    onChange={(e) => setDispUnidade(e.target.checked)}
-                  />
+                  <input type="checkbox" checked={dispUnidade} onChange={(e) => setDispUnidade(e.target.checked)} />
                   Unidade
                 </label>
                 <label className="inline-flex items-center gap-2 text-sm">
@@ -870,7 +855,9 @@ export default function AdminProdutosPage() {
                             <button
                               onClick={() => toggleFalta(p)}
                               className={`px-3 py-1.5 text-xs font-semibold rounded ${
-                                p.emFalta ? 'bg-green-600 text-white hover:bg-green-700' : 'bg-orange-500 text-black hover:bg-orange-600'
+                                p.emFalta
+                                  ? 'bg-green-600 text-white hover:bg-green-700'
+                                  : 'bg-orange-500 text-black hover:bg-orange-600'
                               }`}
                               title={p.emFalta ? 'Marcar como disponível' : 'Marcar como em falta'}
                             >
