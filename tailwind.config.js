@@ -1,6 +1,8 @@
 /** @type {import('tailwindcss').Config} */
-module.exports = {
-  content: ["./src/**/*.{js,ts,jsx,tsx,mdx,html}"],
+const tailwindConfig = {
+  content: [
+    "./src/**/*.{js,ts,jsx,tsx,md,html}",
+  ],
   theme: {
     extend: {
       colors: {
@@ -24,3 +26,5 @@ module.exports = {
     require("@tailwindcss/typography"),
   ],
 };
+
+export default tailwindConfig;
