@@ -22,7 +22,7 @@ export default function Header() {
     const unsubscribe = onAuthStateChanged(auth, (usuario) => {
       setUser(usuario);
     });
-    // cleanup explícito chama unsubscribe() — evita no-unused-expressions
+
     return () => {
       unsubscribe();
     };
@@ -33,12 +33,9 @@ export default function Header() {
     router.push('/login');
   };
 
-  const handleCarrinhoClick = () => {
-    user ? router.push('/carrinho') : router.push('/login');
-  };
-
   return (
     <header className="flex flex-col gap-4 px-6 py-4 text-black bg-yellow-400 shadow-md md:flex-row md:items-center md:justify-between">
+      {/* Logo */}
       <div className="flex items-center justify-between w-full md:w-auto">
         <Link href="/" aria-label="Ir para a página inicial">
           <Image
@@ -52,6 +49,7 @@ export default function Header() {
         </Link>
       </div>
 
+      {/* Busca */}
       <div className="relative w-full md:max-w-2xl">
         <div className="absolute text-2xl text-black transform -translate-y-1/2 left-4 top-1/2">
           <FaSearch />
@@ -64,6 +62,7 @@ export default function Header() {
         />
       </div>
 
+      {/* Navegação */}
       <nav className="flex items-center justify-center w-full gap-6 md:w-auto md:justify-end">
         {user ? (
           <div className="flex items-center gap-2 text-sm">
@@ -76,27 +75,39 @@ export default function Header() {
             </button>
           </div>
         ) : (
-          <Link href="/login" className="flex items-center gap-2 hover:underline">
+          <Link
+            href="/login"
+            className="flex items-center gap-2 hover:underline"
+          >
             <FaUser /> Entrar
           </Link>
         )}
 
-        <Link href="/contato" className="flex items-center gap-2 hover:underline">
+        <Link
+          href="/contato"
+          className="flex items-center gap-2 hover:underline"
+        >
           <FaPhoneAlt /> Contato
         </Link>
 
-        <Link href="/categorias" className="flex items-center gap-2 hover:underline">
+        <Link
+          href="/categorias"
+          className="flex items-center gap-2 hover:underline"
+        >
           <FaBoxes /> Categorias
         </Link>
 
-        <button
-          onClick={handleCarrinhoClick}
-          className="p-2 text-3xl text-black transition bg-white rounded-full drop-shadow-lg hover:scale-110 hover:text-yellow-600"
-          title="Carrinho"
-          aria-label="Ir para o carrinho"
-        >
-          <FaShoppingCart />
-        </button>
+        {/* Carrinho APENAS para usuário logado */}
+        {user && (
+          <button
+            onClick={() => router.push('/carrinho')}
+            className="p-2 text-3xl text-black transition bg-white rounded-full drop-shadow-lg hover:scale-110 hover:text-yellow-600"
+            title="Carrinho"
+            aria-label="Ir para o carrinho"
+          >
+            <FaShoppingCart />
+          </button>
+        )}
       </nav>
     </header>
   );
