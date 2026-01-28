@@ -78,7 +78,7 @@ const toDate = (v: FireTimestampLike): Date => {
 
 const money = (n: number) => `R$ ${n.toFixed(2)}`;
 
-const COLORS = ['#22c55e', '#eab308', '#60a5fa', '#a78bfa'];
+const COLORS = ['#22c55e', '#eab308', '#60a5fa', '#a78bfa', '#f43f5e'];
 
 const normalizeEmail = (raw: string) =>
   raw.normalize('NFKC').trim().toLowerCase();
@@ -155,7 +155,8 @@ export default function AdminDashboard() {
     };
   }, [router]);
 
-  /* ===== KPIs ===== */
+  /* ================= KPIs ================= */
+
   const totalVendido = useMemo(
     () => pedidos.reduce((acc, p) => acc + (p.total || 0), 0),
     [pedidos]
@@ -166,7 +167,28 @@ export default function AdminDashboard() {
     [pedidos]
   );
 
-  /* ===== ANIVERSARIANTES DA SEMANA ===== */
+  /* ================= GRÁFICOS ================= */
+
+  const vendasPorDia = useMemo(() => {
+    const map = new Map<string, number>();
+    pedidos.forEach((p) => {
+      const d = toDate(p.data).toLocaleDateString('pt-BR');
+      map.set(d, (map.get(d) || 0) + (p.total || 0));
+    });
+    return Array.from(map.entries()).map(([name, total]) => ({ name, total }));
+  }, [pedidos]);
+
+  const pagamentos = useMemo(() => {
+    const map = new Map<string, number>();
+    pedidos.forEach((p) => {
+      const key = p.formaPagamento || 'Outros';
+      map.set(key, (map.get(key) || 0) + (p.total || 0));
+    });
+    return Array.from(map.entries()).map(([name, total]) => ({ name, total }));
+  }, [pedidos]);
+
+  /* ================= ANIVERSARIANTES ================= */
+
   const aniversariantesSemana = useMemo(() => {
     const hoje = new Date();
     const fim = new Date();
@@ -183,7 +205,6 @@ export default function AdminDashboard() {
       );
 
       if (prox < hoje) prox.setFullYear(hoje.getFullYear() + 1);
-
       return prox >= hoje && prox <= fim;
     });
   }, [usuarios]);
@@ -192,7 +213,7 @@ export default function AdminDashboard() {
     if (!u.telefone) return;
 
     const msg = encodeURIComponent(
-      `🎉 Parabéns ${u.nome || ''}!\n\nA Império Bebidas te presenteia com *10% OFF* 🎁\n\nUse o cupom: *IMPERIO10*`
+      `🎉 Parabéns ${u.nome || ''}!\n\nA *Império Bebidas* te presenteia com *10% OFF* 🎁\n\nCupom: *IMPERIO10*`
     );
 
     window.open(`https://wa.me/${u.telefone}?text=${msg}`, '_blank');
@@ -220,30 +241,30 @@ export default function AdminDashboard() {
   /* ================= RENDER ================= */
 
   return (
-    <div className="min-h-screen p-8 text-white bg-black">
+    <div className="min-h-screen p-8 space-y-10 text-white bg-black">
       {/* HEADER */}
-      <div className="flex items-center gap-3 mb-8">
+      <div className="flex items-center gap-3">
         <h1 className="text-3xl font-bold text-yellow-400">
           Painel Administrativo
         </h1>
 
         <Link
           href="/admin/dashboard/pedidos"
-          className="flex items-center gap-2 px-5 py-3 ml-auto bg-violet-600 rounded-xl"
+          className="flex items-center gap-2 px-5 py-3 ml-auto shadow-lg bg-violet-600 rounded-xl"
         >
           <FaListAlt /> Pedidos
         </Link>
 
         <Link
           href="/admin/produtosADM"
-          className="flex items-center gap-2 px-5 py-3 bg-green-600 rounded-xl"
+          className="flex items-center gap-2 px-5 py-3 bg-green-600 shadow-lg rounded-xl"
         >
           <FaBoxOpen /> Produtos
         </Link>
 
         <button
           onClick={handleLogout}
-          className="px-4 py-2 bg-red-600 rounded-xl"
+          className="px-4 py-2 bg-red-600 shadow-lg rounded-xl"
         >
           Sair
         </button>
@@ -251,35 +272,46 @@ export default function AdminDashboard() {
 
       {/* KPIs */}
       <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
-        <KpiCard
-          title="Total Vendido"
-          value={money(totalVendido)}
-          icon={<FaMoneyBillWave />}
-        />
-        <KpiCard
-          title="Clientes Ativos"
-          value={clientes}
-          icon={<FaUsers />}
-        />
+        <KpiCard title="Total Vendido" value={money(totalVendido)} icon={<FaMoneyBillWave />} />
+        <KpiCard title="Clientes Ativos" value={clientes} icon={<FaUsers />} />
       </div>
 
-      {/* ANIVERSARIANTES */}
-      <div className="p-6 mt-10 shadow-xl bg-zinc-900 rounded-2xl">
-        <h2 className="flex items-center gap-2 mb-4 text-lg font-semibold">
-          <FaBirthdayCake className="text-pink-400" />
-          Aniversariantes da Semana
-        </h2>
+      {/* GRÁFICO LINHA */}
+      <ChartBox title="Vendas por dia">
+        <ResponsiveContainer width="100%" height={260}>
+          <LineChart data={vendasPorDia}>
+            <XAxis stroke="#71717a" dataKey="name" />
+            <YAxis stroke="#71717a" />
+            <Tooltip />
+            <Line type="monotone" dataKey="total" stroke="#facc15" strokeWidth={3} dot={false} />
+          </LineChart>
+        </ResponsiveContainer>
+      </ChartBox>
 
+      {/* GRÁFICO PIZZA */}
+      <ChartBox title="Métodos de pagamento">
+        <ResponsiveContainer width="100%" height={260}>
+          <PieChart>
+            <Pie data={pagamentos} dataKey="total" nameKey="name" innerRadius={70} outerRadius={110}>
+              {pagamentos.map((_, i) => (
+                <Cell key={i} fill={COLORS[i % COLORS.length]} />
+              ))}
+            </Pie>
+            <Legend />
+            <Tooltip />
+          </PieChart>
+        </ResponsiveContainer>
+      </ChartBox>
+
+      {/* ANIVERSARIANTES */}
+      <ChartBox title="🎂 Aniversariantes da semana">
         {aniversariantesSemana.length === 0 && (
           <p className="text-gray-400">Nenhum aniversariante nesta semana.</p>
         )}
 
         <div className="space-y-3">
           {aniversariantesSemana.map((u) => (
-            <div
-              key={u.id}
-              className="flex items-center justify-between p-4 bg-black rounded-xl"
-            >
+            <div key={u.id} className="flex items-center justify-between p-4 bg-black rounded-xl">
               <div>
                 <p className="font-bold">{u.nome}</p>
                 <p className="text-sm text-gray-400">
@@ -297,14 +329,14 @@ export default function AdminDashboard() {
             </div>
           ))}
         </div>
-      </div>
+      </ChartBox>
 
       <ReviewsModeration />
     </div>
   );
 }
 
-/* ================= COMPONENT ================= */
+/* ================= COMPONENTS ================= */
 
 function KpiCard({
   title,
@@ -316,12 +348,27 @@ function KpiCard({
   icon: React.ReactNode;
 }) {
   return (
-    <div className="relative p-6 shadow-xl bg-zinc-900 rounded-2xl">
+    <div className="relative p-6 bg-zinc-900 rounded-2xl shadow-[0_25px_60px_rgba(0,0,0,0.6)]">
       <p className="text-sm text-gray-400">{title}</p>
       <p className="mt-2 text-3xl font-bold">{value}</p>
       <div className="absolute text-3xl text-yellow-400 top-6 right-6">
         {icon}
       </div>
+    </div>
+  );
+}
+
+function ChartBox({
+  title,
+  children,
+}: {
+  title: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <div className="p-6 bg-zinc-900 rounded-2xl shadow-[0_25px_60px_rgba(0,0,0,0.6)]">
+      <h2 className="mb-4 text-lg font-semibold">{title}</h2>
+      {children}
     </div>
   );
 }
