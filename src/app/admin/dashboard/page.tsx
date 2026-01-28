@@ -287,8 +287,16 @@ export default function AdminDashboard() {
 
       {/* KPIs */}
       <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
-        <KpiCard title="Total Vendido" value={money(totalVendido)} icon={<FaMoneyBillWave />} />
-        <KpiCard title="Clientes Ativos" value={clientes} icon={<FaUsers />} />
+        <KpiCard
+          title="Total Vendido"
+          value={money(totalVendido)}
+          icon={<FaMoneyBillWave />}
+        />
+        <KpiCard
+          title="Clientes Ativos"
+          value={clientes}
+          icon={<FaUsers />}
+        />
       </div>
 
       {/* GRÁFICOS */}
@@ -298,7 +306,13 @@ export default function AdminDashboard() {
             <XAxis dataKey="name" stroke="#71717a" />
             <YAxis stroke="#71717a" />
             <Tooltip />
-            <Line type="monotone" dataKey="total" stroke="#facc15" strokeWidth={3} dot={false} />
+            <Line
+              type="monotone"
+              dataKey="total"
+              stroke="#facc15"
+              strokeWidth={3}
+              dot={false}
+            />
           </LineChart>
         </ResponsiveContainer>
       </ChartBox>
@@ -306,7 +320,13 @@ export default function AdminDashboard() {
       <ChartBox title="Métodos de pagamento">
         <ResponsiveContainer width="100%" height={260}>
           <PieChart>
-            <Pie data={pagamentos} dataKey="total" nameKey="name" innerRadius={70} outerRadius={110}>
+            <Pie
+              data={pagamentos}
+              dataKey="total"
+              nameKey="name"
+              innerRadius={70}
+              outerRadius={110}
+            >
               {pagamentos.map((_, i) => (
                 <Cell key={i} fill={COLORS[i % COLORS.length]} />
               ))}
@@ -324,7 +344,10 @@ export default function AdminDashboard() {
 
         <div className="space-y-3">
           {aniversariantesSemana.map((u) => (
-            <div key={u.id} className="flex items-center justify-between p-4 bg-black rounded-xl">
+            <div
+              key={u.id}
+              className="flex items-center justify-between p-4 bg-black rounded-xl"
+            >
               <div>
                 <p className="font-bold">{u.nome}</p>
                 <p className="text-sm text-gray-400">
