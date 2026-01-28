@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { getAuth, onAuthStateChanged, User, signOut } from 'firebase/auth';
+import { getAuth, onAuthStateChanged, signOut } from 'firebase/auth';
 import { db } from '@/firebase/config';
 import {
   collection,
@@ -22,7 +22,6 @@ import {
   FaUsers,
   FaListAlt,
   FaBoxOpen,
-  FaBirthdayCake,
   FaGift,
 } from 'react-icons/fa';
 
@@ -43,7 +42,7 @@ import ReviewsModeration from './ReviewsModeration';
 
 /* ================= CONFIG ================= */
 
-const ALLOWED_EMAILS = new Set<string>([
+const ALLOWED_EMAILS = new Set([
   'thiagotorresdeoliveira9@gmail.com',
   'thiagotorres5517@gmail.com',
 ]);
@@ -64,17 +63,18 @@ type Usuario = {
   id: string;
   nome?: string;
   telefone?: string;
-  dataNascimento?: Timestamp;
+  dataNascimento?: FireTimestampLike;
   cupomAniversarioEnviado?: boolean;
 };
 
 /* ================= HELPERS ================= */
 
-const toDate = (v: FireTimestampLike): Date => {
-  if (v instanceof Date) return v;
-  if (v && 'seconds' in v) return new Date(v.seconds * 1000);
-  return new Date(NaN);
-};
+function toDate(value: FireTimestampLike): Date {
+  if (!value) return new Date(0);
+  if (value instanceof Date) return value;
+  if (value instanceof Timestamp) return value.toDate();
+  return new Date(0);
+}
 
 const money = (n: number) => `R$ ${n.toFixed(2)}`;
 
@@ -98,7 +98,6 @@ async function hasAdminRole(uid: string): Promise<boolean> {
 
 export default function AdminDashboard() {
   const router = useRouter();
-  const [user, setUser] = useState<User | null>(null);
   const [isAdmin, setIsAdmin] = useState<boolean | null>(null);
 
   const [pedidos, setPedidos] = useState<Pedido[]>([]);
@@ -117,8 +116,6 @@ export default function AdminDashboard() {
         return;
       }
 
-      setUser(u);
-
       const emailOk = ALLOWED_EMAILS.has(normalizeEmail(u.email || ''));
       const roleOk = await hasAdminRole(u.uid);
 
@@ -131,19 +128,23 @@ export default function AdminDashboard() {
 
       pedidosUnsubRef.current = onSnapshot(
         query(collection(db, 'pedidos'), orderBy('data', 'desc')),
-        (s) => {
-          const lista: Pedido[] = [];
-          s.forEach((d) => lista.push({ ...(d.data() as Pedido), id: d.id }));
-          setPedidos(lista);
+        (snap) => {
+          const list: Pedido[] = [];
+          snap.forEach((d) =>
+            list.push({ ...(d.data() as Pedido), id: d.id })
+          );
+          setPedidos(list);
         }
       );
 
       usuariosUnsubRef.current = onSnapshot(
         collection(db, 'usuarios'),
-        (s) => {
-          const lista: Usuario[] = [];
-          s.forEach((d) => lista.push({ ...(d.data() as Usuario), id: d.id }));
-          setUsuarios(lista);
+        (snap) => {
+          const list: Usuario[] = [];
+          snap.forEach((d) =>
+            list.push({ ...(d.data() as Usuario), id: d.id })
+          );
+          setUsuarios(list);
         }
       );
     });
@@ -171,11 +172,20 @@ export default function AdminDashboard() {
 
   const vendasPorDia = useMemo(() => {
     const map = new Map<string, number>();
+
     pedidos.forEach((p) => {
-      const d = toDate(p.data).toLocaleDateString('pt-BR');
-      map.set(d, (map.get(d) || 0) + (p.total || 0));
+      if (!p.data) return;
+      const date = toDate(p.data);
+      if (isNaN(date.getTime())) return;
+
+      const label = date.toLocaleDateString('pt-BR');
+      map.set(label, (map.get(label) || 0) + (p.total || 0));
     });
-    return Array.from(map.entries()).map(([name, total]) => ({ name, total }));
+
+    return Array.from(map.entries()).map(([name, total]) => ({
+      name,
+      total,
+    }));
   }, [pedidos]);
 
   const pagamentos = useMemo(() => {
@@ -184,7 +194,10 @@ export default function AdminDashboard() {
       const key = p.formaPagamento || 'Outros';
       map.set(key, (map.get(key) || 0) + (p.total || 0));
     });
-    return Array.from(map.entries()).map(([name, total]) => ({ name, total }));
+    return Array.from(map.entries()).map(([name, total]) => ({
+      name,
+      total,
+    }));
   }, [pedidos]);
 
   /* ================= ANIVERSARIANTES ================= */
@@ -198,6 +211,8 @@ export default function AdminDashboard() {
       if (!u.dataNascimento) return false;
 
       const nasc = toDate(u.dataNascimento);
+      if (isNaN(nasc.getTime())) return false;
+
       const prox = new Date(
         hoje.getFullYear(),
         nasc.getMonth(),
@@ -250,21 +265,21 @@ export default function AdminDashboard() {
 
         <Link
           href="/admin/dashboard/pedidos"
-          className="flex items-center gap-2 px-5 py-3 ml-auto shadow-lg bg-violet-600 rounded-xl"
+          className="flex items-center gap-2 px-5 py-3 ml-auto bg-violet-600 rounded-xl"
         >
           <FaListAlt /> Pedidos
         </Link>
 
         <Link
           href="/admin/produtosADM"
-          className="flex items-center gap-2 px-5 py-3 bg-green-600 shadow-lg rounded-xl"
+          className="flex items-center gap-2 px-5 py-3 bg-green-600 rounded-xl"
         >
           <FaBoxOpen /> Produtos
         </Link>
 
         <button
           onClick={handleLogout}
-          className="px-4 py-2 bg-red-600 shadow-lg rounded-xl"
+          className="px-4 py-2 bg-red-600 rounded-xl"
         >
           Sair
         </button>
@@ -276,11 +291,11 @@ export default function AdminDashboard() {
         <KpiCard title="Clientes Ativos" value={clientes} icon={<FaUsers />} />
       </div>
 
-      {/* GRÁFICO LINHA */}
+      {/* GRÁFICOS */}
       <ChartBox title="Vendas por dia">
         <ResponsiveContainer width="100%" height={260}>
           <LineChart data={vendasPorDia}>
-            <XAxis stroke="#71717a" dataKey="name" />
+            <XAxis dataKey="name" stroke="#71717a" />
             <YAxis stroke="#71717a" />
             <Tooltip />
             <Line type="monotone" dataKey="total" stroke="#facc15" strokeWidth={3} dot={false} />
@@ -288,7 +303,6 @@ export default function AdminDashboard() {
         </ResponsiveContainer>
       </ChartBox>
 
-      {/* GRÁFICO PIZZA */}
       <ChartBox title="Métodos de pagamento">
         <ResponsiveContainer width="100%" height={260}>
           <PieChart>
@@ -303,7 +317,6 @@ export default function AdminDashboard() {
         </ResponsiveContainer>
       </ChartBox>
 
-      {/* ANIVERSARIANTES */}
       <ChartBox title="🎂 Aniversariantes da semana">
         {aniversariantesSemana.length === 0 && (
           <p className="text-gray-400">Nenhum aniversariante nesta semana.</p>
@@ -348,7 +361,7 @@ function KpiCard({
   icon: React.ReactNode;
 }) {
   return (
-    <div className="relative p-6 bg-zinc-900 rounded-2xl shadow-[0_25px_60px_rgba(0,0,0,0.6)]">
+    <div className="relative p-6 shadow-xl bg-zinc-900 rounded-2xl">
       <p className="text-sm text-gray-400">{title}</p>
       <p className="mt-2 text-3xl font-bold">{value}</p>
       <div className="absolute text-3xl text-yellow-400 top-6 right-6">
@@ -366,7 +379,7 @@ function ChartBox({
   children: React.ReactNode;
 }) {
   return (
-    <div className="p-6 bg-zinc-900 rounded-2xl shadow-[0_25px_60px_rgba(0,0,0,0.6)]">
+    <div className="p-6 shadow-xl bg-zinc-900 rounded-2xl">
       <h2 className="mb-4 text-lg font-semibold">{title}</h2>
       {children}
     </div>
