@@ -94,7 +94,11 @@ export default function ProdutosVitrinePage() {
                 {produto.descricao}
               </p>
 
-              <div className="flex items-center justify-center gap-2 py-3 mt-auto text-sm font-bold text-black bg-yellow-400 rounded-lg">
+              {/* 🔥 BOTÃO AGORA CLICÁVEL */}
+              <div
+                onClick={() => router.push('/login')}
+                className="flex items-center justify-center gap-2 py-3 mt-auto text-sm font-bold text-black transition bg-yellow-400 rounded-lg cursor-pointer hover:bg-yellow-500"
+              >
                 <FaLock />
                 Faça login para ver preços
               </div>
