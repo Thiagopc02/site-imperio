@@ -14,12 +14,14 @@ import {
   query,
   Unsubscribe,
 } from 'firebase/firestore';
+
 import {
   FaMoneyBillWave,
   FaUsers,
   FaListAlt,
   FaBoxOpen,
 } from 'react-icons/fa';
+
 import {
   LineChart,
   Line,
@@ -44,31 +46,14 @@ const ALLOWED_EMAILS = new Set<string>([
 
 /* ================= TYPES ================= */
 
-type Item = {
-  nome?: string;
-  quantidade?: number;
-  preco?: number;
-};
-
-type Endereco = {
-  rua?: string;
-  numero?: string;
-  bairro?: string;
-  cidade?: string;
-  cep?: string;
-};
-
 type FireTimestampLike = { seconds?: number } | Date | null | undefined;
 
 type Pedido = {
   id: string;
   uid: string;
   total?: number;
-  status?: string;
   data?: FireTimestampLike;
   formaPagamento?: string;
-  itens?: Item[];
-  endereco?: Endereco | null;
 };
 
 /* ================= HELPERS ================= */
@@ -83,7 +68,7 @@ const toDate = (v: FireTimestampLike): Date => {
 
 const money = (n: number) => `R$ ${n.toFixed(2)}`;
 
-const COLORS = ['#22c55e', '#eab308', '#60a5fa', '#f43f5e', '#a78bfa'];
+const COLORS = ['#22c55e', '#eab308', '#60a5fa', '#a78bfa'];
 
 const normalizeEmail = (raw: string) =>
   raw.normalize('NFKC').trim().toLowerCase();
@@ -108,9 +93,7 @@ export default function AdminDashboard() {
   const [pedidos, setPedidos] = useState<Pedido[]>([]);
   const pedidosUnsubRef = useRef<Unsubscribe | null>(null);
 
-  const [days] = useState<7 | 30 | 90 | 0>(30);
-
-  /* ===== AUTH + FIRESTORE ===== */
+  /* ===== AUTH ===== */
   useEffect(() => {
     const auth = getAuth();
 
@@ -138,8 +121,7 @@ export default function AdminDashboard() {
       pedidosUnsubRef.current = onSnapshot(qy, (s) => {
         const lista: Pedido[] = [];
         s.forEach((d) => {
-          const data = d.data() as Omit<Pedido, 'id'>;
-          lista.push({ ...data, id: d.id });
+          lista.push({ ...(d.data() as Pedido), id: d.id });
         });
         setPedidos(lista);
       });
@@ -151,44 +133,35 @@ export default function AdminDashboard() {
     };
   }, [router]);
 
-  /* ===== FILTRO PERÍODO ===== */
-  const pedidosPeriodo = useMemo(() => {
-    if (!days) return pedidos;
-    const limite = new Date();
-    limite.setDate(limite.getDate() - days);
-    return pedidos.filter(
-      (p) => toDate(p.data).getTime() >= limite.getTime()
-    );
-  }, [pedidos, days]);
-
   /* ===== KPIs ===== */
-  const kpi = useMemo(() => {
-    const totalVendido = pedidosPeriodo.reduce(
-      (acc, p) => acc + (p.total || 0),
-      0
-    );
-    const clientes = new Set(pedidosPeriodo.map((p) => p.uid)).size;
-    return { totalVendido, clientes };
-  }, [pedidosPeriodo]);
+  const totalVendido = useMemo(
+    () => pedidos.reduce((acc, p) => acc + (p.total || 0), 0),
+    [pedidos]
+  );
 
-  /* ===== GRÁFICOS ===== */
+  const clientes = useMemo(
+    () => new Set(pedidos.map((p) => p.uid)).size,
+    [pedidos]
+  );
+
+  /* ===== CHARTS ===== */
   const vendasPorDia = useMemo(() => {
     const map = new Map<string, number>();
-    pedidosPeriodo.forEach((p) => {
+    pedidos.forEach((p) => {
       const d = toDate(p.data).toLocaleDateString('pt-BR');
       map.set(d, (map.get(d) || 0) + (p.total || 0));
     });
     return Array.from(map.entries()).map(([name, total]) => ({ name, total }));
-  }, [pedidosPeriodo]);
+  }, [pedidos]);
 
   const pagamentos = useMemo(() => {
     const map = new Map<string, number>();
-    pedidosPeriodo.forEach((p) => {
+    pedidos.forEach((p) => {
       const key = p.formaPagamento || 'Outros';
       map.set(key, (map.get(key) || 0) + (p.total || 0));
     });
     return Array.from(map.entries()).map(([name, total]) => ({ name, total }));
-  }, [pedidosPeriodo]);
+  }, [pedidos]);
 
   async function handleLogout() {
     await signOut(getAuth());
@@ -197,7 +170,7 @@ export default function AdminDashboard() {
 
   if (isAdmin === false) {
     return (
-      <div className="flex items-center justify-center min-h-screen text-white bg-black">
+      <div className="flex items-center justify-center min-h-screen bg-black">
         <button onClick={handleLogout} className="px-6 py-3 bg-red-600 rounded">
           Sair
         </button>
@@ -208,30 +181,30 @@ export default function AdminDashboard() {
   /* ================= RENDER ================= */
 
   return (
-    <div className="min-h-screen p-6 text-white bg-black">
-      {/* Topbar */}
-      <div className="flex items-center gap-3 mb-6">
+    <div className="min-h-screen p-8 text-white bg-black">
+      {/* HEADER */}
+      <div className="flex items-center gap-3 mb-8">
         <h1 className="text-3xl font-bold text-yellow-400">
           Painel Administrativo
         </h1>
 
         <Link
           href="/admin/dashboard/pedidos"
-          className="flex items-center gap-2 px-5 py-3 ml-auto bg-violet-600 rounded-xl"
+          className="flex items-center gap-2 px-5 py-3 ml-auto shadow-lg bg-violet-600 rounded-xl"
         >
           <FaListAlt /> Pedidos
         </Link>
 
         <Link
           href="/admin/produtosADM"
-          className="flex items-center gap-2 px-5 py-3 bg-green-600 rounded-xl"
+          className="flex items-center gap-2 px-5 py-3 bg-green-600 shadow-lg rounded-xl"
         >
           <FaBoxOpen /> Produtos
         </Link>
 
         <button
           onClick={handleLogout}
-          className="px-4 py-2 bg-red-600 rounded"
+          className="px-4 py-2 bg-red-600 shadow-lg rounded-xl"
         >
           Sair
         </button>
@@ -239,40 +212,62 @@ export default function AdminDashboard() {
 
       {/* KPIs */}
       <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
-        <ResumoCard
-          title="Total vendido"
-          value={money(kpi.totalVendido)}
+        <KpiCard
+          title="Total Vendido"
+          value={money(totalVendido)}
           icon={<FaMoneyBillWave />}
+          gradient="from-green-500/20 to-green-900/10"
         />
-        <ResumoCard
-          title="Clientes ativos"
-          value={kpi.clientes}
+        <KpiCard
+          title="Clientes Ativos"
+          value={clientes}
           icon={<FaUsers />}
+          gradient="from-blue-500/20 to-blue-900/10"
         />
       </div>
 
-      {/* Vendas por dia */}
-      <div className="mt-8">
-        <ResponsiveContainer width="100%" height={300}>
+      {/* GRÁFICO */}
+      <div className="p-6 mt-10 bg-zinc-900 rounded-2xl shadow-[0_25px_60px_rgba(0,0,0,0.6)]">
+        <h2 className="mb-4 text-lg font-semibold text-gray-200">
+          Vendas por dia
+        </h2>
+        <ResponsiveContainer width="100%" height={260}>
           <LineChart data={vendasPorDia}>
-            <XAxis dataKey="name" />
-            <YAxis />
+            <XAxis stroke="#71717a" dataKey="name" />
+            <YAxis stroke="#71717a" />
             <Tooltip />
-            <Line dataKey="total" stroke="#eab308" strokeWidth={3} />
+            <Line
+              type="monotone"
+              dataKey="total"
+              stroke="#facc15"
+              strokeWidth={3}
+              dot={false}
+            />
           </LineChart>
         </ResponsiveContainer>
       </div>
 
-      {/* Pagamentos */}
-      <div className="mt-8">
-        <ResponsiveContainer width="100%" height={300}>
+      {/* PAGAMENTOS */}
+      <div className="p-6 mt-10 bg-zinc-900 rounded-2xl shadow-[0_25px_60px_rgba(0,0,0,0.6)]">
+        <h2 className="mb-4 text-lg font-semibold text-gray-200">
+          Métodos de pagamento
+        </h2>
+        <ResponsiveContainer width="100%" height={260}>
           <PieChart>
-            <Pie data={pagamentos} dataKey="total" nameKey="name" label>
+            <Pie
+              data={pagamentos}
+              dataKey="total"
+              nameKey="name"
+              innerRadius={70}
+              outerRadius={110}
+              paddingAngle={4}
+            >
               {pagamentos.map((_, i) => (
                 <Cell key={i} fill={COLORS[i % COLORS.length]} />
               ))}
             </Pie>
             <Legend />
+            <Tooltip />
           </PieChart>
         </ResponsiveContainer>
       </div>
@@ -284,22 +279,28 @@ export default function AdminDashboard() {
 
 /* ================= COMPONENTS ================= */
 
-function ResumoCard({
+function KpiCard({
   title,
   value,
   icon,
+  gradient,
 }: {
   title: string;
   value: string | number;
   icon: React.ReactNode;
+  gradient: string;
 }) {
   return (
-    <div className="flex items-center justify-between p-6 bg-zinc-900 rounded-xl">
-      <div>
-        <p className="text-gray-400">{title}</p>
-        <p className="text-2xl font-bold">{value}</p>
+    <div
+      className={`relative p-6 rounded-2xl bg-gradient-to-br ${gradient}
+      shadow-[0_20px_50px_rgba(0,0,0,0.6)]
+      border border-white/5`}
+    >
+      <p className="text-sm text-gray-400">{title}</p>
+      <p className="mt-2 text-3xl font-bold">{value}</p>
+      <div className="absolute text-3xl text-yellow-400 top-6 right-6">
+        {icon}
       </div>
-      <div className="text-3xl text-yellow-400">{icon}</div>
     </div>
   );
 }
