@@ -13,6 +13,8 @@ import {
   orderBy,
   query,
   Unsubscribe,
+  updateDoc,
+  Timestamp,
 } from 'firebase/firestore';
 
 import {
@@ -20,6 +22,8 @@ import {
   FaUsers,
   FaListAlt,
   FaBoxOpen,
+  FaBirthdayCake,
+  FaGift,
 } from 'react-icons/fa';
 
 import {
@@ -46,7 +50,7 @@ const ALLOWED_EMAILS = new Set<string>([
 
 /* ================= TYPES ================= */
 
-type FireTimestampLike = { seconds?: number } | Date | null | undefined;
+type FireTimestampLike = Timestamp | Date | null | undefined;
 
 type Pedido = {
   id: string;
@@ -56,13 +60,19 @@ type Pedido = {
   formaPagamento?: string;
 };
 
+type Usuario = {
+  id: string;
+  nome?: string;
+  telefone?: string;
+  dataNascimento?: Timestamp;
+  cupomAniversarioEnviado?: boolean;
+};
+
 /* ================= HELPERS ================= */
 
 const toDate = (v: FireTimestampLike): Date => {
   if (v instanceof Date) return v;
-  if (v && typeof v === 'object' && typeof v.seconds === 'number') {
-    return new Date(v.seconds * 1000);
-  }
+  if (v && 'seconds' in v) return new Date(v.seconds * 1000);
   return new Date(NaN);
 };
 
@@ -90,16 +100,18 @@ export default function AdminDashboard() {
   const router = useRouter();
   const [user, setUser] = useState<User | null>(null);
   const [isAdmin, setIsAdmin] = useState<boolean | null>(null);
+
   const [pedidos, setPedidos] = useState<Pedido[]>([]);
+  const [usuarios, setUsuarios] = useState<Usuario[]>([]);
+
   const pedidosUnsubRef = useRef<Unsubscribe | null>(null);
+  const usuariosUnsubRef = useRef<Unsubscribe | null>(null);
 
   /* ===== AUTH ===== */
   useEffect(() => {
     const auth = getAuth();
 
     const unsub = onAuthStateChanged(auth, async (u) => {
-      if (pedidosUnsubRef.current) pedidosUnsubRef.current();
-
       if (!u) {
         router.replace('/admin/login');
         return;
@@ -117,19 +129,29 @@ export default function AdminDashboard() {
 
       setIsAdmin(true);
 
-      const qy = query(collection(db, 'pedidos'), orderBy('data', 'desc'));
-      pedidosUnsubRef.current = onSnapshot(qy, (s) => {
-        const lista: Pedido[] = [];
-        s.forEach((d) => {
-          lista.push({ ...(d.data() as Pedido), id: d.id });
-        });
-        setPedidos(lista);
-      });
+      pedidosUnsubRef.current = onSnapshot(
+        query(collection(db, 'pedidos'), orderBy('data', 'desc')),
+        (s) => {
+          const lista: Pedido[] = [];
+          s.forEach((d) => lista.push({ ...(d.data() as Pedido), id: d.id }));
+          setPedidos(lista);
+        }
+      );
+
+      usuariosUnsubRef.current = onSnapshot(
+        collection(db, 'usuarios'),
+        (s) => {
+          const lista: Usuario[] = [];
+          s.forEach((d) => lista.push({ ...(d.data() as Usuario), id: d.id }));
+          setUsuarios(lista);
+        }
+      );
     });
 
     return () => {
       unsub();
-      if (pedidosUnsubRef.current) pedidosUnsubRef.current();
+      pedidosUnsubRef.current?.();
+      usuariosUnsubRef.current?.();
     };
   }, [router]);
 
@@ -144,24 +166,41 @@ export default function AdminDashboard() {
     [pedidos]
   );
 
-  /* ===== CHARTS ===== */
-  const vendasPorDia = useMemo(() => {
-    const map = new Map<string, number>();
-    pedidos.forEach((p) => {
-      const d = toDate(p.data).toLocaleDateString('pt-BR');
-      map.set(d, (map.get(d) || 0) + (p.total || 0));
-    });
-    return Array.from(map.entries()).map(([name, total]) => ({ name, total }));
-  }, [pedidos]);
+  /* ===== ANIVERSARIANTES DA SEMANA ===== */
+  const aniversariantesSemana = useMemo(() => {
+    const hoje = new Date();
+    const fim = new Date();
+    fim.setDate(hoje.getDate() + 7);
 
-  const pagamentos = useMemo(() => {
-    const map = new Map<string, number>();
-    pedidos.forEach((p) => {
-      const key = p.formaPagamento || 'Outros';
-      map.set(key, (map.get(key) || 0) + (p.total || 0));
+    return usuarios.filter((u) => {
+      if (!u.dataNascimento) return false;
+
+      const nasc = toDate(u.dataNascimento);
+      const prox = new Date(
+        hoje.getFullYear(),
+        nasc.getMonth(),
+        nasc.getDate()
+      );
+
+      if (prox < hoje) prox.setFullYear(hoje.getFullYear() + 1);
+
+      return prox >= hoje && prox <= fim;
     });
-    return Array.from(map.entries()).map(([name, total]) => ({ name, total }));
-  }, [pedidos]);
+  }, [usuarios]);
+
+  function enviarCupom(u: Usuario) {
+    if (!u.telefone) return;
+
+    const msg = encodeURIComponent(
+      `🎉 Parabéns ${u.nome || ''}!\n\nA Império Bebidas te presenteia com *10% OFF* 🎁\n\nUse o cupom: *IMPERIO10*`
+    );
+
+    window.open(`https://wa.me/${u.telefone}?text=${msg}`, '_blank');
+
+    updateDoc(doc(db, 'usuarios', u.id), {
+      cupomAniversarioEnviado: true,
+    });
+  }
 
   async function handleLogout() {
     await signOut(getAuth());
@@ -190,21 +229,21 @@ export default function AdminDashboard() {
 
         <Link
           href="/admin/dashboard/pedidos"
-          className="flex items-center gap-2 px-5 py-3 ml-auto shadow-lg bg-violet-600 rounded-xl"
+          className="flex items-center gap-2 px-5 py-3 ml-auto bg-violet-600 rounded-xl"
         >
           <FaListAlt /> Pedidos
         </Link>
 
         <Link
           href="/admin/produtosADM"
-          className="flex items-center gap-2 px-5 py-3 bg-green-600 shadow-lg rounded-xl"
+          className="flex items-center gap-2 px-5 py-3 bg-green-600 rounded-xl"
         >
           <FaBoxOpen /> Produtos
         </Link>
 
         <button
           onClick={handleLogout}
-          className="px-4 py-2 bg-red-600 shadow-lg rounded-xl"
+          className="px-4 py-2 bg-red-600 rounded-xl"
         >
           Sair
         </button>
@@ -216,60 +255,48 @@ export default function AdminDashboard() {
           title="Total Vendido"
           value={money(totalVendido)}
           icon={<FaMoneyBillWave />}
-          gradient="from-green-500/20 to-green-900/10"
         />
         <KpiCard
           title="Clientes Ativos"
           value={clientes}
           icon={<FaUsers />}
-          gradient="from-blue-500/20 to-blue-900/10"
         />
       </div>
 
-      {/* GRÁFICO */}
-      <div className="p-6 mt-10 bg-zinc-900 rounded-2xl shadow-[0_25px_60px_rgba(0,0,0,0.6)]">
-        <h2 className="mb-4 text-lg font-semibold text-gray-200">
-          Vendas por dia
+      {/* ANIVERSARIANTES */}
+      <div className="p-6 mt-10 shadow-xl bg-zinc-900 rounded-2xl">
+        <h2 className="flex items-center gap-2 mb-4 text-lg font-semibold">
+          <FaBirthdayCake className="text-pink-400" />
+          Aniversariantes da Semana
         </h2>
-        <ResponsiveContainer width="100%" height={260}>
-          <LineChart data={vendasPorDia}>
-            <XAxis stroke="#71717a" dataKey="name" />
-            <YAxis stroke="#71717a" />
-            <Tooltip />
-            <Line
-              type="monotone"
-              dataKey="total"
-              stroke="#facc15"
-              strokeWidth={3}
-              dot={false}
-            />
-          </LineChart>
-        </ResponsiveContainer>
-      </div>
 
-      {/* PAGAMENTOS */}
-      <div className="p-6 mt-10 bg-zinc-900 rounded-2xl shadow-[0_25px_60px_rgba(0,0,0,0.6)]">
-        <h2 className="mb-4 text-lg font-semibold text-gray-200">
-          Métodos de pagamento
-        </h2>
-        <ResponsiveContainer width="100%" height={260}>
-          <PieChart>
-            <Pie
-              data={pagamentos}
-              dataKey="total"
-              nameKey="name"
-              innerRadius={70}
-              outerRadius={110}
-              paddingAngle={4}
+        {aniversariantesSemana.length === 0 && (
+          <p className="text-gray-400">Nenhum aniversariante nesta semana.</p>
+        )}
+
+        <div className="space-y-3">
+          {aniversariantesSemana.map((u) => (
+            <div
+              key={u.id}
+              className="flex items-center justify-between p-4 bg-black rounded-xl"
             >
-              {pagamentos.map((_, i) => (
-                <Cell key={i} fill={COLORS[i % COLORS.length]} />
-              ))}
-            </Pie>
-            <Legend />
-            <Tooltip />
-          </PieChart>
-        </ResponsiveContainer>
+              <div>
+                <p className="font-bold">{u.nome}</p>
+                <p className="text-sm text-gray-400">
+                  {toDate(u.dataNascimento).toLocaleDateString('pt-BR')}
+                </p>
+              </div>
+
+              <button
+                onClick={() => enviarCupom(u)}
+                disabled={u.cupomAniversarioEnviado}
+                className="flex items-center gap-2 px-4 py-2 bg-yellow-500 rounded-xl disabled:opacity-40"
+              >
+                <FaGift /> Cupom
+              </button>
+            </div>
+          ))}
+        </div>
       </div>
 
       <ReviewsModeration />
@@ -277,25 +304,19 @@ export default function AdminDashboard() {
   );
 }
 
-/* ================= COMPONENTS ================= */
+/* ================= COMPONENT ================= */
 
 function KpiCard({
   title,
   value,
   icon,
-  gradient,
 }: {
   title: string;
   value: string | number;
   icon: React.ReactNode;
-  gradient: string;
 }) {
   return (
-    <div
-      className={`relative p-6 rounded-2xl bg-gradient-to-br ${gradient}
-      shadow-[0_20px_50px_rgba(0,0,0,0.6)]
-      border border-white/5`}
-    >
+    <div className="relative p-6 shadow-xl bg-zinc-900 rounded-2xl">
       <p className="text-sm text-gray-400">{title}</p>
       <p className="mt-2 text-3xl font-bold">{value}</p>
       <div className="absolute text-3xl text-yellow-400 top-6 right-6">
