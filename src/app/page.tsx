@@ -271,7 +271,7 @@ export default function Home() {
       descricao:
         'Campeã de vendas! Neutra, suave e versátil — triplamente destilada, perfeita para drinks. 🍹',
       preco: '37,87',
-      img: '/produtos/Smirnoff-1L-uni00.jpg',
+      img: '/produtos/smirnoff1L.jpg',
       selo: '⭐ Top em drinks',
       emoji: '🥂',
     },
